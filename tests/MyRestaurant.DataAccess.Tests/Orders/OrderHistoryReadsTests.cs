@@ -6,27 +6,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Orders;
 
-/// <summary>
-/// Integration tests for <see cref="DapperOrderHistoryReads"/> against a real PostgreSQL 17 container —
-/// TECHNICAL_SPECIFICATION §11.1's guest history, §6.8's hidden-records view, and the visibility log both
-/// sit on.
-///
-/// <para>The two person-scoped queries are the ones with teeth, and for the same reason: §6.8 promises
-/// that a hidden order is gone from "the owner's own views", and that promise is kept in SQL rather than
-/// by a surface remembering a filter. A regression there does not throw — it shows somebody a meal they
-/// asked to have hidden, which is the one thing this feature exists to prevent. The mirror-image
-/// regression is just as bad: an order excluded from the administrator's list is a record nobody can ever
-/// restore, because this is the only unhide path in the system (§6.8).</para>
-///
-/// <para>Arrangement writes <c>order_visibility_event</c> rows through
-/// <see cref="OrderTestWorld.AddVisibilityEventAsync"/> rather than through
-/// <see cref="DapperOrderVisibility"/>. That keeps a bug in the writer from looking like a bug in the
-/// reader, and it reaches states the writer refuses to create — a hide on an open sitting — which is the
-/// only way to assert what these readers do when they meet one.</para>
-///
-/// <para>Each test truncates first (xUnit builds a fresh instance per test and runs them sequentially).
-/// Own <c>IClassFixture</c>, own container; if no container engine is available, every test skips.</para>
-/// </summary>
 public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private const string Hidden = "hidden";
@@ -46,7 +25,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
     private Guid _counterIdentifier;
     private Guid _administratorIdentifier;
 
-    /// <summary>A guest with no display name — the actor-name username fallback (§5.2's rendering rule).</summary>
     private Guid _namelessIdentifier;
 
     private Guid _soupIdentifier;
@@ -73,7 +51,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         await _world.TruncateAsync(cancellationToken);
 
-        // Three characters minimum: person.username carries CHECK (char_length BETWEEN 3 AND 64) (§8.2).
         _adaIdentifier = await _world.AddPersonAsync("ada", "Ada Lovelace", cancellationToken);
         _bodeIdentifier = await _world.AddPersonAsync("bode", "Bo", cancellationToken);
         _counterIdentifier = await _world.AddPersonAsync("cass", "Cass Okonkwo", cancellationToken);
@@ -92,12 +69,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
         }
     }
 
-    // ---- the guest's own history (§11.1) ----------------------------------------------------------
-
-    /// <summary>
-    /// Settled sittings only, newest settled first, with the table and the person's own share. An order on
-    /// a table that is still open is not history yet — the live surface owns it (§5.1).
-    /// </summary>
     [Fact]
     public async Task PersonHistory_ListsSettledSittingsNewestFirst_AndExcludesTheOpenOne()
     {
@@ -109,7 +80,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
         _clock.UtcNow = _clock.UtcNow.AddDays(1);
         Guid secondOrder = await SettledMealAsync("Table 2", _adaIdentifier, _steakIdentifier, 2, cancellationToken);
 
-        // Still eating: present in the database, absent from history.
         Guid openSitting = await OpenTableAsync("Table 3", cancellationToken, _adaIdentifier);
         await SendAsync(openSitting, _adaIdentifier, _soupIdentifier, 1, null, cancellationToken);
 
@@ -122,14 +92,12 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(firstOrder, history[1].GuestOrderIdentifier);
         Assert.Equal("Table 1", history[1].TableLabel);
 
-        // Priced from the menu inside the transaction (§6.5.4), never from what the client sent.
         Assert.Equal(42.00m, history[0].PersonTotalAmount);
         Assert.Equal(4.50m, history[1].PersonTotalAmount);
 
         Assert.True(history[0].ClosedAt >= history[1].ClosedAt);
     }
 
-    /// <summary>§6.8's whole point: a hidden order is gone from the owner's own views.</summary>
     [Fact]
     public async Task PersonHistory_ExcludesAHiddenOrder()
     {
@@ -149,11 +117,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(kept, Assert.Single(history).GuestOrderIdentifier);
     }
 
-    /// <summary>
-    /// An order hidden and then unhidden is back. "Never had a visibility event" and "explicitly unhidden"
-    /// must read the same, because §6.8 defines the current flag as the latest event and no events means
-    /// not hidden.
-    /// </summary>
     [Fact]
     public async Task PersonHistory_IncludesAnOrderThatWasUnhiddenAgain()
     {
@@ -175,7 +138,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(orderIdentifier, Assert.Single(history).GuestOrderIdentifier);
     }
 
-    /// <summary>§11.1: "cross-member history is never shown". Both orders are on the same sitting.</summary>
     [Fact]
     public async Task PersonHistory_ShowsOnlyThatPersonsOwnOrders()
     {
@@ -198,11 +160,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(4.50m, ada[0].PersonTotalAmount);
     }
 
-    /// <summary>
-    /// The lines are the <em>projection</em>, not the record: a removed line is absent, a repriced one
-    /// carries its new price, and the note comes back. §11.4's complete stored log is a different reader
-    /// for a different audience.
-    /// </summary>
     [Fact]
     public async Task PersonHistory_CarriesTheCurrentLines_WithRemovalsGoneAndAdjustmentsApplied()
     {
@@ -237,11 +194,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(6.00m, entry.PersonTotalAmount);
     }
 
-    /// <summary>
-    /// A member who joined and never sent anything has no <c>guest_order</c> row at all (§6.1), so their
-    /// history is empty rather than a row with a zero total. Somebody with no history at all gets the same
-    /// answer, and both cost one round trip.
-    /// </summary>
     [Fact]
     public async Task PersonHistory_IsEmptyForSomebodyWhoNeverOrdered()
     {
@@ -259,7 +211,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
             _namelessIdentifier, Cap, cancellationToken));
     }
 
-    /// <summary>The cap bounds the list, and a non-positive cap asks for nothing rather than everything.</summary>
     [Fact]
     public async Task PersonHistory_RespectsTheCap()
     {
@@ -279,13 +230,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Empty(await Reads().ListVisibleHistoryForPersonAsync(_adaIdentifier, 0, cancellationToken));
     }
 
-    // ---- the hidden-records view (§6.8, §11.4) ----------------------------------------------------
-
-    /// <summary>
-    /// Every hidden order in the restaurant, whoever owns it, with the owner named and the hide's actor
-    /// and instant beside it. Most recently hidden first, because "what just disappeared" is the question
-    /// somebody arrives with.
-    /// </summary>
     [Fact]
     public async Task HiddenOrders_ListsEveryHiddenOrderSystemWide_MostRecentlyHiddenFirst()
     {
@@ -312,7 +256,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal("pat", hidden[0].Username);
         Assert.Null(hidden[0].DisplayName);
 
-        // The username fallback, on both the owner's name and the hider's.
         Assert.Equal("pat", hidden[0].OwnerName);
         Assert.Equal("pat", hidden[0].HiddenByName);
         Assert.Equal(_namelessIdentifier, hidden[0].HiddenByPersonIdentifier);
@@ -323,11 +266,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.True(hidden[0].HiddenAt > hidden[1].HiddenAt);
     }
 
-    /// <summary>
-    /// The row carries both numbers §5.3 requires together: the table's stamped settled total and this one
-    /// person's current share of it. A party of six settling at one figure says nothing about whose share
-    /// was hidden.
-    /// </summary>
     [Fact]
     public async Task HiddenOrders_CarryTheSittingContextAndBothTotals()
     {
@@ -355,13 +293,11 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(_adaIdentifier, summary.OwnerPersonIdentifier);
         Assert.NotNull(summary.ClosedAt);
 
-        // What the table was charged, and what this person's share of it is now.
         Assert.Equal(30.00m, summary.SettledTotalAmount);
         Assert.Equal(21.00m, summary.PersonTotalAmount);
         Assert.Equal(1, summary.LineCount);
     }
 
-    /// <summary>An order that was unhidden leaves the list — which is what makes Unhide's effect visible.</summary>
     [Fact]
     public async Task HiddenOrders_ExcludeAnOrderThatWasUnhidden()
     {
@@ -381,11 +317,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
             HiddenOrderFilter.Everything, Cap, cancellationToken));
     }
 
-    /// <summary>
-    /// Hidden, unhidden, hidden again appears once, dated by the hide that is in force — the same
-    /// definition <c>order_visibility_current</c> encodes. Two readers of one log that disagreed about
-    /// "latest" would put an order in this list and on its owner's history page at the same time.
-    /// </summary>
     [Fact]
     public async Task HiddenOrders_ReportTheHideCurrentlyInForce_AfterARoundTrip()
     {
@@ -412,7 +343,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(secondHide, summary.HiddenAt);
     }
 
-    /// <summary>§6.8's username filter: a substring, case-insensitively.</summary>
     [Fact]
     public async Task HiddenOrders_FilterByUsername_MatchesASubstringCaseInsensitively()
     {
@@ -427,7 +357,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
             Assert.Single(await Reads().ListHiddenOrdersAsync(
                 new HiddenOrderFilter(Username: "AD"), Cap, cancellationToken)).GuestOrderIdentifier);
 
-        // Whitespace-only is no filter at all rather than a pattern matching nothing.
         Assert.Equal(
             2,
             (await Reads().ListHiddenOrdersAsync(
@@ -437,10 +366,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
             new HiddenOrderFilter(Username: "nobody"), Cap, cancellationToken));
     }
 
-    /// <summary>
-    /// A <c>%</c> in the search term is a literal, not a wildcard. Nobody types one on purpose, and the
-    /// day somebody pastes one the filter must not silently widen to everything.
-    /// </summary>
     [Fact]
     public async Task HiddenOrders_FilterByUsername_TreatsWildcardCharactersLiterally()
     {
@@ -456,7 +381,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
             new HiddenOrderFilter(Username: "a_a"), Cap, cancellationToken));
     }
 
-    /// <summary>§6.8's table filter.</summary>
     [Fact]
     public async Task HiddenOrders_FilterByTable()
     {
@@ -480,11 +404,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
             new HiddenOrderFilter(TableIdentifier: _identifiers.Create()), Cap, cancellationToken));
     }
 
-    /// <summary>
-    /// §6.8's date range, on the sitting's <c>opened_at</c> — the evening somebody remembers, not the
-    /// moment a record was later tidied. Half-open: at or after the lower bound, strictly before the
-    /// upper.
-    /// </summary>
     [Fact]
     public async Task HiddenOrders_FilterByDateRange_OnWhenTheSittingOpened()
     {
@@ -500,7 +419,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
         _clock.UtcNow = tuesday;
         Guid tuesdayOrder = await HiddenMealAsync("Table 31", _adaIdentifier, cancellationToken);
 
-        // Monday only: from Monday midnight, before Tuesday midnight.
         Assert.Equal(
             mondayOrder,
             Assert.Single(await Reads().ListHiddenOrdersAsync(
@@ -510,28 +428,24 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
                 Cap,
                 cancellationToken)).GuestOrderIdentifier);
 
-        // A lower bound on its own.
         Assert.Equal(
             tuesdayOrder,
             Assert.Single(await Reads().ListHiddenOrdersAsync(
                 new HiddenOrderFilter(OpenedFrom: tuesday), Cap, cancellationToken))
                 .GuestOrderIdentifier);
 
-        // The upper bound is exclusive: a sitting that opened exactly at it is out.
         Assert.Equal(
             mondayOrder,
             Assert.Single(await Reads().ListHiddenOrdersAsync(
                 new HiddenOrderFilter(OpenedBefore: tuesday), Cap, cancellationToken))
                 .GuestOrderIdentifier);
 
-        // And both bounds together with nothing between them.
         Assert.Empty(await Reads().ListHiddenOrdersAsync(
             new HiddenOrderFilter(OpenedFrom: monday.AddDays(-3), OpenedBefore: monday.AddDays(-2)),
             Cap,
             cancellationToken));
     }
 
-    /// <summary>The three filters compose, and <see cref="HiddenOrderFilter.IsNarrowed"/> says when any is set.</summary>
     [Fact]
     public async Task HiddenOrders_FiltersCompose()
     {
@@ -558,16 +472,10 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
             Assert.Single(await Reads().ListHiddenOrdersAsync(narrow, Cap, cancellationToken))
                 .GuestOrderIdentifier);
 
-        // One bound that excludes it is enough to empty the answer.
         Assert.Empty(await Reads().ListHiddenOrdersAsync(
             narrow with { Username = "bode" }, Cap, cancellationToken));
     }
 
-    /// <summary>
-    /// §6.8 refuses a hide on an open sitting, so this row cannot arise from the application. If one ever
-    /// does, this is the one screen that must show it rather than hide the anomaly (§11.4) — hence no
-    /// closed-only restriction in the query, and a null <c>ClosedAt</c> the surface can say so from.
-    /// </summary>
     [Fact]
     public async Task HiddenOrders_StillReportARowWhoseSittingIsSomehowOpen()
     {
@@ -610,13 +518,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
             HiddenOrderFilter.Everything, 0, cancellationToken));
     }
 
-    // ---- the visibility log (§6.8, §11.4) --------------------------------------------------------
-
-    /// <summary>
-    /// Both events, oldest first, with the stored word and the actor named. §11.4 renders the record and
-    /// labels the two words §8.2 admits while falling back to the raw string — which only works if the raw
-    /// string is what arrives here.
-    /// </summary>
     [Fact]
     public async Task VisibilityLog_ListsEveryEventOldestFirst_WithTheStoredWordAndTheActorNamed()
     {
@@ -662,7 +563,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Empty(await Reads().ListVisibilityLogAsync(_identifiers.Create(), cancellationToken));
     }
 
-    /// <summary>One order's log is only its own.</summary>
     [Fact]
     public async Task VisibilityLog_ExcludesOtherOrdersEvents()
     {
@@ -682,8 +582,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
             Assert.Single(await Reads().ListVisibilityLogAsync(theirs, cancellationToken))
                 .GuestOrderIdentifier);
     }
-
-    // ---- arrangement ------------------------------------------------------------------------------
 
     private async Task<Guid> HiddenMealAsync(
         string tableLabel,
@@ -757,8 +655,6 @@ public sealed class OrderHistoryReadsTests : IClassFixture<PostgreSqlFixture>, I
     {
         Guid lineIdentifier = _identifiers.Create();
 
-        // The zero unit price is deliberate: §6.5.4 has the transaction price the line from the menu row
-        // it reads under the lock, so anything sent here is discarded.
         AppendOrderEventResult result = await Mutations().AppendToLivingOrderAsync(
             sittingIdentifier,
             guestIdentifier,

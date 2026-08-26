@@ -9,25 +9,6 @@
 @inject RestaurantTime RestaurantClock
 @inject NavigationManager Navigation
 
-@* The guest's own order history, and §6.8's Hide (TECHNICAL_SPECIFICATION §6.8, §11.1).
-
-   §11.1 puts two things on the guest's side of this feature: "history (the guest's **own** past orders at
-   this restaurant — cross-member history is never shown)" and "a per-order **Hide** control on closed
-   orders, confirmed as irreversible from the guest's account (§6.8)". This is both, and it is a route of
-   its own rather than a panel on /table/{id} because a history spans sittings while that page is scoped
-   to one — §5.1 is explicit that "the UI scopes to the sitting behind the current /table/{id} route", and
-   a list of last month's meals is not part of the sitting somebody is currently eating.
-
-   Static SSR, not an interactive island. The two things this page does are read a list and post a
-   confirmed write that then redirects (post/redirect/get, so a refresh cannot re-hide), and neither needs
-   a circuit. The live surface next door is interactive because a party total moves while you watch it; a
-   settled bill from three weeks ago does not.
-
-   The confirmation is a step, not a dialog. §6.8 requires it to state "plainly that this cannot be undone
-   from the guest's account", and a browser confirm() cannot be read, cannot be styled, and does not exist
-   without JavaScript — while this page works with none. Tapping Hide navigates to ?hide={order}, which
-   renders the warning inline above the row with the only two things to do next: confirm, or go back. *@
-
 <PageTitle>Your order history</PageTitle>
 
 <section id="table-history-surface" class="panel">
@@ -90,7 +71,6 @@
 
                 @if (Hide == entry.GuestOrderIdentifier)
                 {
-                    @* §6.8's confirmation, stated the way §6.8 requires. *@
                     <div class="history-confirm" role="alert">
                         <p class="history-confirm-title"><strong>Hide this from your history?</strong></p>
                         <p>
@@ -160,13 +140,6 @@
     <p><a href="/table">Back to your tables</a></p>
 </section>
 
-@* Namespaced under .history-*. App.razor links the static wwwroot/app.css rather than the
-   component-scoped bundle, so component CSS isolation is not active here; these live inline to avoid
-   editing the shared stylesheet for one screen, matching every other page that has done so.
-
-   Every colour below is a property from app.css's :root and none of them carries a fallback (F-68,
-   F-69). The three that were literals are on .history-confirm, and two of them had drifted — see the
-   note above that rule. *@
 <style>
     .history-header {
         display: flex;
@@ -255,7 +228,6 @@
         font-size: 0.85rem;
     }
 
-    /* Pushes the money to the right edge on a wide screen and lets it wrap under on a narrow one. */
     .history-line-amount {
         margin-left: auto;
         font-variant-numeric: tabular-nums;
@@ -275,16 +247,6 @@
         font-size: 0.9rem;
     }
 
-    /*
-     * The three colours here were literals until F-68, and two of them had drifted from the palette
-     * they were copied out of: `#fdecea` against `--danger-surface` `#fbeaea`, and `#f5c2c0` against
-     * `--danger-hairline` `#f0c7c7`. That is the same pair of values Slice 34 removed from four
-     * `.chip-warn` copies on the administration surfaces (F-66), sitting unnoticed in a fifth place
-     * because this is a guest page and the sweep that found the other four was looking at
-     * administration. So this panel — the one screen in the guest area whose whole job is to look
-     * alarming before an irreversible action — has been drawing a red nobody chose. It draws the
-     * palette's now, which is a visible change: slightly less pink, slightly warmer border.
-     */
     .history-confirm {
         margin: 0.85rem 0 0;
         padding: 0.75rem 0.9rem;
@@ -308,17 +270,8 @@
 </style>
 
 @code {
-    /// <summary>
-    /// How far back the list goes. Bounded because this is a phone screen and a regular's history is
-    /// unbounded; newest-first because the order somebody is looking for is nearly always the last one.
-    /// </summary>
     private const int HistoryCap = 50;
 
-    /// <summary>
-    /// The one field the POST handler reads. The order identifier travels in a hidden input rather than
-    /// being re-read from the <c>?hide=</c> query string, so the write does not depend on the browser
-    /// preserving a query on a form whose action is the current document.
-    /// </summary>
     private const string OrderField = "order";
 
     private IReadOnlyList<PersonOrderHistoryEntry>? _entries;
@@ -328,10 +281,6 @@
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
 
-    /// <summary>
-    /// Which order the confirmation step is open for, if any. A value that names an order not in the list
-    /// below — a stale link, or somebody else's identifier — opens no panel and says so.
-    /// </summary>
     [SupplyParameterFromQuery]
     private Guid? Hide { get; set; }
 
@@ -360,7 +309,6 @@
     {
         if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } person)
         {
-            // Only reachable if the cookie expired between the request being authorized and this render.
             _entries = [];
             _errorMessage = "Your session could not be identified. Sign in again to see your history.";
             return;
@@ -370,12 +318,6 @@
             person, HistoryCap, HttpContext.RequestAborted);
     }
 
-    /// <summary>
-    /// §6.8's owner hide, through the workflow so the change is announced (§9). The service re-checks
-    /// everything this page believes — that the order is this person's, that its sitting is closed, that
-    /// it is not already hidden — under its own lock, because a page's belief about who owns a row is not
-    /// a permission.
-    /// </summary>
     private async Task HideAsync()
     {
         if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } person)
@@ -387,13 +329,6 @@
 
         IFormCollection form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
 
-        // Not a second read of the body: the Blazor endpoint has already parsed the form to find this
-        // handler, and HttpRequest caches the parsed collection, so this is the same instance the
-        // framework used. Awaiting the cached path rather than touching Request.Form synchronously keeps
-        // the cancellation token honoured. Same shape as AdministrationSittings.
-        // Read out to string? first: form[key] is a StringValues, and being explicit about the conversion
-        // keeps overload resolution on Guid.TryParse(string?, out Guid) rather than leaving it to an
-        // implicit conversion to pick between that and the span overload.
         string? postedOrder = form[OrderField];
 
         if (!Guid.TryParse(postedOrder, out Guid guestOrderIdentifier))
@@ -408,9 +343,6 @@
 
         if (result.Outcome is HideOrderOutcome.Hidden or HideOrderOutcome.AlreadyHidden)
         {
-            // Post/redirect/get: a refresh must not re-post. AlreadyHidden redirects too — the order is in
-            // the state the person asked for, and telling them it "failed" would be both untrue and
-            // alarming about a record they were trying to tidy.
             Navigation.NavigateTo("/table/history?done=hidden");
             return;
         }
@@ -419,12 +351,6 @@
         await LoadAsync();
     }
 
-    /// <summary>
-    /// The three refusals, in the guest's words rather than the service's. None of them is reachable from
-    /// the markup above — the list only offers Hide on the person's own settled, visible orders — so each
-    /// means either a replayed post or a page that has gone stale under somebody, and the sentence says
-    /// what to do about that rather than naming an outcome.
-    /// </summary>
     private static string DescribeRefusal(HideOrderOutcome outcome) => outcome switch
     {
         HideOrderOutcome.OrderNotFound =>

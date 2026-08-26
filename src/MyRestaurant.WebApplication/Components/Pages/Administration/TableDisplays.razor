@@ -11,31 +11,6 @@
 @inject NavigationManager Navigation
 @inject RestaurantTime RestaurantClock
 
-@* Display devices for one table (TECHNICAL_SPECIFICATION §4.2, §11.4, §11.12 — `area.administration`).
-   Static SSR, like every administration surface.
-
-   Generate deliberately does NOT post/redirect/get: the plaintext code exists exactly once, in the
-   response to the POST that made it, and a redirect would throw it away — the same reason the TOTP
-   slice renders recovery codes in place. A refresh therefore mints a fresh code; the previous one is
-   simply left to expire, which is harmless because codes are single-use and short-lived.
-
-   Revoke does use post/redirect/get, and picks its device from a select rather than rendering a form
-   per row — the same shape ManagePerson uses for role revocation, and the reason is the same: one
-   named form per action keeps static-SSR form matching unambiguous.
-
-   §11.12 vocabulary throughout and no inline copy of any of it (M6 Slice 34). The roster is a shared
-   `.record-list`, so below the breakpoint each display is a card whose cells state their own labels;
-   the small forms and the facts are the shared `.manage-*` detail vocabulary. What this page used to
-   declare inline was the retired per-page table wrapper, a second chip set pinned to literals off the
-   palette, a
-   `.visually-hidden` still using the deprecated `clip`, and a `.manage-inline-form select` with no
-   touch-target height at all — which is F-66, and the whole of it is now read from app.css.
-
-   Generating a code is the thing an administrator opens this page to do, so it is the page head's own
-   action rather than a form further down. That also puts it where §16.3 scenario 16 measures it: this
-   surface is in the barrier as of Slice 34, and with no display ever paired the generate button is the
-   only control on it. *@
-
 <PageTitle>@(_table is null ? "Display devices" : $"Displays — {_table.Label}")</PageTitle>
 
 @if (_table is null)
@@ -180,10 +155,6 @@ else
             {
                 <h2 class="manage-heading">Revoke a display</h2>
 
-                @* No explicit <AntiforgeryToken />: EditForm renders one itself for a named SSR form
-                   (RenderSSRFormHandlingChildren), and a second field of the same name would make the
-                   value ambiguous to the token store. The plain <form> in the page head is not an
-                   EditForm, so it does carry one — the same split ManageTable already uses. *@
                 <EditForm Model="RevokeInput" method="post" OnValidSubmit="RevokeDeviceAsync"
                           FormName="display-revoke" class="manage-inline-form">
                     <label class="visually-hidden" for="revoke-display">Display to revoke</label>
@@ -210,10 +181,6 @@ else
     </section>
 }
 
-@* Two rules nobody else reads: the one-time pairing code, and the panel it is shown in. Everything
-   else this page draws is app.css's (§11.12). App.razor links the static stylesheet rather than the
-   scoped bundle, so component CSS isolation is not active — which is why a page-local block is the
-   arrangement here and why re-declaring a shared name in one would silently win. *@
 <style>
     .pairing-issued {
         margin: 1rem 0;
@@ -264,12 +231,10 @@ else
 
     private string DisplaysPath => $"/administration/tables/{TableId}/displays";
 
-    /// <summary>The absolute URL to read aloud to whoever is holding the tablet (§4.2).</summary>
     private string PairingUrl => $"{Options.PublicOrigin.TrimEnd('/')}{DisplayRoutes.Pair}";
 
     protected override async Task OnInitializedAsync()
     {
-        // BL0008: a form POST binds RevokeInput itself and may assign null, so the default lives here.
         RevokeInput ??= new();
 
         _table = await TableDirectory.GetTableAsync(TableId, HttpContext.RequestAborted);
@@ -302,8 +267,6 @@ else
 
         if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } administrator)
         {
-            // Endpoint authorization already guarantees an administrator; this is the belt to that
-            // brace, because created_by_person_identifier is NOT NULL and has no anonymous option.
             _errorMessage = "Your session could not be identified. Sign in again and retry.";
             return;
         }
@@ -316,7 +279,6 @@ else
 
         if (result.Outcome == IssuePairingCodeOutcome.Issued)
         {
-            // Rendered in place, never redirected: this is the only moment the plaintext exists.
             _issuedCode = result.Code;
             _issuedExpiresAt = result.ExpiresAt;
             return;
@@ -333,8 +295,6 @@ else
             return;
         }
 
-        // Bound as text rather than Guid so the "Choose a display…" empty option is representable and
-        // InputSelect never has to parse a non-string type.
         if (!Guid.TryParse(RevokeInput.DeviceIdentifier, out Guid deviceIdentifier))
         {
             _errorMessage = "Choose which display to revoke.";

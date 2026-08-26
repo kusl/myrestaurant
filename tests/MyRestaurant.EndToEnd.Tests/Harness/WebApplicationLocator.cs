@@ -2,19 +2,6 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace MyRestaurant.EndToEnd.Tests.Harness;
 
-/// <summary>
-/// Everything needed to start one copy of the already-built web application as a child process.
-/// </summary>
-/// <param name="RepositoryRoot">The directory holding <c>MyRestaurant.slnx</c>.</param>
-/// <param name="ContentRoot">
-/// The web application's <em>source</em> directory. It becomes <c>ASPNETCORE_CONTENTROOT</c>, because
-/// <c>Program.cs</c> serves assets with <c>UseStaticFiles()</c> and <c>wwwroot</c> is not copied into
-/// <c>bin</c> — without this, <c>js/passkey.js</c> would 404 and every passkey ceremony would fail
-/// with no browser-side clue why.
-/// </param>
-/// <param name="FileName">The executable to start: the apphost, or the <c>dotnet</c> muxer.</param>
-/// <param name="Arguments">Empty for the apphost; the managed assembly path for the muxer.</param>
-/// <param name="WorkingDirectory">The build output directory.</param>
 internal sealed record WebApplicationLaunch(
     string RepositoryRoot,
     string ContentRoot,
@@ -22,15 +9,6 @@ internal sealed record WebApplicationLaunch(
     IReadOnlyList<string> Arguments,
     string WorkingDirectory);
 
-/// <summary>
-/// Finds the web application's build output by walking up from this test assembly's own.
-///
-/// <para>The configuration and target framework are read from this assembly's output path rather than
-/// injected as an MSBuild constant, which keeps the two trees automatically in step: a Debug test run
-/// looks for a Debug web application, a Release run for a Release one. That matters because CI builds
-/// and tests in Release while a workstation usually does not, and a harness that hard-coded either
-/// would silently boot a stale binary from the other.</para>
-/// </summary>
 internal static class WebApplicationLocator
 {
     private const string SolutionFileName = "MyRestaurant.slnx";
@@ -42,7 +20,6 @@ internal static class WebApplicationLocator
     {
         launch = null;
 
-        // .../tests/MyRestaurant.EndToEnd.Tests/bin/<Configuration>/<TargetFramework>/
         DirectoryInfo targetFrameworkDirectory = new(AppContext.BaseDirectory);
         DirectoryInfo? configurationDirectory = targetFrameworkDirectory.Parent;
         if (configurationDirectory is null)
@@ -115,11 +92,6 @@ internal static class WebApplicationLocator
         return null;
     }
 
-    /// <summary>
-    /// The <c>dotnet</c> muxer, only needed when a build produced no apphost. <c>DOTNET_ROOT</c> wins;
-    /// otherwise it is derived from the shared framework this test process is itself running on, which
-    /// lives at <c>&lt;dotnet-root&gt;/shared/Microsoft.NETCore.App/&lt;version&gt;/</c>.
-    /// </summary>
     private static bool TryFindDotnetMuxer([NotNullWhen(true)] out string? muxerPath)
     {
         string executableName = OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";

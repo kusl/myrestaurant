@@ -4,25 +4,12 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Security;
 
-/// <summary>
-/// The policy itself (TECHNICAL_SPECIFICATION §11.11, §16.4, F-49). Pure string arithmetic: no server,
-/// no container, no clock.
-///
-/// <para>These assertions are about the <em>shape and strength</em> of the header this application
-/// emits. Whether the tree it protects still fits inside it is a different question with a different
-/// answer, and it lives in <see cref="ContentSecurityPolicyContractTests"/> — the two together are the
-/// rule and the subject, kept apart on purpose so that neither can drift into being a restatement of
-/// the other.</para>
-/// </summary>
 public sealed class ResponseSecurityHeadersTests
 {
-    /// <summary>A host with no port, as production presents behind a named tunnel.</summary>
     private const string PlainHost = "orders.example.com";
 
-    /// <summary>A host with a port, as a bare `dotnet run` and the §16.3 harness both present.</summary>
     private const string HostWithPort = "localhost:5099";
 
-    /// <summary>Every directive this policy is expected to carry, and nothing else.</summary>
     private static readonly IReadOnlyList<string> ExpectedDirectiveNames =
     [
         "default-src",
@@ -47,10 +34,6 @@ public sealed class ResponseSecurityHeadersTests
             directives.Keys.Order(StringComparer.Ordinal));
     }
 
-    /// <summary>
-    /// A duplicate directive is not an error the browser reports loudly — it silently keeps the first
-    /// and ignores the rest, so the one somebody added last is the one that does nothing.
-    /// </summary>
     [Fact]
     public void ThePolicyRepeatsNoDirectiveName()
     {
@@ -65,12 +48,6 @@ public sealed class ResponseSecurityHeadersTests
         Assert.Equal(names.Count, names.Distinct(StringComparer.Ordinal).Count());
     }
 
-    /// <summary>
-    /// A comma in this header value is not a syntax error: it splits one policy into two, and two
-    /// policies are enforced as an intersection. A stray comma would therefore produce a header that
-    /// looks approximately right and means something else, so it is asserted rather than assumed.
-    /// Likewise a trailing semicolon, an empty directive, and a value with no source list.
-    /// </summary>
     [Fact]
     public void ThePolicyIsOnePolicyAndIsWellFormed()
     {
@@ -90,12 +67,6 @@ public sealed class ResponseSecurityHeadersTests
         }
     }
 
-    /// <summary>
-    /// The directive that does the work. Microsoft's starter policy for a Blazor Web App carries
-    /// <c>'wasm-unsafe-eval'</c> and a hash for the template's inline <c>onclick</c>; this tree has
-    /// neither a WebAssembly render mode nor an inline handler, so it carries neither, and the contract
-    /// test is what keeps that true as the markup changes.
-    /// </summary>
     [Fact]
     public void TheScriptDirectiveAdmitsSameOriginFilesAndNothingElse()
     {
@@ -118,11 +89,6 @@ public sealed class ResponseSecurityHeadersTests
         Assert.DoesNotContain("https:", policy, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// <c>'none'</c> rather than the framework's <c>'self'</c>, and on every response rather than on
-    /// component endpoints. Nothing in this application frames anything, so self-framing is a
-    /// capability with no user.
-    /// </summary>
     [Fact]
     public void TheFramingDirectivesForbidEverySite()
     {
@@ -132,10 +98,6 @@ public sealed class ResponseSecurityHeadersTests
         Assert.Equal("'none'", directives["frame-src"]);
     }
 
-    /// <summary>
-    /// The two concessions, each asserted so that removing the fact that earns one is a decision
-    /// somebody makes here rather than a change nobody notices.
-    /// </summary>
     [Fact]
     public void TheTwoConcessionsAreTheOnesRecorded()
     {
@@ -145,12 +107,6 @@ public sealed class ResponseSecurityHeadersTests
         Assert.Equal("'self' data:", directives["img-src"]);
     }
 
-    /// <summary>
-    /// The reason this policy takes an argument at all. <c>'self'</c> is an origin comparison and
-    /// <c>wss://host</c> is not the same origin as <c>https://host</c>; CSP3's carve-out covers the
-    /// secure pair and browsers have disagreed about the insecure one, which is the pair a bare
-    /// `dotnet run` and the §16.3 harness both use. So both are named.
-    /// </summary>
     [Fact]
     public void TheWebSocketSourcesNameTheRequestsOwnHost()
     {
@@ -167,12 +123,6 @@ public sealed class ResponseSecurityHeadersTests
         Assert.Equal("'self' ws://localhost:5099 wss://localhost:5099", directives["connect-src"]);
     }
 
-    /// <summary>
-    /// CSP's <c>host-part</c> grammar has no way to write a bracketed address literal, so a directive
-    /// that tried would be one the browser discards — which is worse than a looser one that works,
-    /// because it fails as a blank screen with no cause named. The fallback is bounded to this
-    /// directive and reachable only by pointing the public origin at an address literal on purpose.
-    /// </summary>
     [Theory]
     [InlineData("[::1]")]
     [InlineData("[::1]:8080")]
@@ -208,10 +158,6 @@ public sealed class ResponseSecurityHeadersTests
             ResponseSecurityHeaders.WebSocketSourcesFor(host));
     }
 
-    /// <summary>
-    /// The two headers that are not the policy. Their values are pinned rather than described because
-    /// each has exactly one correct spelling and a typo in either is silent.
-    /// </summary>
     [Fact]
     public void TheOtherTwoHeadersHaveTheValuesSeventeenNames()
     {

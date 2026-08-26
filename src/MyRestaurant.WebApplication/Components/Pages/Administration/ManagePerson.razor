@@ -11,14 +11,6 @@
 @inject NavigationManager Navigation
 @inject RestaurantTime RestaurantClock
 
-@* Manage one account (TECHNICAL_SPECIFICATION §3.7). Administrator only (endpoint authorization).
-   Static SSR: grant/revoke, reset, and deactivate/reactivate are full-page form posts, and the reset's
-   temporary password is written into the response once and never stored in the clear. Each action runs
-   through the transactional IAccountAdministration, which rotates the subject's security stamp so the
-   change bites their live sessions within the revalidation window (§3.1). Successful changes redirect
-   back here (post/redirect/get) carrying a one-word outcome so a refresh does not re-post; refusals
-   (last administrator) are shown in place. *@
-
 <PageTitle>@(_person is null ? "Manage account" : $"Manage {_person.Username}")</PageTitle>
 
 @if (_person is null)
@@ -48,13 +40,7 @@ else if (_resetResult is not null)
         </p>
 
         <p class="totp-secret-label">Give this temporary password to @_person.Username — it is shown only once.</p>
-        @* .staff-temporary-password beside .totp-secret, exactly as CreateStaff.razor does and for the
-           same reason. This element holds a password; it borrowed the TOTP class for the monospaced,
-           letter-spaced treatment and there was then no way to address it as the thing it actually is.
-           That mattered more here than there: the account this panel just reset is on its way to
-           /account/enroll-totp-required, whose own p.totp-secret holds a real authenticator key — so
-           one selector meant two different secrets on two consecutive screens. Additive, no CSS behind
-           the new name, nothing changes on screen. *@
+
         <p class="totp-secret staff-temporary-password">@_temporaryPassword</p>
 
         <div class="form-actions">
@@ -229,12 +215,6 @@ else
     </section>
 }
 
-@* This page declares nothing. Its facts grid, its role chips, its headings, its rules and its two
-   small forms are all app.css's §11.12 vocabulary — this was one of four pages carrying an inline copy
-   of it, and the copies had drifted (F-66). `.staff-temporary-password` still has no rule behind it and
-   still should not: it exists so the reset panel's password can be addressed as the thing it is rather
-   than through the `.totp-secret` class it borrows its treatment from. *@
-
 @code {
     private static readonly string[] AllStaffRoles =
         [RestaurantRoles.Administrator, RestaurantRoles.Counter, RestaurantRoles.Kitchen];
@@ -267,7 +247,6 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        // BL0008: form POSTs bind these themselves and may assign null, so defaults live here.
         GrantInput ??= new();
         RevokeInput ??= new();
 
@@ -282,7 +261,6 @@ else
         Person? actingAdministrator = await UserManager.GetUserAsync(HttpContext.User);
         _isSelf = actingAdministrator is not null && actingAdministrator.PersonIdentifier == _person.PersonIdentifier;
 
-        // Render the flash for a completed action after the post/redirect/get, on GET only.
         if (HttpContext.Request.Method == HttpMethods.Get)
         {
             _flashMessage = FlashFor(Done);
@@ -384,8 +362,6 @@ else
             return;
         }
 
-        // Generate + hash the temporary password here so the plaintext is only ever held for the one
-        // response that shows it (§3.2). 12 random bytes → a 16-character URL-safe string.
         string temporaryPassword = SecretGenerator.GenerateBase64UrlSecret(12);
         string passwordHash = PasswordHasher.HashPassword(
             new Person { PersonIdentifier = _person.PersonIdentifier, Username = _person.Username },
@@ -400,7 +376,6 @@ else
             return;
         }
 
-        // Show the temporary password once, in this response (no redirect).
         _temporaryPassword = temporaryPassword;
         _resetResult = result;
     }

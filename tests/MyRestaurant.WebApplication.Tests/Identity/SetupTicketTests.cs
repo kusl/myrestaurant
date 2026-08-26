@@ -4,13 +4,6 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Identity;
 
-/// <summary>
-/// Pure tests for the first-administrator setup ticket (TECHNICAL_SPECIFICATION §3.6): the
-/// Data-Protection round-trip carries every field a step needs (including the confirmed passkey and
-/// the TOTP secret), a tampered or foreign-key value is rejected rather than trusted, and the
-/// embedded issued-at bounds how long a setup session stays valid. No server, no container — these
-/// always run. An <see cref="EphemeralDataProtectionProvider"/> gives each test a throwaway key ring.
-/// </summary>
 public sealed class SetupTicketTests
 {
     private static readonly DateTimeOffset IssuedAt = new(2026, 1, 15, 12, 0, 0, TimeSpan.Zero);
@@ -98,8 +91,6 @@ public sealed class SetupTicketTests
         SetupTicketProtector protector = NewProtector();
         string protectedTicket = protector.Protect(SampleTicket());
 
-        // Corrupt the version/header byte; Data Protection authenticates its payload, so any change
-        // fails the integrity check and Unprotect throws — TryUnprotect must swallow that as "false".
         char[] chars = protectedTicket.ToCharArray();
         chars[0] = chars[0] == 'A' ? 'B' : 'A';
         string tampered = new(chars);
@@ -111,8 +102,6 @@ public sealed class SetupTicketTests
     [Fact]
     public void TryUnprotect_ValueFromAnotherKeyRing_ReturnsFalse()
     {
-        // Two ephemeral providers have different keys, so a ticket protected by one cannot be read by
-        // the other — the same protection a real deployment gets from its persisted key ring.
         SetupTicketProtector writer = NewProtector();
         SetupTicketProtector reader = NewProtector();
 
@@ -140,7 +129,7 @@ public sealed class SetupTicketTests
         TimeSpan lifetime = TimeSpan.FromMinutes(30);
 
         Assert.False(ticket.HasExpired(IssuedAt, lifetime));
-        Assert.False(ticket.HasExpired(IssuedAt.AddMinutes(30), lifetime)); // exactly at the edge
+        Assert.False(ticket.HasExpired(IssuedAt.AddMinutes(30), lifetime));
         Assert.True(ticket.HasExpired(IssuedAt.AddMinutes(30).AddSeconds(1), lifetime));
     }
 

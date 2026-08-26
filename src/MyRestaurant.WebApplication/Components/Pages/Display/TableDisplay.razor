@@ -16,29 +16,6 @@
 @inject NavigationManager Navigation
 @inject ILogger<TableDisplay> Logger
 
-@* The table display surface (TECHNICAL_SPECIFICATION §4.3, §11.5).
-
-   Interactive server, unlike every other cookie-adjacent page here, because §11.5 asks for three live
-   things: a QR that re-renders on the rotation boundary, a party-size chip fed by SittingMemberJoined,
-   and a connection state that must never let a frozen code masquerade as a fresh one.
-
-   ANONYMOUS at the endpoint, gated in the component. §11.5 says an unpaired device is *redirected* to
-   /display/pair, and [Authorize] cannot produce that: a failed policy challenges the default scheme and
-   lands the screen on /sign-in, which is meaningless for a tablet. The device principal itself is
-   installed by DisplayDeviceAuthenticationMiddleware and reaches the circuit through the cascading
-   authentication state, so the gate below is reading a server-set principal, never anything the browser
-   claimed. §3.7's "table claim matches {table}" is a comparison against a route value, which likewise
-   belongs in the surface — the same place §3.7 already leaves /table's per-sitting membership check.
-
-   Rotation is continuous and independent of sitting state (§4.3), so the timer runs whether or not the
-   table has anyone at it. Deactivating the table stops rendering (§4.1) without unpairing the device.
-
-   Everything §11.5 asks for beyond the first paint depends on interactivity actually arriving. If
-   /_framework/blazor.web.js cannot be fetched, this page is prerendered HTML and nothing else: the code
-   painted at page load stays on the glass indefinitely, looking exactly like a live one. That is why the
-   surface publishes data-live (see IsLiveAttributeValue) and why Program.cs asks for the build-time
-   static web assets manifest outside Development. *@
-
 <PageTitle>@PageTitleText</PageTitle>
 
 @if (_stage == DisplayStage.WrongTable && _deviceTable is { } ownTable)
@@ -81,10 +58,6 @@ else if (_stage == DisplayStage.TableOutOfService)
 }
 else if (_qr is not null)
 {
-    @* data-refresh-token / data-fresh-for-ms drive js/display.js: it measures the deadline from when it
-       observes the token change, so a kiosk with a badly wrong clock still detects a dead circuit.
-       §11.10's pair: data-live says whether a circuit produced this markup at all, data-loaded whether
-       there is a code on the glass — see IsLiveAttributeValue and IsLoadedAttributeValue. *@
     <section class="display-card display-surface" id="table-display-surface"
              data-refresh-token="@_refreshSequence" data-fresh-for-ms="@FreshForMilliseconds"
              data-live="@IsLiveAttributeValue"
@@ -120,8 +93,6 @@ else if (_qr is not null)
 }
 else
 {
-    @* Active table, no code back. Transient rather than fatal — the refresh loop will try again on the
-       next boundary — so say so plainly instead of dereferencing a null or showing a blank screen. *@
     <section class="display-card display-surface" id="table-display-surface"
              data-refresh-token="@_refreshSequence" data-fresh-for-ms="@FreshForMilliseconds"
              data-live="@IsLiveAttributeValue"
@@ -148,7 +119,6 @@ else
         border: 1px solid var(--hairline);
     }
 
-    /* Raised only when js/display.js sets .is-stale on the surface. */
     .display-offline {
         display: none;
     }
@@ -210,19 +180,14 @@ else
 </style>
 
 @code {
-    /// <summary>Which of the §11.5 states this display resolved to.</summary>
     private enum DisplayStage
     {
-        /// <summary>No live device credential: §11.5 sends the screen to the pairing surface.</summary>
         NotPaired,
 
-        /// <summary>A live device, but it belongs to a different table (§3.7's table-claim rule).</summary>
         WrongTable,
 
-        /// <summary>Paired and correct, but the table is deactivated — no code renders (§4.1).</summary>
         TableOutOfService,
 
-        /// <summary>Paired, correct, and in service: the rotating QR.</summary>
         Live,
     }
 
@@ -236,7 +201,6 @@ else
     private int _refreshSequence;
     private bool _loaded;
 
-    // Captured once, so nothing ever touches _lifetime.Token after Dispose has run.
     private readonly CancellationTokenSource _lifetime = new();
     private CancellationToken _stopping;
     private IDisposable? _subscription;
@@ -253,56 +217,11 @@ else
         ? "Pair this display"
         : string.IsNullOrEmpty(_tableLabel) ? "Table display" : _tableLabel;
 
-    /// <summary>
-    /// How long a rendered code stays trustworthy, for js/display.js (§11.5). The arithmetic lives in
-    /// <see cref="DisplayRefreshSchedule"/> so it can be tested without a circuit.
-    /// </summary>
     private int FreshForMilliseconds
         => DisplayRefreshSchedule.FreshForMilliseconds(Options.TableJoinTokenRotationSeconds);
 
-    /// <summary>
-    /// Whether a live circuit produced this markup — <c>"true"</c> only in interactive-server rendering,
-    /// <c>"false"</c> during the prerender pass.
-    ///
-    /// <para>Published because §11.5's central hazard is that <em>a frozen QR looks exactly like a live
-    /// one</em>, and the most complete way for it to freeze is for interactivity never to arrive at all:
-    /// if <c>/_framework/blazor.web.js</c> cannot be fetched, the prerendered code sits on the glass for
-    /// as long as the tablet is left alone, and nothing else on the page differs by so much as a pixel.
-    /// One attribute turns that into something an operator can read in dev tools and something the §16.3
-    /// scenarios can wait for, instead of a display that simply never advances.</para>
-    ///
-    /// <para><c>js/display.js</c> does not need it: the staleness curtain already covers a circuit that
-    /// dies <em>later</em>, because <c>data-refresh-token</c> stops changing. This covers the case where
-    /// it never lived.</para>
-    /// </summary>
     private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
 
-    /// <summary>
-    /// §11.10's second bit: whether this surface has the thing it exists to show. <c>"true"</c> only
-    /// once the component has finished resolving which §11.5 state it is in <em>and</em> a join code came
-    /// back from <see cref="ITableJoinTokens"/>.
-    ///
-    /// <para><b>Why the predicate is not simply <c>_loaded</c>, unlike the other five surfaces.</b>
-    /// §11.10 defines the bit as "the surface has everything it renders itself for", and on this screen
-    /// that is a QR and nothing else. Both of the branches carrying
-    /// <c>id="table-display-surface"</c> are reachable with the component fully resolved: the second one
-    /// renders "Preparing the join code…" when <c>DescribeCurrentAsync</c> came back empty, which is
-    /// transient rather than fatal and so is deliberately not an error page. A bit that read
-    /// <c>true</c> there would be true and useless — it would tell a reader the surface is ready on the
-    /// one screen where readiness means a code, and §16.3 scenario 2 would go on to spend sixty seconds
-    /// in <c>ReadJoinQrPathAsync</c> failing two steps from the cause.</para>
-    ///
-    /// <para><b>And why not just <c>_qr is not null</c>.</b> Because that conflates "no code yet" with
-    /// "no code came back", and only the second is worth reporting. Keeping <c>_loaded</c> in the
-    /// conjunction means the attribute distinguishes a surface still resolving from one that resolved
-    /// and got nothing — the first is patience, the second is §4.3 not answering.</para>
-    ///
-    /// <para>This is the honest reading of the rule rather than an exception to it. The uniform thing
-    /// across all six surfaces is the <em>question</em> — has this markup got what a reader came for —
-    /// not the expression that answers it. §11.10 says so, and the §16.4 contract test pins the shape
-    /// (a property named <c>IsLoadedAttributeValue</c> feeding the attribute) rather than the body, for
-    /// exactly this reason.</para>
-    /// </summary>
     private string IsLoadedAttributeValue => _loaded && _qr is not null ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
@@ -316,9 +235,6 @@ else
             return;
         }
 
-        // The cascading authentication state is the circuit-safe way to read the principal: there is no
-        // HttpContext once the component is interactive, and it works identically during the prerender
-        // pass. The device principal reaches both because the middleware runs on /display AND /_blazor.
         AuthenticationState state = await AuthenticationStateTask;
 
         _deviceIdentifier = DisplayDevicePrincipal.DeviceIdentifierFor(state.User);
@@ -327,9 +243,6 @@ else
 
         if (_deviceIdentifier is null || _deviceTable is null)
         {
-            // §11.5: "Unpaired device → redirect /display/pair". During the prerender pass this becomes
-            // an HTTP redirect and the circuit never starts; on the circuit it is a navigation. The
-            // rendered not-paired card above stands behind it either way.
             _stage = DisplayStage.NotPaired;
             _loaded = true;
             Navigation.NavigateTo(DisplayRoutes.Pair);
@@ -346,40 +259,14 @@ else
         _tableLabel = _deviceTableLabel ?? string.Empty;
         await LoadAsync();
 
-        // Latched on every path out of this method, including the three early returns above: §11.10's
-        // bit means "finished deciding", and an unpaired screen or one on the wrong table has decided.
-        // Set before NavigateTo rather than after, because on the prerender pass that call throws a
-        // NavigationException the framework swallows and nothing below it would run.
         _loaded = true;
 
         StartLiveWorkIfNeeded();
     }
 
-    // A safety net, not the primary path: OnInitializedAsync above starts the live work as soon as it knows
-    // the stage, which needs no render at all. This catches any future edit that returns early and still
-    // ends up in a stage worth refreshing. firstRender is deliberately ignored — see below.
     protected override void OnAfterRender(bool firstRender)
         => StartLiveWorkIfNeeded();
 
-    /// <summary>
-    /// Starts the §4.3 refresh timer and the §9 subscription, once, as soon as this component is both
-    /// interactive and past the point of knowing which §11.5 state it is in.
-    ///
-    /// <para><b>Deliberately not gated on <c>firstRender</c>, which is the bug this replaces.</b>
-    /// <c>ComponentBase</c> calls <c>StateHasChanged()</c> the moment <c>OnInitializedAsync</c> yields,
-    /// and it yields on the first of four database round trips inside <see cref="LoadAsync"/>. The
-    /// client's acknowledgement of that first (empty) batch is one loopback message and routinely beats
-    /// them, so <c>OnAfterRender(firstRender: true)</c> arrives while <c>_stage</c> is still its default
-    /// <c>NotPaired</c> — a state the old guard rejected. <c>firstRender</c> is never true again, so the
-    /// refresh loop was never started at all, and the display sat frozen on the code it was born with for
-    /// as long as the tablet was left alone. Intermittent by construction: it turns on which of a
-    /// WebSocket round trip and four queries finishes first.</para>
-    ///
-    /// <para>Idempotence comes from <c>_liveWorkStarted</c> rather than from the lifecycle, so it does not
-    /// matter how many times or from where this is called. <c>RendererInfo.IsInteractive</c> is what keeps
-    /// the prerender pass from starting a timer on a render that is about to be thrown away — the honest
-    /// question, and the one <c>firstRender</c> was standing in for.</para>
-    /// </summary>
     private void StartLiveWorkIfNeeded()
     {
         if (_liveWorkStarted || _disposed || !RendererInfo.IsInteractive)
@@ -387,9 +274,6 @@ else
             return;
         }
 
-        // Nothing to keep fresh, and nothing that will ever become fresh: an unpaired device is on its way
-        // to /display/pair, and a device on the wrong table renders no code by design (§3.7). Not latched,
-        // because both are terminal for this component instance — a re-pair is a new page load.
         if (_stage is DisplayStage.NotPaired or DisplayStage.WrongTable)
         {
             return;
@@ -400,12 +284,6 @@ else
         _ = RunRefreshLoopAsync();
     }
 
-    /// <summary>
-    /// Re-reads everything the surface shows. Revalidating the device on every pass is what makes §4.2's
-    /// "revocation kills the device on its next request <b>or circuit revalidation</b>" true for a screen
-    /// that may sit on one circuit for a week — and it doubles as the <c>last_seen_at</c> heartbeat,
-    /// since that touch is rate-limited to once a minute inside the authenticator.
-    /// </summary>
     private async Task LoadAsync()
     {
         DisplayDeviceSession? session = await Devices.RevalidateAsync(_deviceIdentifier!.Value, _stopping);
@@ -421,7 +299,6 @@ else
 
         if (!session.TableIsActive)
         {
-            // §4.1: deactivating a table stops its display rendering. The device stays paired.
             _stage = DisplayStage.TableOutOfService;
             _qr = null;
             return;
@@ -435,21 +312,6 @@ else
         _refreshSequence++;
     }
 
-    /// <summary>
-    /// The window-aligned refresh (§4.3: "the display re-renders on a server timer aligned to the window
-    /// boundary — fire at <c>(window_index+1) × rotation</c>"). The next boundary comes from the code
-    /// just rendered, so the loop stays aligned without keeping its own notion of the window.
-    ///
-    /// <para><b>Why the broad catch.</b> This loop is fire-and-forget, so an exception escaping it becomes
-    /// an unobserved task exception: the loop stops, nothing is logged, and the screen keeps showing the
-    /// last code it managed to render — forever, and identically to a healthy one. A dropped connection or
-    /// a moment of database unavailability, neither of them the display's fault, would permanently freeze a
-    /// screen the restaurant is trusting. Absorbing it and waiting for the next boundary is the behaviour
-    /// §11.5 actually wants, and it is not a swallow: it is logged, and <c>_refreshSequence</c> stops
-    /// advancing, so <c>js/display.js</c> raises the offline curtain if the trouble outlasts
-    /// <c>data-fresh-for-ms</c>. Cancellation and disposal still end the loop, because those mean the
-    /// circuit is genuinely gone.</para>
-    /// </summary>
     private async Task RunRefreshLoopAsync()
     {
         while (!_stopping.IsCancellationRequested)
@@ -461,11 +323,11 @@ else
             }
             catch (OperationCanceledException)
             {
-                return; // the circuit went away
+                return;
             }
             catch (ObjectDisposedException)
             {
-                return; // torn down mid-flight
+                return;
             }
             catch (Exception exception)
             {
@@ -483,9 +345,6 @@ else
 
         if (_stage == DisplayStage.NotPaired)
         {
-            // Revoked while we were watching. A full-page navigation re-runs the middleware, which
-            // clears the dead cookie, so the pairing screen greets it with "this display was
-            // disconnected" rather than a bare form (§11.5).
             Navigation.NavigateTo(DisplayRoutes.Pair, forceLoad: true);
             return;
         }
@@ -493,24 +352,12 @@ else
         StateHasChanged();
     }
 
-    /// <summary>
-    /// Time until just after the next rotation boundary, taken from the code currently on screen so the
-    /// loop stays aligned without keeping its own notion of the window. The arithmetic — the overshoot,
-    /// the floor, and the ceiling that defends against a clock jump — lives in
-    /// <see cref="DisplayRefreshSchedule"/>, where it is unit-tested.
-    /// </summary>
     private TimeSpan DelayUntilNextWindow()
         => DisplayRefreshSchedule.DelayUntilNextRefresh(
             Clock.UtcNow,
             _qr?.NextRotationAt,
             Options.TableJoinTokenRotationSeconds);
 
-    /// <summary>
-    /// §9 attaches the party-size chip to <c>SittingMemberJoined</c>, and a close empties the table, so
-    /// both are re-read. The sitting identifier is deliberately not compared: the very notification that
-    /// matters most — the first person joining — announces a sitting this surface has never seen, so
-    /// filtering on a known id would drop it. One cheap scoped query per table event is the right trade.
-    /// </summary>
     private void OnDomainNotification(DomainNotification notification)
     {
         if (notification is not SittingMemberJoined && notification is not SittingClosed)
@@ -528,11 +375,9 @@ else
             }
             catch (OperationCanceledException)
             {
-                // Disposed between the broadcast and the query; nothing to update.
             }
             catch (ObjectDisposedException)
             {
-                // Same, one layer down.
             }
         });
     }

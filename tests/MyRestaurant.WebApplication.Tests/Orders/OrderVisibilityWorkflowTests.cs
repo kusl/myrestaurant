@@ -5,22 +5,6 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests;
 
-/// <summary>
-/// §6.8's two visibility writes and the one thing that has to happen after each of them
-/// (TECHNICAL_SPECIFICATION §6.8, §9, §11.1, §11.4). <see cref="OrdersWiringTests"/> covers the
-/// registrations; this covers the behaviour.
-///
-/// <para>Every fact here is about something that fails <em>quietly</em>. A hide that committed without
-/// publishing <see cref="VisibilityChanged"/> leaves the row on every other phone the guest has their
-/// history open on — the exact moment they are watching for it to go. A refusal that published anyway
-/// would make every subscriber re-query for a change that did not happen, and an <c>AlreadyHidden</c> that
-/// published would re-announce somebody else's write. None of those raises an error anywhere.</para>
-///
-/// <para>No database and no container: <see cref="IOrderVisibility"/> is a hand-written fake (§16.1 —
-/// hand-written fakes, no Moq) that answers with whatever outcome the fact needs. Arranging a genuine
-/// already-hidden race against a real PostgreSQL would test the lock, and
-/// <c>OrderVisibilityTests</c> already does that.</para>
-/// </summary>
 public sealed class OrderVisibilityWorkflowTests
 {
     private static readonly Guid OrderIdentifier = Guid.Parse("0192f000-0000-7000-8000-0000000f0001");
@@ -44,7 +28,6 @@ public sealed class OrderVisibilityWorkflowTests
 
         Assert.Equal(HideOrderOutcome.Hidden, result.Outcome);
 
-        // The arguments reached the service unchanged, and exactly once.
         Assert.Equal(OrderIdentifier, Assert.Single(visibility.HideCalls).Order);
         Assert.Equal(OwnerIdentifier, visibility.HideCalls[0].Actor);
 
@@ -54,11 +37,6 @@ public sealed class OrderVisibilityWorkflowTests
         Assert.Equal(OrderIdentifier, announced.GuestOrderIdentifier);
     }
 
-    /// <summary>
-    /// §9 keys <c>VisibilityChanged</c> on the order the service reports, not on the identifier the caller
-    /// passed. They are the same today; asserting the former is what keeps them the same if the service
-    /// ever resolves an order some other way.
-    /// </summary>
     [Fact]
     public async Task Hide_AnnouncesTheOrderTheServiceReported()
     {
@@ -78,11 +56,6 @@ public sealed class OrderVisibilityWorkflowTests
             Assert.IsType<VisibilityChanged>(Assert.Single(broadcaster.Published)).GuestOrderIdentifier);
     }
 
-    /// <summary>
-    /// The four refusals, each publishing nothing. <c>AlreadyHidden</c> is in the list on purpose: it is
-    /// not a failure — the order is in the state the person asked for — but nothing was written, so there
-    /// is nothing to announce and whoever did write it announced it already.
-    /// </summary>
     [Theory]
     [InlineData(HideOrderOutcome.AlreadyHidden)]
     [InlineData(HideOrderOutcome.NotTheOwner)]
@@ -120,8 +93,6 @@ public sealed class OrderVisibilityWorkflowTests
 
         Assert.Equal(UnhideOrderOutcome.Unhidden, result.Outcome);
 
-        // The administrator is the actor, and it is their identifier the service is handed — not the
-        // owner's, whom the result reports separately.
         Assert.Equal(OrderIdentifier, Assert.Single(visibility.UnhideCalls).Order);
         Assert.Equal(AdministratorIdentifier, visibility.UnhideCalls[0].Actor);
         Assert.Equal(OwnerIdentifier, result.OwnerPersonIdentifier);
@@ -131,10 +102,6 @@ public sealed class OrderVisibilityWorkflowTests
             Assert.IsType<VisibilityChanged>(Assert.Single(broadcaster.Published)).GuestOrderIdentifier);
     }
 
-    /// <summary>
-    /// <c>NotHidden</c> is the losing side of two administrators pressing Unhide at once. Nothing was
-    /// written, so nothing is announced — the winner's broadcast already went out.
-    /// </summary>
     [Theory]
     [InlineData(UnhideOrderOutcome.NotHidden)]
     [InlineData(UnhideOrderOutcome.OrderNotFound)]
@@ -155,10 +122,6 @@ public sealed class OrderVisibilityWorkflowTests
         Assert.Empty(broadcaster.Published);
     }
 
-    /// <summary>
-    /// The two operations are independent: hiding then unhiding the same order announces twice, once each.
-    /// A shell that deduplicated would leave the second change unheard.
-    /// </summary>
     [Fact]
     public async Task HideThenUnhide_AnnouncesTwice()
     {
@@ -190,10 +153,6 @@ public sealed class OrderVisibilityWorkflowTests
         Assert.Throws<ArgumentNullException>(() => new OrderVisibilityWorkflow(visibility, null!));
     }
 
-    /// <summary>
-    /// Answers with whatever outcome the fact under test needs, and records what it was asked. Hand-written
-    /// rather than mocked (§16.1, F-20).
-    /// </summary>
     private sealed class FakeOrderVisibility : IOrderVisibility
     {
         public HideOrderResult? HideWill { get; set; }
@@ -239,7 +198,6 @@ public sealed class OrderVisibilityWorkflowTests
         {
             public void Dispose()
             {
-                // Nothing subscribes in these tests; the token exists only to satisfy the contract.
             }
         }
     }

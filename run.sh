@@ -2,36 +2,18 @@
 #
 # Dev entry point (TECHNICAL_SPECIFICATION §14.4). Idempotent.
 #
-#   ./run.sh                     Start postgres in a container, then `dotnet watch` the web app on the
-#                                host (Kestrel serves https://localhost:8443 via the dev cert). This is a
-#                                FOREGROUND hot-reload server: it keeps running until you press Ctrl+C.
-#                                It does not exit on its own — that is the point of a watch loop.
+#   ./run.sh                  postgres in a container, then `dotnet watch` the web app on the host
+#                             at https://localhost:8443. FOREGROUND hot-reload; Ctrl+C to stop.
+#   ./run.sh --containers-only start the stack without the watch loop
+#   ./run.sh --smoke          boot once, check /healthz/ready, exit
+#   ./run.sh --help           this text
 #
-#   ./run.sh --smoke             Start postgres in a container, boot the web app once on the host, wait
-#                                for /healthz/ready to return 200, print the URLs, shut the app back
-#                                down, and EXIT. No hot reload, never holds the terminal — this is the
-#                                mode to use at the end of a build/test sweep or in CI to confirm the app
-#                                actually boots (config binds, migrations apply, database is reachable).
+# Requires the .NET SDK on the host. For a host without one, see scripts/dev_instance.sh (§14.3a).
 #
-#   ./run.sh --containers-only   Bring the full dev stack up in containers (postgres + caddy + web),
-#                                wait for /healthz/ready, print the URLs, and EXIT (no host watch loop).
-#
-# The database always runs in a container; only what happens to the web app differs. Running the web app
-# on the host (default and --smoke) gives fast iteration; --containers-only mirrors the container
-# topology end to end.
-#
-# This script never opens a Cloudflare quick tunnel and never prints a *.trycloudflare.com URL. That is a
-# separate concern handled by `scripts/quick_tunnel.sh` (TECHNICAL_SPECIFICATION §14.3), which is now a
-# one-command helper: it brings the stack up itself, opens the tunnel, and holds it in the foreground.
-# Passkeys DO work over a quick tunnel (per-request RP-ID derivation, ADR-0005); the only caveat is that
-# each run gets a fresh random *.trycloudflare.com hostname, so passkeys must be re-registered per run.
 
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# ---------------------------------------------------------------------------------------------------
-# 0. Parse arguments
-# ---------------------------------------------------------------------------------------------------
 MODE="watch"
 case "${1:-}" in
     "")                MODE="watch" ;;
@@ -43,9 +25,6 @@ case "${1:-}" in
         ;;
 esac
 
-# ---------------------------------------------------------------------------------------------------
-# 1. Locate a compose command (Podman first, Docker as a fallback)
-# ---------------------------------------------------------------------------------------------------
 if command -v podman-compose >/dev/null 2>&1; then
     COMPOSE=(podman-compose)
 elif command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
@@ -57,16 +36,6 @@ else
     exit 1
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# 1a. Does this engine apply compose.yaml's defaults? (F-57)
-#
-# Every value in compose.yaml is written ${NAME:-default}, and Debian trixie's podman-compose does not
-# apply the part after ':-' — the placeholder text reaches the containers, the application refuses its
-# own configuration, and initdb fails on a POSTGRES_USER made of braces and wipes the data directory.
-# Checked here rather than diagnosed later, and non-fatal: this script's default mode runs the web app
-# on the HOST, where the shell's own environment applies, so a failing check affects the database
-# container and --containers-only rather than everything.
-# ---------------------------------------------------------------------------------------------------
 substitution_status=0
 bash scripts/check_compose_substitution.sh --quiet || substitution_status=$?
 if (( substitution_status == 3 )); then
@@ -76,14 +45,8 @@ if (( substitution_status == 3 )); then
     exit 1
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# 2. Helpers (health waits, per F-17: "start the stack -> health wait -> developer watch/URLs")
-# ---------------------------------------------------------------------------------------------------
-
-# True when an HTTP probe tool (curl or wget) is available.
 have_http_probe() { command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1; }
 
-# Return 0 when $1 responds 2xx, non-zero otherwise. Uses curl if present, else wget.
 http_ok() {
     local url="$1"
     if command -v curl >/dev/null 2>&1; then
@@ -93,8 +56,6 @@ http_ok() {
     fi
 }
 
-# Poll $1 until it returns 200, the deadline ($2 seconds) passes, or the optional pid ($3) exits.
-#   returns 0 ready | 1 timed out | 2 watched process exited | 3 no probe tool
 wait_for_http_ready() {
     local url="$1" timeout_seconds="$2" watch_pid="${3:-}"
     if ! have_http_probe; then
@@ -113,10 +74,6 @@ wait_for_http_ready() {
     return 1
 }
 
-# Best-effort wait for postgres to accept connections. Never fails the script: the application's own
-# bounded boot retry (SchemaMigrationRunner) tolerates a database that is still coming up. Prefers a
-# real `pg_isready` when the host has the client tools, and otherwise settles for a TCP connect on the
-# loopback port compose publishes (127.0.0.1:5432).
 wait_for_postgres() {
     local user="${POSTGRES_USER:-myrestaurant}" db="${POSTGRES_DB:-myrestaurant}"
     local host="127.0.0.1" port="5432"
@@ -138,13 +95,12 @@ wait_for_postgres() {
     return 0
 }
 
-# Stop a backgrounded web app (and any children) as cleanly as possible.
 stop_web_app() {
     local pid="${1:-}"
     [[ -z "$pid" ]] && return 0
     kill -0 "$pid" 2>/dev/null || return 0
-    kill -TERM -- "-$pid" 2>/dev/null || true   # whole process group, if it is a session leader
-    pkill -TERM -P "$pid" 2>/dev/null || true   # otherwise its direct children
+    kill -TERM -- "-$pid" 2>/dev/null || true
+    pkill -TERM -P "$pid" 2>/dev/null || true
     kill -TERM "$pid" 2>/dev/null || true
     local waited=0
     while (( waited < 10 )); do
@@ -157,9 +113,6 @@ stop_web_app() {
     return 0
 }
 
-# ---------------------------------------------------------------------------------------------------
-# 3. Optional Uptrace -> standard OTLP translation (§12, §14.4)
-# ---------------------------------------------------------------------------------------------------
 if [[ -n "${UPTRACE_DSN:-}" && -z "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]]; then
     export OTEL_EXPORTER_OTLP_ENDPOINT="https://otlp.uptrace.dev"
     export OTEL_EXPORTER_OTLP_HEADERS="uptrace-dsn=${UPTRACE_DSN}"
@@ -167,9 +120,6 @@ if [[ -n "${UPTRACE_DSN:-}" && -z "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]]; then
     echo "info: translated UPTRACE_DSN into OTEL_EXPORTER_OTLP_* for this run."
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# 4. --containers-only: full stack in containers, wait for health, then exit
-# ---------------------------------------------------------------------------------------------------
 if [[ "$MODE" == "containers" ]]; then
     echo "info: bringing up the full dev stack (postgres + caddy + web) in containers..."
     "${COMPOSE[@]}" --profile dev up -d --build
@@ -199,9 +149,6 @@ if [[ "$MODE" == "containers" ]]; then
     esac
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# 5. Host modes (default watch and --smoke) both need the .NET SDK and a running postgres
-# ---------------------------------------------------------------------------------------------------
 if ! command -v dotnet >/dev/null 2>&1; then
     echo "error: the .NET SDK is required for host-dev. Install it or use ./run.sh --containers-only." >&2
     exit 1
@@ -211,7 +158,6 @@ echo "info: starting postgres in a container..."
 "${COMPOSE[@]}" up -d postgres
 wait_for_postgres
 
-# Dev defaults. These mirror the application's own fallbacks; set explicitly so intent is visible.
 export ASPNETCORE_ENVIRONMENT="Development"
 export RESTAURANT_PUBLIC_ORIGIN="${RESTAURANT_PUBLIC_ORIGIN:-https://localhost:8443}"
 export RESTAURANT_TIME_ZONE="${RESTAURANT_TIME_ZONE:-America/New_York}"
@@ -221,21 +167,15 @@ export RESTAURANT_DATABASE_CONNECTION_STRING="${RESTAURANT_DATABASE_CONNECTION_S
 export DATA_PROTECTION_KEYS_DIRECTORY="${DATA_PROTECTION_KEYS_DIRECTORY:-$PWD/.dataprotection}"
 mkdir -p "$DATA_PROTECTION_KEYS_DIRECTORY"
 
-# Ensure the ASP.NET Core dev certificate exists so Kestrel can serve https://localhost:8443.
 dotnet dev-certs https >/dev/null 2>&1 || true
 
-# ---------------------------------------------------------------------------------------------------
-# 6. --smoke: boot once on the host, verify /healthz/ready, then shut down and exit
-# ---------------------------------------------------------------------------------------------------
 if [[ "$MODE" == "smoke" ]]; then
     health_url="http://127.0.0.1:8080/healthz/ready"
     smoke_log="$(mktemp "${TMPDIR:-/tmp}/myrestaurant-smoke.XXXXXX")"
     APP_PID=""
-    # Always clean up the app and the temp log, however we leave (success, failure, or Ctrl+C).
     trap 'stop_web_app "${APP_PID:-}"; rm -f "$smoke_log"' EXIT INT TERM
 
     echo "info: booting the web app once for a health check (no hot reload)..."
-    # A new session (when setsid exists) lets stop_web_app terminate the whole process group cleanly.
     if command -v setsid >/dev/null 2>&1; then
         setsid dotnet run --project src/MyRestaurant.WebApplication --launch-profile https >"$smoke_log" 2>&1 &
     else
@@ -278,20 +218,6 @@ if [[ "$MODE" == "smoke" ]]; then
     esac
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# 7. Default: host watch loop (foreground hot reload)
-# ---------------------------------------------------------------------------------------------------
-
-# --- keep `dotnet watch` working under a low inotify instance limit -----------------------------
-# `dotnet watch` opens several inotify instances to watch the source tree. A busy workstation can hit
-# the kernel's per-user cap (default 128), and the watcher then dies with:
-#   "The configured user limit (128) on the number of inotify instances has been reached".
-# When the cap looks low and the caller has not already chosen a watcher, fall back to the polling
-# file watcher for this run so hot reload keeps working WITHOUT root. The native (inotify) watcher is
-# snappier and lighter on CPU; to prefer it, raise the cap once (needs root):
-#   sudo sysctl fs.inotify.max_user_instances=1024
-#   echo 'fs.inotify.max_user_instances=1024' | sudo tee /etc/sysctl.d/99-inotify.conf   # persist
-# To force the native watcher regardless of the cap, run with DOTNET_USE_POLLING_FILE_WATCHER=0.
 if [[ -z "${DOTNET_USE_POLLING_FILE_WATCHER:-}" ]]; then
     inotify_instance_limit="$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null || echo 0)"
     [[ "$inotify_instance_limit" =~ ^[0-9]+$ ]] || inotify_instance_limit=0

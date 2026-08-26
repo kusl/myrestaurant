@@ -4,11 +4,6 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests;
 
-/// <summary>
-/// Verifies configuration binding, the documented defaults, and the fail-fast validation of
-/// <see cref="RestaurantOptions"/> (TECHNICAL_SPECIFICATION §13, and the §3.2 Argon2 floor guard).
-/// Validation runs before HTTP is bound, so every security-relevant lower bound is asserted here.
-/// </summary>
 public sealed class RestaurantOptionsTests
 {
     [Fact]
@@ -73,9 +68,9 @@ public sealed class RestaurantOptionsTests
         => Assert.NotEmpty(Build(timeZoneId: "Nowhere/Unreal").Validate());
 
     [Theory]
-    [InlineData("US")]    // too short
-    [InlineData("USDD")]  // too long
-    [InlineData("US1")]   // non-letter
+    [InlineData("US")]
+    [InlineData("USDD")]
+    [InlineData("US1")]
     public void Validate_BadCurrencyCode_IsRejected(string currencyCode)
         => Assert.NotEmpty(Build(currencyCode: currencyCode).Validate());
 
@@ -145,11 +140,11 @@ public sealed class RestaurantOptionsTests
     }
 
     [Theory]
-    [InlineData("http://*.trycloudflare.com")]   // must be https
-    [InlineData("https://")]                      // no host
-    [InlineData("*.trycloudflare.com")]           // no scheme
-    [InlineData("https://foo.*.com")]             // wildcard not the leading label
-    [InlineData("https://foo.trycloudflare.com:8443")] // no port allowed in a pattern
+    [InlineData("http://*.trycloudflare.com")]
+    [InlineData("https://")]
+    [InlineData("*.trycloudflare.com")]
+    [InlineData("https://foo.*.com")]
+    [InlineData("https://foo.trycloudflare.com:8443")]
     public void Validate_BadTrustedOriginPattern_IsRejected(string pattern)
         => Assert.NotEmpty(Build(trustedOriginPatterns: [pattern]).Validate());
 
@@ -159,13 +154,6 @@ public sealed class RestaurantOptionsTests
         TimeZoneInfo zone = Build(timeZoneId: "America/New_York").ResolveTimeZone();
         Assert.NotNull(zone);
     }
-
-    // --- RESTAURANT_CLOCK_FORMAT (§13, F-36) -----------------------------------------------------
-    //
-    // The 12-versus-24 question the specification never answered. It is configuration rather than a
-    // constant because the same code runs in restaurants on both conventions — and it is validated
-    // rather than merely parsed because a typo that silently fell back to the default would show the
-    // wrong clock on every screen in the building with nothing to say why.
 
     [Theory]
     [InlineData("12")]
@@ -205,8 +193,6 @@ public sealed class RestaurantOptionsTests
     public void Validate_UnknownClockFormat_IsRejected(string clockFormat)
         => Assert.NotEmpty(Build(clockFormat: clockFormat).Validate());
 
-    // --- the source offer (§11.9, F-39) -----------------------------------------------------------
-
     [Fact]
     public void FromConfiguration_ReadsTheSourceUrl()
     {
@@ -219,13 +205,6 @@ public sealed class RestaurantOptionsTests
         Assert.Empty(options.Validate());
     }
 
-    /// <summary>
-    /// http is accepted here and nowhere else. RESTAURANT_PUBLIC_ORIGIN is https-only because
-    /// WebAuthn needs a secure context and the authentication cookie is Secure; an outbound link to
-    /// somebody else's repository has neither property. A fork operator running a forge on a LAN over
-    /// plain http is discharging AGPL §13 perfectly well, and refusing to boot over it would be this
-    /// application enforcing a taste as though it were a security control.
-    /// </summary>
     [Theory]
     [InlineData("https://github.com/kusl/myrestaurant")]
     [InlineData("http://gitea.lan:3000/restaurant/source")]
@@ -233,11 +212,11 @@ public sealed class RestaurantOptionsTests
         => Assert.Empty(Build(sourceUrl: sourceUrl).Validate());
 
     [Theory]
-    [InlineData("")]                              // cleared rather than set
-    [InlineData("github.com/kusl/myrestaurant")]  // no scheme: a browser would resolve it relatively
-    [InlineData("/source")]                       // relative: points back at this instance, offering nothing
-    [InlineData("ftp://example.com/source.tar")]  // not something a browser will open
-    [InlineData("javascript:alert(1)")]           // absolute, and a link the footer would render
+    [InlineData("")]
+    [InlineData("github.com/kusl/myrestaurant")]
+    [InlineData("/source")]
+    [InlineData("ftp://example.com/source.tar")]
+    [InlineData("javascript:alert(1)")]
     public void Validate_SourceUrlThatIsNotAnAbsoluteHttpUrl_IsRejected(string sourceUrl)
         => Assert.NotEmpty(Build(sourceUrl: sourceUrl).Validate());
 
@@ -254,13 +233,6 @@ public sealed class RestaurantOptionsTests
         Assert.Empty(options.Validate());
     }
 
-    // --- the guest registration budget (§11.8, §13, §17, F-115) -----------------------------------
-
-    /// <summary>
-    /// The documented default (§13) is what an unconfigured process gets, and it is read from the
-    /// constants rather than restated — the pair being what states the budget, so half of it in a literal
-    /// would be F-56's shape.
-    /// </summary>
     [Fact]
     public void FromConfiguration_GuestRegistrationBudget_UsesTheDocumentedDefault()
     {
@@ -274,9 +246,6 @@ public sealed class RestaurantOptionsTests
             options.GuestRegistrationWindowMinutes);
         Assert.Empty(options.Validate());
 
-        // The default has to be defensible as a number and not only as a constant, because the whole
-        // ruling is that it is sized for a dining room: sixty over ten minutes is six a minute
-        // sustained. A future edit that halves it should have to change this line and read why.
         Assert.Equal(60, RestaurantOptions.DefaultGuestRegistrationAttemptsPerWindow);
         Assert.Equal(10, RestaurantOptions.DefaultGuestRegistrationWindowMinutes);
     }
@@ -295,13 +264,6 @@ public sealed class RestaurantOptionsTests
         Assert.Empty(options.Validate());
     }
 
-    /// <summary>
-    /// <b>This floor protects guests, not the server</b> — the inverse of every other bound on this type,
-    /// and the reason it is asserted rather than left to taste. `/register` is partitioned by client
-    /// address and a venue's whole dining room shares one, so a small budget here does not mean strict,
-    /// it means a party of eight cannot all create accounts. Nine is refused; ten is the documented
-    /// floor and is accepted.
-    /// </summary>
     [Theory]
     [InlineData(0)]
     [InlineData(1)]

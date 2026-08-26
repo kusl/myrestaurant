@@ -21,28 +21,8 @@
 @inject RestaurantOptions Options
 @inject RestaurantTime RestaurantClock
 
-@* One sitting, at the till (TECHNICAL_SPECIFICATION §11.3, §5.3, §6.7).
-
-   Everything §11.3 asks for on this screen: per-person and table totals from sitting_bill, the lines
-   with their states, a price-adjustment dialog that demands a reason, staff add and remove, the
-   pending-lines warning, and Close & settle.
-
-   Nothing here enforces §6.5 or §5.3. Every button goes through IOrderWorkflow or ISittingWorkflow to
-   the one transaction, which re-decides under the lock (§6.6) — so a guest sending while the counter
-   presses Close produces one winner and one plainly-reported refusal, rather than a total computed over
-   a half-written order. What this surface refuses on its own it refuses only to make the answer
-   immediate.
-
-   Once the sitting is closed the controls disappear, and that is §11.3's "closed-sitting lookup
-   (read-only)" rather than a second page: §6.5.8 admits nothing but an administrator's corrective events
-   after a close, so a counter's Adjust button there would be a door that only ever answers no. Both the
-   stamped settled total and — when §6.7 corrections exist — the current corrected total are shown, which
-   is what §5.3 requires. *@
-
 <PageTitle>@(_sitting is null ? "Sitting" : $"Counter — {_sitting.TableLabel}")</PageTitle>
 
-@* §11.10's pair. data-live says whether a circuit produced this markup at all; data-loaded whether
-   the queries behind the bill have answered — see IsLiveAttributeValue and IsLoadedAttributeValue. *@
 <section class="panel counter-sitting-page" id="counter-sitting-surface"
          data-live="@IsLiveAttributeValue"
          data-loaded="@IsLoadedAttributeValue">
@@ -75,9 +55,6 @@
                 <span class="counter-detail-total-amount">@Money(_sitting.AmountToShow)</span>
                 @if (_sitting.HasPostCloseCorrections)
                 {
-                    @* §5.3: the stamped total is never rewritten; when §6.7 corrections exist both
-                       numbers are shown, because they answer two different questions — what was charged,
-                       and what the record now says is owed. *@
                     <span class="counter-detail-corrected">
                         corrected to @Money(_sitting.CurrentTotalAmount)
                     </span>
@@ -97,8 +74,6 @@
 
         @if (_rejectionReasons.Count > 0)
         {
-            @* §6.5.9 is all-or-nothing at the granularity of the event, so a refusal names every reason
-               rather than only the first. *@
             <ul class="counter-rejection">
                 @foreach (string reason in _rejectionReasons)
                 {
@@ -116,7 +91,6 @@
             </p>
         }
 
-        @* ---- the bill, person by person (§8.3, §11.3) -------------------------------------------- *@
         @if (_bill.Count == 0)
         {
             <p class="lede">Nobody at this table has ordered anything yet.</p>
@@ -177,19 +151,9 @@
 
                                 @if (_adjustingLine == line.OrderLineIdentifier)
                                 {
-                                    @* §11.3's "price adjustment dialog (new price + required reason)". The
-                                       reason is required by §6.5.7 and by the table's own CHECK, so it is
-                                       demanded here rather than discovered on refusal. *@
                                     <div class="counter-editor">
                                         <p class="counter-editor-heading">Adjust the unit price</p>
-                                        @* Both inputs carry an id, and only these two do. Only one
-                                           editor is ever open (StartAdjust calls CancelEditors first,
-                                           and _adjustingLine holds a single line), so an id here is
-                                           unique in the document — while without one the two are
-                                           distinguishable only by inputmode and maxlength, which is
-                                           not a thing anything outside this markup should have to
-                                           know. The wrapping label still associates each one
-                                           implicitly, so nothing about the accessible name changes. *@
+
                                         <label class="form-field">
                                             <span>New unit price (@Options.CurrencyCode)</span>
                                             <input id="counter-adjust-price" type="text"
@@ -247,7 +211,6 @@
             </article>
         }
 
-        @* ---- people at the table who have not ordered (§5.1, §11.3) ------------------------------ *@
         @if (MembersWithoutAnOrder.Count > 0)
         {
             <section class="counter-yet-to-order">
@@ -261,7 +224,6 @@
             </section>
         }
 
-        @* ---- staff add (§6.3, §11.3) ------------------------------------------------------------- *@
         @if (_sitting.IsOpen)
         {
             <section class="counter-add">
@@ -320,7 +282,6 @@
             </section>
         }
 
-        @* ---- close and settle (§5.3) ------------------------------------------------------------- *@
         <section class="counter-settle">
             <div class="counter-settle-total">
                 <span>Table total</span>
@@ -331,8 +292,6 @@
             {
                 @if (_sitting.HasPendingLines)
                 {
-                    @* §5.3: "The counter UI must surface still-pending lines prominently before offering
-                       Close (remove with reason, or knowingly charge)." *@
                     <p class="counter-pending-warning" role="alert">
                         <strong>
                             @_sitting.PendingLineCount @(_sitting.PendingLineCount == 1 ? "line is" : "lines are")
@@ -349,14 +308,7 @@
                         Settle @_sitting.TableLabel at <strong>@Money(_sitting.CurrentTotalAmount)</strong>?
                         This stamps the total and stops the table ordering. It cannot be undone from here.
                     </p>
-                    @* Both close buttons carry an id, and the reason is that they are otherwise the
-                       same selector: "the primary button in the settle section" is Close & settle
-                       before the prompt and Yes — close & settle after it. Nothing outside this
-                       markup could tell "I opened the confirmation" from "I settled the table", and
-                       a close cannot be undone (§5.3) — which makes this the one place in the
-                       application where that distinction is most worth having in the markup. The two
-                       live in exclusive branches, so each is unique in the document, and neither is
-                       styled by its id. *@
+
                     <div class="form-actions">
                         <button id="counter-close-confirm" type="button" class="button-primary"
                                 disabled="@_busy" @onclick="CloseAndSettleAsync">
@@ -386,11 +338,6 @@
 </section>
 
 <style>
-    /* Component-local, like KitchenBoard's. Shared vocabulary — .panel, .chip, .form-field,
-       .form-actions, .status-error, .link-button — is app.css's and is only consumed here.
-
-       The colours are app.css's as well, unconditionally (F-68), and no var() below carries a
-       fallback (F-69). */
 
     .counter-detail-header {
         display: flex;
@@ -613,12 +560,6 @@
         color: var(--caution-ink-strong);
     }
 
-    /*
-     * The border stays `--danger-signal` rather than `--danger-hairline`: this is the last thing
-     * between somebody and a settled total that is never rewritten (§5.3), and a 2px hairline is not
-     * what that should look like. The background was `#fef2f2` and is the palette's now — the same
-     * substitution the eighty-sixed row on /kitchen got, for the same reason.
-     */
     .counter-settle-confirm {
         margin: 0.75rem 0 0.5rem;
         padding: 0.6rem 0.85rem;
@@ -634,10 +575,8 @@
 </style>
 
 @code {
-    /// <summary>Somebody the counter can put a line against: a member, or anyone who already has an order.</summary>
     private sealed record BillablePerson(Guid PersonIdentifier, string Name);
 
-    // Captured once, so nothing touches _lifetime.Token after Dispose.
     private readonly CancellationTokenSource _lifetime = new();
     private CancellationToken _stopping;
     private IDisposable? _subscription;
@@ -672,7 +611,6 @@
 
     private bool _confirmingClose;
 
-    /// <summary>The sitting this screen bills. Every query is scoped by it, never by the table.</summary>
     [Parameter]
     [EditorRequired]
     public Guid SittingId { get; set; }
@@ -682,20 +620,11 @@
 
     private decimal TableTotal => _bill.Sum(entry => entry.PersonTotalAmount);
 
-    /// <summary>
-    /// People who joined the sitting (§5.1) but have no living order yet (§6.1) — and so no
-    /// <c>sitting_bill</c> row, because that view is built from <c>guest_order</c>.
-    /// </summary>
     private IReadOnlyList<SittingMemberSummary> MembersWithoutAnOrder
         => _members
             .Where(member => !_bill.Any(entry => entry.PersonIdentifier == member.PersonIdentifier))
             .ToArray();
 
-    /// <summary>
-    /// Everyone a line can be added for: the roster, plus anyone who somehow has an order without a
-    /// membership row. The union rather than the roster alone, because the picker must never be unable
-    /// to name somebody whose bill is on the screen directly above it.
-    /// </summary>
     private IReadOnlyList<BillablePerson> PeopleAtTheTable
     {
         get
@@ -716,10 +645,6 @@
         }
     }
 
-    /// <summary>
-    /// The " · settled 3:04 PM by Cass" tail of the header line, built here rather than as nested
-    /// conditionals in the markup — it is one sentence, and it reads like one in the source too.
-    /// </summary>
     private string SettledSuffix
     {
         get
@@ -740,34 +665,8 @@
     private string JoinCodePath
         => _sitting is null ? "/counter" : $"/counter/tables/{_sitting.TableIdentifier}/join-code";
 
-    /// <summary>
-    /// <c>"true"</c> when a circuit rendered this markup, <c>"false"</c> during the prerender pass. The
-    /// same attribute, for the same reason, as <c>KitchenBoard</c>'s and <c>TableOrderSurface</c>'s.
-    ///
-    /// <para>A prerendered till is the dangerous kind of broken, because it is the kind that looks
-    /// right: the bill is correct as of the request, every total adds up, and Adjust price, Remove, Add
-    /// to the bill and Close &amp; settle are all <c>@onclick</c> handlers with no circuit behind them.
-    /// Pressing any of them does nothing at all — no refusal, no flash, no error — and the screen also
-    /// never hears §9, so a guest sending while somebody stands at the till changes nothing on it. The
-    /// attribute costs eight characters and turns that into something an operator can see in dev tools
-    /// and a scenario can name in one sentence.</para>
-    /// </summary>
     private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
 
-    /// <summary>
-    /// Whether <see cref="LoadAsync"/> has answered, published alongside <c>data-live</c> — §11.10's
-    /// second bit, and the half this surface was missing until M6 Slice 23.
-    ///
-    /// <para>The circuit's first render is <c>data-live="true"</c> with <c>_loaded</c> still false, and
-    /// this page renders <c>&lt;h1&gt;Loading…&lt;/h1&gt;</c> in that state — no bill, no totals, no
-    /// controls. Waiting on <c>data-live</c> alone is therefore a wait that lands on the one render
-    /// where none of the things a caller came for exist. That is worse than harmless here, because the
-    /// state immediately below it in the markup is <em>"Sitting not found"</em>: a reader that arrived
-    /// early and asked what the page says would be told the identifier is stale.</para>
-    ///
-    /// <para>Not the prerender — that emits fully loaded markup. The hand-over, where the component is
-    /// rebuilt from nothing and the DOM returns to loading for as long as the reads take (F-44).</para>
-    /// </summary>
     private string IsLoadedAttributeValue => _loaded ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
@@ -779,9 +678,6 @@
             AuthenticationState state = await AuthenticationStateTask;
             _person = PersonPrincipal.IdentifierFor(state.User);
 
-            // §6.2: a staff_edit or price_adjustment may be authored by counter or administrator.
-            // Record what the person actually is — counter wins when they hold both, because that is
-            // the capacity they are standing at this screen in.
             _actorRole = state.User.IsInRole(RestaurantRoles.Counter)
                 ? OrderActorRole.Counter
                 : OrderActorRole.Administrator;
@@ -795,13 +691,10 @@
     {
         if (firstRender)
         {
-            // Only on the circuit: OnAfterRender does not run during prerendering, so no subscription is
-            // created for a render about to be thrown away.
             _subscription = Broadcaster.Subscribe(OnDomainNotification);
         }
     }
 
-    /// <summary>Everything the screen shows, re-read in one pass. Small, indexed queries.</summary>
     private async Task LoadAsync()
     {
         _sitting = await CounterReads.GetSittingAsync(SittingId, _stopping);
@@ -861,14 +754,10 @@
         _confirmingClose = false;
     }
 
-    /// <summary>§11.3: "price adjustment dialog (new price + required reason)".</summary>
     private async Task AdjustPriceAsync(OrderLineView line)
     {
         ClearMessages();
 
-        // Parsed invariantly for the reason MoneyText formats invariantly: the amount is a
-        // numeric(10,2), and which separator the container's locale happens to use is not a decision
-        // anybody made about this restaurant.
         if (!decimal.TryParse(
                 _adjustPriceText,
                 NumberStyles.Number,
@@ -900,7 +789,6 @@
         }
     }
 
-    /// <summary>§11.3: "add/remove line (staff edit, optional reason on removal)".</summary>
     private async Task RemoveLineAsync(OrderLineView line)
     {
         bool appended = await AppendToOrderAsync(
@@ -915,10 +803,6 @@
         }
     }
 
-    /// <summary>
-    /// §11.3's staff add, through the living-order path so it works for a member who has never sent
-    /// anything — their order is created inside the same transaction (§6.1).
-    /// </summary>
     private async Task AddLineAsync()
     {
         ClearMessages();
@@ -953,8 +837,6 @@
             return;
         }
 
-        // §7 keeps a deactivated item visible and unorderable; the transaction re-checks the flag under
-        // its own lock (§6.5.4), so this only makes the answer immediate.
         if (!item.IsActive)
         {
             _problem = $"{item.Name} is currently unavailable, so it cannot be added.";
@@ -967,8 +849,6 @@
             return;
         }
 
-        // The line's own identity, UUIDv7 like every other key (ADR-0011). The unit price sent here is
-        // ignored: the transaction prices the line from the menu row it reads under the lock (§6.5.4).
         LineAddedOperation added = new(
             Identifiers.Create(),
             menuItemIdentifier,
@@ -990,7 +870,6 @@
         }
     }
 
-    /// <summary>§5.3, through the workflow so the close is counted (§12) and announced (§9).</summary>
     private async Task CloseAndSettleAsync()
     {
         if (_person is not { } person || _busy)
@@ -1033,8 +912,6 @@
         }
         catch (OperationCanceledException)
         {
-            // The circuit went away mid-write. The transaction either committed or did not; either way
-            // there is nobody left to tell.
         }
         finally
         {
@@ -1124,11 +1001,6 @@
         return result.IsAppended;
     }
 
-    /// <summary>
-    /// A refusal in plain words. The likely causes here are races — a guest sending, the kitchen
-    /// fulfilling, or somebody else closing a second earlier — so the message says what happened rather
-    /// than reading like a fault, and the bill has already been refreshed by the time it is shown.
-    /// </summary>
     private static string DescribeRefusal(AppendOrderEventResult result)
     {
         if (result.Outcome is AppendOrderEventOutcome.SittingNotFound)
@@ -1151,11 +1023,6 @@
         _rejectionReasons = [];
     }
 
-    /// <summary>
-    /// §9 scopes every relevant notification by sitting, so this filters rather than re-reading on every
-    /// event anywhere in the restaurant. <c>MenuChanged</c> is unscoped by construction and matters here
-    /// because the add-an-item picker lists the menu (§7).
-    /// </summary>
     private void OnDomainNotification(DomainNotification notification)
     {
         bool concernsThisSitting = notification switch
@@ -1187,11 +1054,9 @@
             }
             catch (OperationCanceledException)
             {
-                // Disposed between the broadcast and the query; nothing to update.
             }
             catch (ObjectDisposedException)
             {
-                // Same, one layer down.
             }
         });
     }

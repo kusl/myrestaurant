@@ -3,17 +3,12 @@ using Xunit;
 
 namespace MyRestaurant.Domain.Tests;
 
-/// <summary>
-/// Verifies the post-authentication obligations state machine (TECHNICAL_SPECIFICATION §3.5): a forced
-/// password change always precedes forced TOTP enrollment, and no other endpoint is reachable until
-/// the pipeline clears (except the pipeline's own pages and sign-out).
-/// </summary>
 public sealed class ObligationsPipelineTests
 {
     [Theory]
     [InlineData(false, false, PostAuthenticationObligation.None)]
     [InlineData(true, false, PostAuthenticationObligation.ForcePasswordChange)]
-    [InlineData(true, true, PostAuthenticationObligation.ForcePasswordChange)]  // password wins when both set
+    [InlineData(true, true, PostAuthenticationObligation.ForcePasswordChange)]
     [InlineData(false, true, PostAuthenticationObligation.ForceTotpEnrollment)]
     public void NextObligation_ResolvesInPasswordThenTotpOrder(
         bool mustChangePassword,

@@ -8,20 +8,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Sittings;
 
-/// <summary>
-/// Integration tests for <see cref="DapperCounterBoardReads"/> against a real PostgreSQL 17 container —
-/// TECHNICAL_SPECIFICATION §11.3, the two lists the counter works from, and §5.4's last-activity column.
-///
-/// <para>Most of what can go wrong here is arithmetic in SQL rather than logic in C#: the roll-up sums
-/// <c>order_current_state</c> through a LATERAL, and every one of those sums is a type the reader will
-/// not hand to a constructor parameter without a cast (<c>count(*)</c> is <c>bigint</c>, and
-/// <c>sum()</c> over it widens to <c>numeric</c>). An aggregate with no GROUP BY returns one row even
-/// over nothing, which is what makes a table where everybody joined and nobody ordered appear with
-/// zeroes rather than vanish — a table missing from the counter's list is a table nobody bills.</para>
-///
-/// <para>Each test truncates first (xUnit builds a fresh instance per test and runs them sequentially).
-/// Own <c>IClassFixture</c>, own container; if no container engine is available, every test skips.</para>
-/// </summary>
 public sealed class CounterBoardReadsTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private readonly PostgreSqlFixture _fixture;
@@ -85,7 +71,6 @@ public sealed class CounterBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
 
         await World().JoinAsync(sittingIdentifier, _guestIdentifier, cancellationToken);
 
-        // Three characters minimum: person.username carries CHECK (char_length BETWEEN 3 AND 64) (§8.2).
         Guid second = await World().AddPersonAsync("bode", "Bo", cancellationToken);
         await World().JoinAsync(sittingIdentifier, second, cancellationToken);
 
@@ -103,7 +88,6 @@ public sealed class CounterBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Null(sitting.ClosedAt);
         Assert.Null(sitting.SettledTotalAmount);
 
-        // Two people joined; only one of them has an order (§6.1 — the row is created by the first send).
         Assert.Equal(2, sitting.MemberCount);
         Assert.Equal(1, sitting.OrderCount);
 
@@ -116,11 +100,6 @@ public sealed class CounterBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.False(sitting.HasPostCloseCorrections);
     }
 
-    /// <summary>
-    /// A table where everybody joined and nobody has ordered has no <c>order_current_state</c> rows at
-    /// all. It must still appear — it is a real table with real people at it — with zeroes rather than
-    /// nulls, which is what the aggregate-with-no-GROUP-BY in the LATERAL buys.
-    /// </summary>
     [Fact]
     public async Task ListOpenSittings_ASittingNobodyOrderedIn_AppearsWithZeroes()
     {
@@ -163,7 +142,6 @@ public sealed class CounterBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(1, sitting.PendingLineCount);
         Assert.Equal(1, sitting.FulfilledLineCount);
 
-        // §8.3: the running total includes the pending line, because that is what the table owes.
         Assert.Equal(25.50m, sitting.CurrentTotalAmount);
     }
 
@@ -219,10 +197,6 @@ public sealed class CounterBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.False(sitting.HasPostCloseCorrections);
     }
 
-    /// <summary>
-    /// The name on a closed row falls back to the username, exactly as every other roster and bill in the
-    /// system does — a staff account with no display name must not produce a blank line at the till.
-    /// </summary>
     [Fact]
     public async Task ListRecentlyClosedSittings_FallBackToTheUsernameWhenThereIsNoDisplayName()
     {
@@ -264,7 +238,6 @@ public sealed class CounterBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
         IReadOnlyList<CounterSittingSummary> recent = await Reads()
             .ListRecentlyClosedSittingsAsync(_clock.UtcNow.AddHours(-12), 25, cancellationToken);
 
-        // The one closed 22 hours ago is outside the window; the other two come back newest first.
         Assert.Equal(2, recent.Count);
         Assert.Equal(newSitting, recent[0].SittingIdentifier);
         Assert.Equal(middleSitting, recent[1].SittingIdentifier);
@@ -295,7 +268,6 @@ public sealed class CounterBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(newest, recent[0].SittingIdentifier);
     }
 
-    /// <summary>Asking for nothing is answered without a round trip rather than by a SQL error.</summary>
     [Fact]
     public async Task ListRecentlyClosedSittings_ANonPositiveCap_ReturnsNothing()
     {
@@ -319,10 +291,6 @@ public sealed class CounterBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Null(await Reads().GetSittingAsync(_identifiers.Create(), cancellationToken));
     }
 
-    /// <summary>
-    /// §5.3: the settled total is never rewritten, so once a §6.7 correction lands the two numbers
-    /// differ — and the UI is required to show both. This is the read that lets it.
-    /// </summary>
     [Fact]
     public async Task GetSitting_AfterAPostCloseCorrection_ReportsBothTotals()
     {
@@ -344,7 +312,6 @@ public sealed class CounterBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(4.50m, beforeCorrection.CurrentTotalAmount);
         Assert.False(beforeCorrection.HasPostCloseCorrections);
 
-        // §6.5.8: after a close only an administrator may append, and never a guest submission.
         AppendOrderEventResult correction = await Mutations().AppendToOrderAsync(
             orderIdentifier,
             new ProposedOrderEvent(
@@ -362,7 +329,6 @@ public sealed class CounterBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(25.50m, afterCorrection.CurrentTotalAmount);
         Assert.True(afterCorrection.HasPostCloseCorrections);
 
-        // What the counter shows as the amount is still what was charged.
         Assert.Equal(4.50m, afterCorrection.AmountToShow);
     }
 

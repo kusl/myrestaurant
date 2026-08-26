@@ -16,38 +16,6 @@
 @inject RestaurantOptions Options
 @inject NavigationManager Navigation
 
-@* The table join flow and the member's table surface (TECHNICAL_SPECIFICATION §4.4, §5.1, §11.1).
-
-   Deliberately ANONYMOUS and static SSR. Anonymous because a guest scanning a table's QR for the
-   first time has no account yet, and §4.4 requires the grant to be issued *before* the detour through
-   sign-in — the whole point of the grant is that it survives that detour. Static SSR because the flow
-   writes and clears a cookie and issues redirects, none of which a Blazor circuit can do.
-
-   The four states this page resolves to, in the order §4.4 decides them:
-
-     1. Member  — an authenticated member of this table's open sitting. Members bypass tokens
-                  entirely: no query string is consulted, and a deactivated table does not evict
-                  anyone (§4.1 stops *new* tokens and display rendering, not a sitting in progress).
-     2. Confirm — a non-member holding a live grant, signed in. One button turns the grant into
-                  membership.
-     3. (redirect) — a non-member holding a live grant, anonymous: off to sign-in with this page as
-                  the return URL. The grant cookie is already written, so the trip back needs no token.
-     4. Expired — everything else, rendered as a friendly re-scan page at HTTP 200 with no detail
-                  about *which* thing failed (§4.4: "no oracle detail"). An unknown table, a
-                  deactivated table, a stale token, and a forged grant are indistinguishable here.
-
-   The join itself is a post/redirect/get: the POST consumes the grant, opens or joins the sitting in
-   one transaction (§5.1), broadcasts SittingMemberJoined only when a membership row was actually
-   inserted (§9), and redirects back here so a refresh cannot re-post.
-
-   The MEMBER stage hosts <TableOrderSurface> as an interactive-server island. Everything §11.1 asks
-   for below the join — a basket, a Send that reports per-operation reasons, lines that re-badge when
-   the kitchen fulfills them, a party total that moves when someone else orders, the flip to a settled
-   bill on SittingClosed — is live, and none of it can happen on a statically rendered page. Splitting
-   it this way keeps the cookie work where an HTTP response exists and the live work on a circuit,
-   rather than compromising one for the other. The roster moved into the island for the same reason:
-   §9 sends SittingMemberJoined to table members, and a statically rendered list cannot hear it. *@
-
 <PageTitle>@PageTitleText</PageTitle>
 
 @if (_stage == JoinStage.Member && _table is not null && _sitting is not null)
@@ -115,7 +83,6 @@ else if (_stage == JoinStage.Confirm && _table is not null)
 }
 else
 {
-    @* §4.4's friendly page. One wording for every failure so it tells a prober nothing. *@
     <section class="panel table-panel">
         <p class="eyebrow">Join a table</p>
         <h1>That code has expired</h1>
@@ -132,16 +99,12 @@ else
 }
 
 @code {
-    /// <summary>Which of the §4.4 outcomes this request resolved to. A redirect never reaches a stage.</summary>
     private enum JoinStage
     {
-        /// <summary>Friendly re-scan page (§4.4) — the catch-all, and the default before anything is decided.</summary>
         Expired,
 
-        /// <summary>Signed in, holding a live grant, not yet a member: offer the join button.</summary>
         Confirm,
 
-        /// <summary>A member of this table's open sitting: the table surface itself.</summary>
         Member,
     }
 
@@ -182,38 +145,29 @@ else
         _table = await TableDirectory.GetTableAsync(TableId, cancellationToken);
         if (_table is null)
         {
-            // No oracle: an unknown table reads exactly like a stale code (§4.4).
             _stage = JoinStage.Expired;
             return;
         }
 
         Guid? personIdentifier = PersonPrincipal.IdentifierFor(HttpContext.User);
 
-        // (1) Members bypass tokens entirely (§4.4) — and a deactivated table does not evict them.
         if (personIdentifier is { } member)
         {
             _sitting = await Sittings.GetOpenSittingForMemberAsync(TableId, member, cancellationToken);
             if (_sitting is not null)
             {
-                // The roster, the order, and the totals are the island's job from here — this page
-                // stops at "you are a member of this sitting, here is the identifier".
                 _stage = JoinStage.Member;
                 _justJoined = isGet && string.Equals(Joined, "yes", StringComparison.Ordinal);
                 return;
             }
         }
 
-        // (2) A non-member cannot join a table that is out of service (§4.1).
         if (!_table.IsActive)
         {
             _stage = JoinStage.Expired;
             return;
         }
 
-        // (3) A presented token is always validated on a GET, so the §4.3 metric counts every scan —
-        // even when a grant is already held. A valid one (re)issues the grant and restarts its clock.
-        // The join POST re-posts to this same URL, query string and all; re-validating there would
-        // double-count one scan, so the metric stays on the navigation that actually is a scan.
         bool holdsGrant = false;
         if (isGet && !string.IsNullOrEmpty(Token))
         {
@@ -228,8 +182,6 @@ else
             }
         }
 
-        // (4) No usable token is not the end: an unconsumed grant from an earlier scan still counts.
-        // That is what carries the flow back from sign-in, where the return URL has no token (§4.4).
         holdsGrant = holdsGrant || TryReadUsableGrant();
 
         if (!holdsGrant)
@@ -240,13 +192,10 @@ else
 
         if (personIdentifier is null)
         {
-            // Anonymous with a live grant → sign in (or register) and come straight back here (§4.4).
             Navigation.NavigateTo($"{AccountRoutes.SignIn}?ReturnUrl={Uri.EscapeDataString(TablePath)}");
             return;
         }
 
-        // Purely for the confirmation copy — how full the table already is. Skipped on the join POST,
-        // which either redirects or falls to the expired page and never renders that sentence.
         if (isGet)
         {
             TableSittingSummary? openSitting = await Sittings.GetOpenSittingAsync(TableId, cancellationToken);
@@ -256,11 +205,6 @@ else
         _stage = JoinStage.Confirm;
     }
 
-    /// <summary>
-    /// Turns the held grant into membership (§4.4, §5.1). Every precondition is re-checked here rather
-    /// than trusted from the render that drew the button: a POST is a separate request, and the grant
-    /// may have expired, been spent, or never have matched this table at all.
-    /// </summary>
     private async Task JoinAsync()
     {
         CancellationToken cancellationToken = HttpContext.RequestAborted;
@@ -280,7 +224,6 @@ else
 
         JoinTableResult result = await Membership.JoinTableAsync(TableId, person, cancellationToken);
 
-        // Single-use, whatever the outcome: a spent or refused grant must never be replayable (§4.4).
         JoinGrantCookie.Delete(HttpContext.Response);
 
         if (result.Outcome == JoinTableOutcome.TableUnavailable)
@@ -289,8 +232,6 @@ else
             return;
         }
 
-        // After commit, and only when a membership row was really inserted (§9: "fired on: membership
-        // insert"). An idempotent re-join writes nothing and so announces nothing.
         if (result.MembershipInserted && result.SittingIdentifier is { } sittingIdentifier)
         {
             Broadcaster.Publish(new SittingMemberJoined(sittingIdentifier));
@@ -299,11 +240,6 @@ else
         Navigation.NavigateTo($"{TablePath}?joined=yes");
     }
 
-    /// <summary>
-    /// True when the request carries a grant that is ours, intact, names <b>this</b> table, and has not
-    /// aged past <c>TABLE_JOIN_GRANT_MINUTES</c>. The lifetime is judged against the protected
-    /// <c>issued_at</c>, not the cookie's own expiry, because only the former is beyond the guest's reach.
-    /// </summary>
     private bool TryReadUsableGrant()
         => Grants.TryUnprotect(JoinGrantCookie.Read(HttpContext.Request), out JoinGrant? grant)
             && grant is not null

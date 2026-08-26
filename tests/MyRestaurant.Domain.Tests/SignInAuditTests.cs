@@ -3,12 +3,6 @@ using Xunit;
 
 namespace MyRestaurant.Domain.Tests;
 
-/// <summary>
-/// Exhaustively verifies the pure sign-in audit decision (TECHNICAL_SPECIFICATION §3.5, §12): each
-/// outcome maps to the right <c>security_event</c> type and <c>sign_ins_total</c> result label, and the
-/// two-factor-challenge case records neither (it is not a completed sign-in — the second-factor step
-/// records the terminal outcome).
-/// </summary>
 public sealed class SignInAuditTests
 {
     [Theory]
@@ -56,8 +50,6 @@ public sealed class SignInAuditTests
     [Fact]
     public void AuditAndMetric_AgreeOnWhenToRecord()
     {
-        // Whenever there is a terminal metric there is a terminal event, and vice versa: the only
-        // "record nothing" case is the two-factor challenge, and it must be silent on both channels.
         foreach (SignInAttemptResult result in Enum.GetValues<SignInAttemptResult>())
         {
             bool hasEvent = SignInAudit.SecurityEventFor(result) is not null;

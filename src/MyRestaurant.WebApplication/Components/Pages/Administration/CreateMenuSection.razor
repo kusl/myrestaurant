@@ -7,23 +7,6 @@
 @inject IMenuWorkflow MenuChanges
 @inject IIdentifierFactory IdentifierFactory
 
-@* Create a menu section (TECHNICAL_SPECIFICATION §7, §11.4). Administrator only (endpoint
-   authorization, like every administration surface). Static SSR: a full-page form post, matching the
-   shape CreateTable and CreateMenuItem already have — one form, post/redirect-free, and a success panel
-   that links onward rather than a flash on a list.
-
-   THIS IS THE PAGE THAT MAKES 0005's NOT NULL SURVIVABLE. §7 requires every menu item to be under a
-   heading, so on a fresh installation the very first thing an administrator must do to the menu is name
-   a section — and until this page existed there was no way to make one from any surface at all. The
-   create-item form sends them here when there are none.
-
-   The write goes through IMenuWorkflow rather than IMenuSectionAdministration directly: Slice 37
-   registered the section services outside the workflow deliberately, because a workflow verb with no
-   caller is a code path no test can reach through the interface meant to protect it. This page was the
-   first caller, and ManageMenuSection is the one that brought the other four in. §9's MenuChanged is
-   published on a committed row so every open guest picker re-reads the menu — which matters because
-   §11.1 groups items under their headings. *@
-
 <PageTitle>Create menu section</PageTitle>
 
 @if (_created is { Created: true } created)
@@ -39,18 +22,9 @@
 
         @if (created.Description is { Length: > 0 } createdDescription)
         {
-            @* Echoed from the result rather than re-read, because the write service returns what it
-               actually stored — trimmed — and this is the only place a caller can see the difference
-               without a second query. The same rule CreateMenuItem's success panel follows. *@
             <p class="record-note">Description: @createdDescription</p>
         }
 
-        @* "Manage this section" first, which is the shape every other create panel in this area has and
-           the one this page could not have until the editor existed. Slice 40's panel led with "Add an
-           item to it" because a section had nowhere to link — and the harness had to recover the new
-           identifier from the item form's `<option value>` as a result. Both of those are now ordinary.
-           The item link stays, second, because putting something under a brand-new heading is still the
-           likeliest next thing anybody wants. *@
         <div class="form-actions">
             <a class="button-primary" href="@($"/administration/menu/sections/{created.MenuSectionIdentifier}")">Manage this section</a>
             <a class="button-secondary" href="/administration/menu/new">Add an item to it</a>
@@ -84,9 +58,6 @@ else
                 <ValidationMessage For="@(() => Input.Name)" />
             </div>
 
-            @* A textarea rather than an input, on `app.css`'s existing `.form-field textarea` rule, and
-               `.muted` for the optional marker — this block declares nothing of its own, which is
-               §11.12's rule for a page that is not the only reader of a style. *@
             <div class="form-field">
                 <label for="description">Description <span class="muted">(optional)</span></label>
                 <InputTextArea id="description" @bind-Value="Input.Description" rows="2" autocomplete="off" />
@@ -119,16 +90,13 @@ else
     private HttpContext HttpContext { get; set; } = default!;
 
     protected override void OnInitialized()
-        // BL0008: a form POST binds Input itself and may assign null, so the default lives here.
+
         => Input ??= new();
 
     private async Task CreateAsync()
     {
         if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } administrator)
         {
-            // Endpoint authorization already guarantees an administrator; this is the belt to that
-            // brace, because menu_section_event.actor_person_identifier is NOT NULL and §7 requires
-            // every change to name somebody.
             _errorMessage = "Your session could not be identified. Sign in again and retry.";
             return;
         }
@@ -140,9 +108,6 @@ else
             administrator,
             HttpContext.RequestAborted);
 
-        // The collision is reported rather than thrown, because it is a mis-tap and not a fault: the
-        // UNIQUE constraint on a citext column is what catches a second "Drinks", and the person who
-        // typed it needs to be told which of the two words was the problem.
         if (_created.Outcome is CreateMenuSectionOutcome.NameTaken)
         {
             _errorMessage =
@@ -153,17 +118,10 @@ else
 
     private sealed class CreateMenuSectionInputModel
     {
-        // The 80 is the column's own ceiling this time rather than a form's opinion:
-        // menu_section.name is CHECK (char_length BETWEEN 1 AND 80), so a longer name would be
-        // PostgreSQL error 23514 well after the form that caused it. menu_item.name has no such
-        // constraint, which is why CreateMenuItem's limit is 120 and is that form's own choice.
         [Required(ErrorMessage = "Give the section a name.")]
         [StringLength(80, MinimumLength = 1, ErrorMessage = "The name must be 1–80 characters.")]
         public string Name { get; set; } = string.Empty;
 
-        // No [Required]: §7 makes a description optional and a blank one is stored as "". The 2,000 is
-        // this form's own limit rather than the column's — menu_section.description is `text` and has
-        // none — and it matches CreateMenuItem's for the same reason that one gives.
         [StringLength(2000, ErrorMessage = "The description must be 2,000 characters or fewer.")]
         public string Description { get; set; } = string.Empty;
     }

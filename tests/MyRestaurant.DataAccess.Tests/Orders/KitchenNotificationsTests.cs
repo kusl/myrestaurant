@@ -6,24 +6,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Orders;
 
-/// <summary>
-/// Integration tests for <see cref="DapperKitchenNotifications"/> against a real PostgreSQL 17
-/// container — that is, for TECHNICAL_SPECIFICATION §8.4's normative SQL and the §10.2 rule it encodes:
-/// "one reminder maximum per guest send, fired at <c>KITCHEN_SUBMISSION_REMINDER_SECONDS</c> iff the
-/// send had ≥1 added line and none of its added lines has since been fulfilled or removed."
-///
-/// <para>Every clause of that sentence is a separate way to annoy a kitchen, and each gets a fact.
-/// Reminding twice trains cooks to ignore the sound; reminding about something already plated is worse
-/// than not reminding at all; and failing to remind is the silent failure the whole mechanism exists to
-/// prevent. None of it is observable from the application's own state — the truth lives in five joined
-/// tables and a unique constraint — so it can only be tested here, against a real database.</para>
-///
-/// <para>The clock is fixed and shared with the mutation service, so a test can put a send precisely
-/// either side of the threshold. That is possible only because the implementation computes the cut-off
-/// from <see cref="MyRestaurant.Domain.Time.IClock"/> rather than from the database's <c>now()</c> —
-/// see the note on <see cref="DapperKitchenNotifications"/> for why that deviation from §8.4's literal
-/// SQL is the correct one.</para>
-/// </summary>
 public sealed class KitchenNotificationsTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private const int ReminderSeconds = 60;
@@ -80,7 +62,6 @@ public sealed class KitchenNotificationsTests : IClassFixture<PostgreSqlFixture>
         Scene scene = await ArrangeAsync(cancellationToken);
         await SendAsync(scene, cancellationToken);
 
-        // Half a threshold later: due at 60s, so nothing yet.
         _clock.UtcNow = _clock.UtcNow.AddSeconds(30);
 
         Assert.Empty(await Notifications().IssueDueRemindersAsync(ReminderSeconds, cancellationToken));
@@ -106,18 +87,12 @@ public sealed class KitchenNotificationsTests : IClassFixture<PostgreSqlFixture>
         Assert.Equal(send.GuestOrderIdentifier, issued.GuestOrderIdentifier);
         Assert.Equal(scene.SittingIdentifier, issued.SittingIdentifier);
 
-        // §8.4: "one reminder maximum per guest send". The second scan finds the row it wrote and
-        // says nothing — which is what stops a forgotten ticket beeping every five seconds forever.
         _clock.UtcNow = _clock.UtcNow.AddSeconds(30);
         Assert.Empty(await Notifications().IssueDueRemindersAsync(ReminderSeconds, cancellationToken));
 
         Assert.Equal(1, await World().CountAsync(CountRemindersSql, cancellationToken));
     }
 
-    /// <summary>
-    /// The initial alert (§10.1) is written inside the send transaction, so a reminded send has two
-    /// rows and they are distinguishable — the unique constraint is on (event, kind), not on event.
-    /// </summary>
     [Fact]
     public async Task TheReminderRowSitsBesideTheInitialAlert()
     {
@@ -134,8 +109,6 @@ public sealed class KitchenNotificationsTests : IClassFixture<PostgreSqlFixture>
         Assert.Equal(1, await World().CountAsync(CountInitialAlertsSql, cancellationToken));
         Assert.Equal(1, await World().CountAsync(CountRemindersSql, cancellationToken));
 
-        // The composite FK obliges the row to restate the event's type; §10.2 reminders are only ever
-        // for guest submissions.
         string? storedEventType = await World().ScalarAsync<string>(
             "SELECT event_type FROM kitchen_notification WHERE kind = 'reminder';",
             null,
@@ -178,11 +151,6 @@ public sealed class KitchenNotificationsTests : IClassFixture<PostgreSqlFixture>
         Assert.Empty(await Notifications().IssueDueRemindersAsync(ReminderSeconds, cancellationToken));
     }
 
-    /// <summary>
-    /// §8.4's last NOT EXISTS is "none of its added lines" — so <em>any</em> line of the send being
-    /// touched cancels the reminder for the whole send. A cook who has started on the order does not
-    /// need to be told about it, and the ticket is still on the board either way.
-    /// </summary>
     [Fact]
     public async Task ASendIsNotReminded_WhenOnlySomeOfItsLinesWereFulfilled()
     {
@@ -200,10 +168,6 @@ public sealed class KitchenNotificationsTests : IClassFixture<PostgreSqlFixture>
         Assert.Empty(await Notifications().IssueDueRemindersAsync(ReminderSeconds, cancellationToken));
     }
 
-    /// <summary>
-    /// §10.2: "Pure-removal sends alert once (10.1) and never remind." The removal send has no added
-    /// lines of its own, and the send it removes from now has a removed line — so neither reminds.
-    /// </summary>
     [Fact]
     public async Task APureRemovalSend_NeverReminds()
     {
@@ -227,7 +191,6 @@ public sealed class KitchenNotificationsTests : IClassFixture<PostgreSqlFixture>
 
         Assert.True(removalSend.IsAppended);
 
-        // §10.1: a guest submission always writes an initial alert, removals included.
         Assert.True(removalSend.KitchenNotificationWritten);
 
         _clock.UtcNow = _clock.UtcNow.AddSeconds(120);
@@ -254,10 +217,6 @@ public sealed class KitchenNotificationsTests : IClassFixture<PostgreSqlFixture>
         Assert.Empty(await Notifications().IssueDueRemindersAsync(ReminderSeconds, cancellationToken));
     }
 
-    /// <summary>
-    /// Two sends, both overdue, both reminded — the scan is per send, not per order, so a table that
-    /// ordered twice and was ignored twice hears about both.
-    /// </summary>
     [Fact]
     public async Task EachOverdueSendGetsItsOwnReminder()
     {
@@ -291,7 +250,6 @@ public sealed class KitchenNotificationsTests : IClassFixture<PostgreSqlFixture>
 
         _clock.UtcNow = _clock.UtcNow.AddSeconds(10);
 
-        // §10.2: "Reminders exist only for guest submissions — staff coordinate verbally."
         AppendOrderEventResult staffEdit = await Mutations().AppendToOrderAsync(
             send.GuestOrderIdentifier!.Value,
             new ProposedOrderEvent(
@@ -303,7 +261,6 @@ public sealed class KitchenNotificationsTests : IClassFixture<PostgreSqlFixture>
 
         Assert.True(staffEdit.IsAppended);
 
-        // Fulfil the guest's own line so the guest send is not what reminds here.
         await FulfillAsync(scene, send.GuestOrderIdentifier!.Value, scene.FirstLineIdentifier, cancellationToken);
 
         _clock.UtcNow = _clock.UtcNow.AddSeconds(120);
@@ -333,10 +290,6 @@ public sealed class KitchenNotificationsTests : IClassFixture<PostgreSqlFixture>
         };
     }
 
-    /// <summary>
-    /// One guest send of <paramref name="lineCount"/> lines. The first line's identifier is written back
-    /// onto the scene so the fulfil/remove facts have something to aim at.
-    /// </summary>
     private async Task<AppendOrderEventResult> SendAsync(
         Scene scene,
         CancellationToken cancellationToken,
@@ -416,11 +369,6 @@ public sealed class KitchenNotificationsTests : IClassFixture<PostgreSqlFixture>
 
     private OrderTestWorld World() => _world!;
 
-    /// <summary>
-    /// The seeded world one test operates in. A class rather than a record because exactly one member
-    /// is written after construction — the identifier of the line the last send added, which the
-    /// fulfil/remove facts aim at.
-    /// </summary>
     private sealed class Scene
     {
         public required Guid TableIdentifier { get; init; }

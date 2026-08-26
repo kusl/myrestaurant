@@ -5,37 +5,11 @@ using MyRestaurant.Domain.Identifiers;
 
 namespace MyRestaurant.DataAccess.Tests.Orders;
 
-/// <summary>
-/// Seeds the world an order needs to exist in — people, a table, an open sitting, membership, and a
-/// menu — and hands back the identifiers, so each test file says what it is testing instead of
-/// re-deriving a restaurant from scratch.
-///
-/// <para>The rows are written with plain SQL rather than through <c>DapperTableAdministration</c> and
-/// friends on purpose, unlike <see cref="Displays.DisplayDevicePairingTests"/>: the pairing tests are
-/// about a service that reads rows the app wrote, so arranging through the app is the point there,
-/// whereas these tests are about the order transaction and the projection views, and routing the
-/// arrangement through three other services would make a failure in any of them look like a failure
-/// here. Menu items in particular have no write service at all yet — menu administration is M5 (§19) —
-/// so there is nothing to arrange through.</para>
-/// </summary>
 internal sealed class OrderTestWorld
 {
-    /// <summary>A syntactically valid Argon2id PHC string (§3.2). Nothing here ever verifies it.</summary>
     private const string SamplePasswordHash =
         "$argon2id$v=19$m=65536,t=3,p=1$c2FsdHNhbHRzYWx0c2E$dGFndGFndGFndGFndGFndGFndGFndGFndGE";
 
-    /// <summary>
-    /// Everything downstream of these four hangs off them by foreign key, so CASCADE clears the whole
-    /// order graph — guest orders, events, all five operation tables, kitchen notifications, and
-    /// visibility events — without this list having to be kept in step with the schema.
-    ///
-    /// <para><c>menu_section</c> is named rather than reached: nothing references it yet, so CASCADE from
-    /// the other three does not clear it, and a section surviving into the next test would make
-    /// <c>MAX(display_order) + 1</c> hand out a number the previous test chose. It is named here rather
-    /// than truncated locally in the one test class that writes sections, because 0004 gives
-    /// <c>menu_item</c> a NOT NULL reference to it and at that point truncating items without their
-    /// headings is the wrong order regardless of who asked.</para>
-    /// </summary>
     private const string TruncateSql = """
         TRUNCATE TABLE person, restaurant_table, menu_item, menu_section CASCADE;
         """;
@@ -78,18 +52,6 @@ internal sealed class OrderTestWorld
         VALUES (@MemberIdentifier, @SittingIdentifier, @PersonIdentifier, @JoinedAt);
         """;
 
-    /// <summary>
-    /// Every column is named, including <c>menu_section_identifier</c> as of <c>0005</c> — which is the
-    /// migration this file was flagged for two slices ago, on the ground that it is the INSERT deciding
-    /// whether every ordering integration test compiles.
-    ///
-    /// <para><b>It did not, and the reason is the whole design of <see cref="AddMenuItemAsync"/>.</b> The
-    /// reference is <c>NOT NULL</c>, so a naive change here would have meant editing every one of the
-    /// dozen test files that put something on the menu — none of which is about sections, and several of
-    /// which are about ordering, settlement or the kitchen. Instead the section is an <em>optional</em>
-    /// argument that defaults to a lazily created house section, so an existing caller compiles and means
-    /// exactly what it meant before: "an item exists". A test that cares which heading passes one.</para>
-    /// </summary>
     private const string InsertMenuItemSql = """
         INSERT INTO menu_item (
             menu_item_identifier, menu_section_identifier, name, description,
@@ -99,11 +61,6 @@ internal sealed class OrderTestWorld
             @PriceAmount, @DisplayOrder, @IsActive, @CreatedAt);
         """;
 
-    /// <summary>
-    /// A section, written directly, on the same terms as every other INSERT in this class: what is being
-    /// arranged is a row, and driving <see cref="DataAccess.Menu.DapperMenuSectionAdministration"/> to get
-    /// one would put the thing under test into the arrangement of tests that are not about it.
-    /// </summary>
     private const string InsertMenuSectionSql = """
         INSERT INTO menu_section (
             menu_section_identifier, name, description, display_order, is_active, created_at)
@@ -129,23 +86,6 @@ internal sealed class OrderTestWorld
             @EventType, @OccurredAt);
         """;
 
-    /// <summary>
-    /// Every payload column <c>menu_item_event</c> has, which is five rather than the two this statement
-    /// listed until F-86. <c>0004</c> added <c>new_description</c> and <c>new_display_order</c> and
-    /// <c>0005</c> added <c>new_menu_section_identifier</c>, each bound to its own type by a named
-    /// biconditional CHECK — so a column absent from this INSERT is not an omission the database
-    /// tolerates, it is a row the database refuses.
-    ///
-    /// <para>The casts are load-bearing on every one of the five: Dapper sends an untyped parameter for a
-    /// null, and §8.2's paired CHECKs are evaluated against the column's type.</para>
-    ///
-    /// <para><b>A falsified paragraph stood above this one until F-114.</b> It said the columns
-    /// <c>0004</c> and <c>0005</c> added were <em>omitted rather than passed as NULL</em>, and that the
-    /// casts were on <em>the two columns that remain</em> — both true before F-86 widened this statement
-    /// and neither true afterwards. It survived because it was a second <c>&lt;summary&gt;</c> in one
-    /// documentation comment, which the C# compiler accepts in silence: F-86 wrote the correction
-    /// underneath the claim instead of over it, and the claim stayed first.</para>
-    /// </summary>
     private const string InsertMenuItemEventSql = """
         INSERT INTO menu_item_event (
             menu_item_event_identifier, menu_item_identifier, actor_person_identifier,
@@ -168,11 +108,6 @@ internal sealed class OrderTestWorld
     private readonly FixedClock _clock;
     private readonly IIdentifierFactory _identifierFactory;
 
-    /// <summary>
-    /// The house section, minted on first use and forgotten by <see cref="TruncateAsync"/>. Held per
-    /// instance rather than statically because every fixture builds its own world against a database it
-    /// has just truncated, and a static identifier would name a row that no longer exists.
-    /// </summary>
     private Guid? _defaultMenuSectionIdentifier;
 
     public OrderTestWorld(
@@ -189,18 +124,9 @@ internal sealed class OrderTestWorld
     {
         await ExecuteAsync(TruncateSql, null, cancellationToken);
 
-        // The house section is gone with the table, so the memory of it has to go too. Forgetting this
-        // is the failure where a second test in the same class inserts an item referencing a section
-        // that was truncated away, and PostgreSQL answers with a foreign-key violation two layers from
-        // the arrangement that caused it.
         _defaultMenuSectionIdentifier = null;
     }
 
-    /// <summary>
-    /// Puts a heading on the menu (§7) and returns its identifier. Callers that care which section an
-    /// item is under create one and pass it; callers that do not get the house section
-    /// <see cref="AddMenuItemAsync"/> makes for them.
-    /// </summary>
     public async Task<Guid> AddMenuSectionAsync(
         string name,
         CancellationToken cancellationToken,
@@ -256,7 +182,7 @@ internal sealed class OrderTestWorld
             {
                 TableIdentifier = tableIdentifier,
                 Label = label,
-                // The CHECK is octet_length(join_secret) = 32; nothing here derives a token from it.
+
                 JoinSecret = new byte[32],
                 IsActive = isActive,
                 CreatedAt = _clock.UtcNow,
@@ -282,10 +208,6 @@ internal sealed class OrderTestWorld
         return sittingIdentifier;
     }
 
-    /// <summary>
-    /// Closes a sitting the way §5.3 will: a closing instant, the person who closed it, and a stamped
-    /// settled total, all three of which the schema's paired CHECKs require together.
-    /// </summary>
     public async Task CloseSittingAsync(
         Guid sittingIdentifier,
         Guid closedByPersonIdentifier,
@@ -314,27 +236,6 @@ internal sealed class OrderTestWorld
             },
             cancellationToken);
 
-    /// <summary>
-    /// Puts an item on the menu (§7) — one <c>menu_item</c> row, and its identifier back.
-    /// <paramref name="menuSectionIdentifier"/> is optional, and that optionality is what kept
-    /// <c>0005</c> from reaching a dozen test files that have nothing to do with menu sections: omitting
-    /// it files the item under a house section this world creates once and reuses, so "an item exists"
-    /// stays the single-line arrangement it has always been.
-    ///
-    /// <para>The house section is created lazily rather than in <see cref="TruncateAsync"/>, because a
-    /// fixture that never touches the menu should not carry a row it did not ask for — several classes
-    /// here count what is in the database.</para>
-    ///
-    /// <para><paramref name="description"/> and <paramref name="displayOrder"/> are trailing optional
-    /// parameters with the column defaults as their values, so every existing call site reads exactly as
-    /// it did and means exactly what it did. That is deliberate rather than lazy: eleven call sites across
-    /// four test classes arrange a menu they have no opinion about, and making them all restate <c>""</c>
-    /// and <c>0</c> would be eleven edits that assert nothing.</para>
-    ///
-    /// <para><b>Those two paragraphs were two separate <c>&lt;summary&gt;</c> elements in one
-    /// documentation comment until F-114</b>, the Slice 38 account of this method stacked above the Slice
-    /// 40 one. Both were true, neither was reachable from the other, and the compiler said nothing.</para>
-    /// </summary>
     public async Task<Guid> AddMenuItemAsync(
         string name,
         decimal priceAmount,
@@ -366,11 +267,6 @@ internal sealed class OrderTestWorld
         return menuItemIdentifier;
     }
 
-    /// <summary>
-    /// The house section, made once per truncation. Named "Menu" to match what <c>0005</c>'s own backfill
-    /// calls the section it seeds for an existing installation — so a test reading a section name off a
-    /// surface sees the same word a real upgraded database would show.
-    /// </summary>
     private async Task<Guid> EnsureDefaultMenuSectionAsync(CancellationToken cancellationToken)
     {
         if (_defaultMenuSectionIdentifier is { } existing)
@@ -394,16 +290,6 @@ internal sealed class OrderTestWorld
             new { MenuItemIdentifier = menuItemIdentifier, PriceAmount = priceAmount, IsActive = isActive },
             cancellationToken);
 
-    /// <summary>
-    /// Appends an <c>order_visibility_event</c> row directly (§6.8), stamped with the current
-    /// <see cref="FixedClock"/> instant.
-    ///
-    /// <para>Plain SQL rather than <c>DapperOrderVisibility</c>, for the reason this whole class prefers
-    /// SQL: the readers under test in <c>OrderHistoryReadsTests</c> are about which rows they select, and
-    /// arranging them through the write service would make a bug in that service look like a bug in the
-    /// reader. It also reaches states the service deliberately refuses to create — a hide on an open
-    /// sitting — which is the only way to assert what the readers do when they meet one.</para>
-    /// </summary>
     public async Task AddVisibilityEventAsync(
         Guid guestOrderIdentifier,
         Guid actorPersonIdentifier,
@@ -421,20 +307,6 @@ internal sealed class OrderTestWorld
             },
             cancellationToken);
 
-    /// <summary>
-    /// Appends a <c>security_event</c> row directly (§8.2), stamped with the current
-    /// <see cref="FixedClock"/> instant and returning its identifier.
-    ///
-    /// <para>Plain SQL rather than <c>DapperSecurityEventLog</c>, for the reason this whole class prefers
-    /// SQL: the reader under test in <c>EventExplorerReadsTests</c> is about which rows it selects and how
-    /// it joins them, and arranging through the writer would make a bug there look like a bug here. It
-    /// also mints the identifier locally so a test can assert on the exact row it wrote — the writer keeps
-    /// its identifier to itself.</para>
-    ///
-    /// <para><paramref name="actorPersonIdentifier"/> may be <c>null</c>:
-    /// <c>security_event.actor_person_identifier</c> is the one nullable actor column in the three event
-    /// tables (§8.2), and the explorer has to render that case rather than drop the row.</para>
-    /// </summary>
     public async Task<Guid> AddSecurityEventAsync(
         Guid subjectPersonIdentifier,
         Guid? actorPersonIdentifier,
@@ -457,26 +329,6 @@ internal sealed class OrderTestWorld
         return securityEventIdentifier;
     }
 
-    /// <summary>
-    /// Appends a <c>menu_item_event</c> row directly (§7, §8.2), on the same terms.
-    ///
-    /// <para>Every payload column is passed through rather than derived from the type, because §8.2's
-    /// five named paired CHECKs already enforce which types carry which — <c>created</c> the name and the
-    /// price, <c>name_changed</c> the name, <c>price_changed</c> the price,
-    /// <c>description_changed</c> the description, <c>reordered</c> the position,
-    /// <c>section_changed</c> the heading, and the two availability types nothing at all — and a helper
-    /// that second-guessed them would make it impossible to write the row that proves the reader carries
-    /// a payload through untouched.</para>
-    ///
-    /// <para><b>Three of the five arrived without this helper being told (F-86).</b> It listed
-    /// <c>new_name</c> and <c>new_price_amount</c> and stopped, which was the whole vocabulary in
-    /// <c>0001</c> and has not been since <c>0004</c>. A caller could therefore write five of the eight
-    /// admitted types and no more: the other three each require a column this INSERT did not name, so
-    /// their biconditional refused the row and the failure named a constraint rather than the helper.
-    /// The three new parameters are optional so that the five existing call sites keep their shape — a
-    /// caller that says nothing about a description is a caller writing a type that must not carry
-    /// one.</para>
-    /// </summary>
     public async Task<Guid> AddMenuItemEventAsync(
         Guid menuItemIdentifier,
         Guid actorPersonIdentifier,
@@ -509,7 +361,6 @@ internal sealed class OrderTestWorld
         return menuItemEventIdentifier;
     }
 
-    /// <summary>A raw count, for the "nothing was written" assertions §6.5.9 lives on.</summary>
     public async Task<int> CountAsync(string sql, CancellationToken cancellationToken)
     {
         await using DbConnection connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
@@ -517,7 +368,6 @@ internal sealed class OrderTestWorld
             sql, cancellationToken: cancellationToken));
     }
 
-    /// <summary>A raw scalar, for reading a stored column back without going through a service.</summary>
     public async Task<T?> ScalarAsync<T>(string sql, object? parameters, CancellationToken cancellationToken)
     {
         await using DbConnection connection = await _connectionFactory.OpenConnectionAsync(cancellationToken);
@@ -525,12 +375,6 @@ internal sealed class OrderTestWorld
             sql, parameters, cancellationToken: cancellationToken));
     }
 
-    /// <summary>
-    /// A raw column, every row of it, in the order the query asked for. The sibling of
-    /// <see cref="ScalarAsync{T}"/> for the assertions a scalar cannot make: a write that touches several
-    /// rows in one transaction has an <em>order</em>, and a test that read one row at a time would be
-    /// asserting the query's ordering one comparison at a time.
-    /// </summary>
     public async Task<IReadOnlyList<T>> QueryAsync<T>(
         string sql,
         object? parameters,

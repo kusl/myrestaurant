@@ -10,22 +10,6 @@
 @inject IIdentifierFactory IdentifierFactory
 @inject RestaurantOptions Options
 
-@* Create a menu item (TECHNICAL_SPECIFICATION §7, §11.4). Administrator only (endpoint authorization,
-   like every administration surface). Static SSR: a full-page form post. The item is created active, and
-   the workflow announces it so every open guest picker and kitchen panel gains it without a reload (§9).
-   Nothing is written until the form is submitted; the identifier is minted here so the success screen can
-   link straight to the new item's management page — the same shape CreateTable uses.
-
-   THE SECTION PICKER IS REQUIRED, AND THAT IS 0005's NOT NULL ARRIVING AT A FORM. §7: an item under no
-   heading is an item nobody decided about. So there is no "(none)" option, no "Uncategorized" default
-   and no blank first entry — the select is pre-selected on the first section and every path out of this
-   form names one.
-
-   WHEN THERE ARE NO SECTIONS THIS PAGE DOES NOT RENDER A FORM AT ALL. A required picker over an empty
-   list is a form nobody can submit and a validation message that blames the person for a menu that has
-   no headings yet. The panel below sends them to the section create page instead, which is the one extra
-   step §7 accepts on the very first use of a fresh installation. *@
-
 <PageTitle>Create menu item</PageTitle>
 
 @if (_created is { Created: true } created)
@@ -42,9 +26,6 @@
 
         @if (created.DescriptionWasSet)
         {
-            @* Echoed from the result rather than re-read, because the write service returns what it
-               actually stored — trimmed — and this is the only place a caller can see the difference
-               without a second query. *@
             <p class="record-note">Description: @created.Description</p>
         }
 
@@ -62,9 +43,6 @@ else if (_sections is null)
 }
 else if (_sections.Count == 0)
 {
-    @* The first-use panel. It is a dead end on purpose: there is no form under it to half-fill, because
-       §7's heading is not optional and a form that cannot be submitted is worse than a page that says
-       why. *@
     <section class="panel account-panel">
         <p class="eyebrow">Administration</p>
         <h1>Give the menu a heading first</h1>
@@ -107,24 +85,6 @@ else
                 <ValidationMessage For="@(() => Input.Name)" />
             </div>
 
-            @* An InputSelect over Guid rather than over a string identifier: Blazor's own converter
-               handles Guid, so a malformed post is a binding failure here rather than a Guid.Parse
-               somewhere in the handler.
-
-               INACTIVE SECTIONS ARE OFFERED, AND MARKED. §7 hides an inactive heading from the GUEST;
-               it does not hide it from §11.4's administrator, whose whole job on this page may be
-               stocking next week's breakfast menu before switching it on. The suffix is text inside the
-               option because an <option> renders text and nothing else — which is the same limitation
-               that made the guest picker a card list, and the reason it is acceptable here is that this
-               is a choice among eight headings rather than a menu among sixty dishes.
-
-               THE LOOP VARIABLE IS NOT CALLED `section`, AND THAT IS F-81 RATHER THAN A PREFERENCE.
-               `@@section` is Razor's own MVC section directive, so `@@section.MenuSectionIdentifier` is
-               parsed as a directive with a malformed name and never reaches C# at all — RZ9979, RZ2005
-               and RZ1011 on one line, none of which mentions the identifier. The neighbouring
-               `@@key="section…"` and `@@SectionHeadingId(section)` compile, because neither puts the
-               word directly after an `@@`, which is what made this look like a defect in the markup
-               rather than in the name. `RazorDirectiveContractTests` now refuses the token outright. *@
             <div class="form-field">
                 <label for="menu-section">Section</label>
                 <InputSelect id="menu-section" @bind-Value="Input.MenuSectionIdentifier">
@@ -140,10 +100,6 @@ else
                 <ValidationMessage For="@(() => Input.MenuSectionIdentifier)" />
             </div>
 
-            @* A textarea rather than an input, and app.css has styled `.form-field textarea` since
-               Slice 30 for exactly this field — so this block declares nothing. `.muted` is the shared
-               soft-ink class rather than a new one, for the same reason. Deliberately not `required`:
-               §7 makes a description optional, and a blank one stores "" and writes no event at all. *@
             <div class="form-field">
                 <label for="description">Description <span class="muted">(optional)</span></label>
                 <InputTextArea id="description" @bind-Value="Input.Description" rows="3" autocomplete="off" />
@@ -185,16 +141,10 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        // BL0008: a form POST binds Input itself and may assign null, so the default lives here.
         Input ??= new();
 
         _sections = await MenuSections.ListAsync(HttpContext.RequestAborted);
 
-        // Pre-selected rather than left on Guid.Empty. A <select> with no selected option shows its
-        // first one and posts that value, so a form that left this at the default would LOOK correct
-        // and submit an identifier naming nothing — which the write service would report and the person
-        // would read as a bug. Only on the first render: a re-render after a failed post must keep what
-        // was chosen.
         if (Input.MenuSectionIdentifier == Guid.Empty && _sections.Count > 0)
         {
             Input.MenuSectionIdentifier = _sections[0].MenuSectionIdentifier;
@@ -205,9 +155,6 @@ else
     {
         if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } administrator)
         {
-            // Endpoint authorization already guarantees an administrator; this is the belt to that
-            // brace, because menu_item_event.actor_person_identifier is NOT NULL and §7 requires every
-            // change to name somebody.
             _errorMessage = "Your session could not be identified. Sign in again and retry.";
             return;
         }
@@ -221,9 +168,6 @@ else
             administrator,
             HttpContext.RequestAborted);
 
-        // A section deleted or renamed out from under a form somebody left open. Reported rather than
-        // thrown: the outcome exists precisely so this page can say which field was wrong instead of
-        // showing a foreign-key constraint name.
         if (_created.Outcome is CreateMenuItemOutcome.MenuSectionNotFound)
         {
             _errorMessage =
@@ -236,26 +180,15 @@ else
 
     private sealed class CreateMenuItemInputModel
     {
-        // No [Required] attribute, and that is deliberate rather than an omission: Guid is a value type,
-        // so [Required] passes on Guid.Empty and would assert nothing. The select is pre-selected, has
-        // no empty option, and the write service reports an identifier that names nothing — three
-        // defences, none of which is a validation attribute that does not work.
         public Guid MenuSectionIdentifier { get; set; }
 
         [Required(ErrorMessage = "Give the item a name.")]
         [StringLength(120, MinimumLength = 1, ErrorMessage = "The name must be 1–120 characters.")]
         public string Name { get; set; } = string.Empty;
 
-        // No [Required]: §7 makes a description optional and a blank one is stored as "". The 2,000 is
-        // this form's own limit rather than the column's — `menu_item.description` is `text` and has none
-        // — and it is here rather than in DapperMenuAdministration for the reason that file records: a
-        // ceiling invented in the data-access layer would be that layer overruling the schema of record.
-        // A form is allowed an opinion about how much prose fits on a menu.
         [StringLength(2000, ErrorMessage = "The description must be 2,000 characters or fewer.")]
         public string Description { get; set; } = string.Empty;
 
-        // The upper bound is numeric(10,2)'s: eight digits before the point. Bounded here so the form
-        // says so, and again in DapperMenuAdministration so no other caller can get past it.
         [Range(0, 99999999.99, ErrorMessage = "The price must be between 0 and 99,999,999.99.")]
         public decimal PriceAmount { get; set; }
     }

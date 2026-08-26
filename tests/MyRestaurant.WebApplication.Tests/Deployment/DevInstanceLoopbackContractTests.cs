@@ -2,64 +2,17 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Deployment;
 
-/// <summary>
-/// Every helper that dials the web application dials the address <c>compose.yaml</c> actually
-/// publishes, written as an address literal (TECHNICAL_SPECIFICATION §14.3a, §16.4, <b>F-56</b>).
-///
-/// <para><b>Why this exists.</b> <c>compose.yaml</c> publishes <c>web</c> as
-/// <c>127.0.0.1:8080:8080</c> — one address, IPv4, and nothing listening on <c>::1</c>. Both tunnel
-/// helpers defaulted <c>TUNNEL_TARGET</c> to <c>http://localhost:8080</c>, and that single value is
-/// dialled by three separate clients: <c>cloudflared</c>, and then whichever of <c>curl</c> or
-/// <c>wget</c> the host has. <c>curl</c> and GNU <c>wget</c> try the next address when the first
-/// refuses; BusyBox <c>wget</c> does not — and it is the second entry in the probe chain of a script
-/// whose entire premise is a host that may not have <c>curl</c>. The visible cost is worse than the
-/// risk and is what made the finding reachable: <c>cloudflared</c> reports the address it failed on,
-/// so a tunnel log fills with <c>dial tcp [::1]:8080: connect: connection refused</c> and an operator
-/// goes looking for an IPv6 misconfiguration that does not exist.</para>
-///
-/// <para><b>Why the subject is derived and not listed.</b> This is F-50's pattern rather than a grep
-/// for a hostname: <c>compose.yaml</c>'s published port is the authoritative statement of where the
-/// application can be reached on this host, and each helper's <c>TUNNEL_TARGET</c> default is a
-/// restatement of it. So the expected host and port are read out of the compose file and the
-/// restatements are checked against them. Changing the published port and forgetting a helper fails
-/// this file by name.</para>
-///
-/// <para><b>Scope, stated so the gaps are deliberate.</b> This asserts what a <em>program</em> dials,
-/// which in each helper is exactly one variable's default. It deliberately does <em>not</em> assert
-/// that no script mentions <c>localhost</c>: <c>run.sh</c> prints <c>http://localhost:8080</c> in a
-/// sentence telling a human what to open in a browser, which is correct — browsers resolve both
-/// addresses and try both — and failing on it would be reporting a finding on a correct tree (F-41).
-/// It also says nothing about whether the port is free or whether the stack starts; those are
-/// behavioural questions about a container engine and belong to a CI job on a Podman host.</para>
-///
-/// <para><b>What a shape change does here, deliberately.</b> The compose scan reads the block form
-/// this file uses; rewriting <c>ports:</c> as a flow sequence, or renaming the helpers' variable,
-/// fails the non-vacuity fact rather than passing quietly. That is the intended behaviour and the
-/// reason that fact runs first: this test is teachable and its silence is not evidence. It differs
-/// from <c>ComposeDependencyContractTests</c> accepting the list form of <c>depends_on</c> — there,
-/// both engines normalise the two forms to the same meaning, so failing would report a finding on a
-/// correct file; here, an unread port mapping means the address was never checked at all.</para>
-///
-/// <para>Pure: reads three files off the disk it was built from. No server, no container, no engine.</para>
-/// </summary>
 public sealed class DevInstanceLoopbackContractTests
 {
     private const string SolutionFileName = "MyRestaurant.slnx";
     private const string ComposeRelativePath = "compose.yaml";
 
-    /// <summary>The helpers whose <c>TUNNEL_TARGET</c> default must agree with the published port.</summary>
     private static readonly string[] HelperRelativePaths =
     [
         "scripts/dev_instance.sh",
         "scripts/quick_tunnel.sh",
     ];
 
-    /// <summary>
-    /// The scan read the published port and both helpers' defaults. Asserted first and on its own,
-    /// because every assertion below it is satisfied by an empty set (<b>F-41</b>) — a renamed script
-    /// or a re-indented <c>ports:</c> block would otherwise turn this whole file green by finding
-    /// nothing at all.
-    /// </summary>
     [Fact]
     public void TheScanFindsThePublishedPortAndEveryHelperDefault()
     {
@@ -87,11 +40,6 @@ public sealed class DevInstanceLoopbackContractTests
         }
     }
 
-    /// <summary>
-    /// <b>This is F-56.</b> Each helper dials the host and port <c>compose.yaml</c> publishes, and
-    /// nothing else — because a helper pointed at an address the stack does not publish fails in a
-    /// vocabulary that names neither file.
-    /// </summary>
     [Fact]
     public void EveryHelperDialsThePublishedAddress()
     {
@@ -99,13 +47,6 @@ public sealed class DevInstanceLoopbackContractTests
 
         foreach (HelperTarget target in ReadHelperTargets())
         {
-            // No string.Create here, and that is deliberate rather than a simplification: every hole
-            // in this message is already a string, so there is nothing culture-sensitive to format.
-            // The first version of this file wrapped it in string.Create(CultureInfo.InvariantCulture,
-            // …) out of habit and did not compile — an additive expression only converts to an
-            // interpolated string handler when EVERY operand is itself an interpolated string, and one
-            // of these was a plain literal, so the call bound to no overload. Every other string.Create
-            // in this tree prefixes each operand with '$'.
             Assert.True(
                 string.Equals(target.Host, published.Host, StringComparison.Ordinal)
                 && string.Equals(target.Port, published.Port, StringComparison.Ordinal),
@@ -117,11 +58,6 @@ public sealed class DevInstanceLoopbackContractTests
         }
     }
 
-    /// <summary>
-    /// Each default names an address literal rather than a hostname. The finding itself: a name that
-    /// resolves to <c>::1</c> first works only if every client dialling it falls back to the second
-    /// address, and BusyBox <c>wget</c> — the second entry in the helper's own probe chain — does not.
-    /// </summary>
     [Fact]
     public void EveryHelperDialsAnAddressLiteralRatherThanAName()
     {
@@ -138,12 +74,6 @@ public sealed class DevInstanceLoopbackContractTests
         }
     }
 
-    /// <summary>
-    /// What is published is a loopback address. This is the reason the rule above exists — one
-    /// address, no listener on <c>::1</c> — so if the port is ever published on <c>0.0.0.0</c> the
-    /// justification is gone and the rule should be re-argued rather than silently kept. A test that
-    /// stayed green through that change would be asserting a coincidence.
-    /// </summary>
     [Fact]
     public void ThePublishedAddressIsStillLoopback()
     {
@@ -160,27 +90,10 @@ public sealed class DevInstanceLoopbackContractTests
             + " finding.");
     }
 
-    // ---------------------------------------------------------------------------------------------
-    // Reading the three files. Plain string work, no parser and no regular expressions — the same
-    // choice ConfigurationSurfaceTests and ComposeDependencyContractTests make about this same
-    // compose file, and for the same reason: a YAML package in the unit test project would be a
-    // dependency taken on to read indentation.
-    // ---------------------------------------------------------------------------------------------
-
     private sealed record PublishedAddress(string Host, string Port);
 
     private sealed record HelperTarget(string Path, string Host, string Port);
 
-    /// <summary>
-    /// The host and container-side port of the <c>web</c> service's published port. The shape being
-    /// read, which is the whole of compose's schema that matters here:
-    /// <code>
-    /// services:
-    ///   web:
-    ///     ports:
-    ///       - "127.0.0.1:8080:8080"
-    /// </code>
-    /// </summary>
     private static PublishedAddress ReadPublishedWebAddress()
     {
         string[] lines = ReadRepositoryFile(ComposeRelativePath).Split('\n');
@@ -239,8 +152,6 @@ public sealed class DevInstanceLoopbackContractTests
 
             if (parts.Length == 2)
             {
-                // "8080:8080" — no host component, so every interface. Reported as such rather than
-                // guessed at; ThePublishedAddressIsStillLoopback is the assertion that fails on it.
                 return new PublishedAddress("0.0.0.0", parts[1]);
             }
         }
@@ -248,12 +159,6 @@ public sealed class DevInstanceLoopbackContractTests
         return new PublishedAddress(string.Empty, string.Empty);
     }
 
-    /// <summary>
-    /// The host and port each helper dials by default, read out of its single
-    /// <c>TARGET="${TUNNEL_TARGET:-http://host:port}"</c>-shaped assignment. The variable name differs
-    /// between the two scripts, so the anchor is the parameter expansion rather than the assignment's
-    /// left-hand side.
-    /// </summary>
     private static List<HelperTarget> ReadHelperTargets()
     {
         const string targetAnchor = "${TUNNEL_TARGET:-";
@@ -269,7 +174,6 @@ public sealed class DevInstanceLoopbackContractTests
                 string line = rawLine.TrimEnd('\r').Trim();
                 if (line.StartsWith('#'))
                 {
-                    // A comment restating the default is documentation, not the thing that is dialled.
                     continue;
                 }
 
@@ -322,14 +226,12 @@ public sealed class DevInstanceLoopbackContractTests
         return indent;
     }
 
-    /// <summary>The text before the first colon, or empty when the line is not 'name:'.</summary>
     private static string NameBeforeColon(string content)
     {
         int colon = content.IndexOf(':', StringComparison.Ordinal);
         return colon <= 0 ? string.Empty : content[..colon].Trim();
     }
 
-    /// <summary>The first line equal to <paramref name="value"/> at or after <paramref name="from"/>.</summary>
     private static int IndexOfLine(string[] lines, string value, int from)
     {
         for (int index = from; index < lines.Length; index++)
@@ -343,12 +245,6 @@ public sealed class DevInstanceLoopbackContractTests
         return -1;
     }
 
-    /// <summary>
-    /// The first line at or after <paramref name="from"/> whose indentation is exactly
-    /// <paramref name="indent"/> spaces and which carries content — i.e. where the enclosing block
-    /// ends. Returns the line count when the block runs to the end of the file. The same walk
-    /// <c>ComposeDependencyContractTests</c> uses on this file, deliberately.
-    /// </summary>
     private static int IndexOfIndent(string[] lines, int from, int indent)
     {
         for (int index = from; index < lines.Length; index++)
@@ -389,10 +285,6 @@ public sealed class DevInstanceLoopbackContractTests
         return File.ReadAllText(path);
     }
 
-    /// <summary>
-    /// The same walk up to <c>MyRestaurant.slnx</c> the other contract tests use, and it fails
-    /// rather than skips for the same reason: a check that quietly declines to run is worse than none.
-    /// </summary>
     private static DirectoryInfo FindRepositoryRoot()
     {
         for (DirectoryInfo? candidate = new(AppContext.BaseDirectory);

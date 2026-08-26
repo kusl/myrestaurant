@@ -4,16 +4,6 @@ using static MyRestaurant.Domain.Tests.OrderTestBuilders;
 
 namespace MyRestaurant.Domain.Tests;
 
-/// <summary>
-/// Tests for <see cref="OrderNarrative"/> — the fold that turns an order's event log into the per-line
-/// story §11.1 renders (TECHNICAL_SPECIFICATION §6.4, §8.5, §11.1).
-///
-/// <para>The load-bearing one is <see cref="NonRemovedLines_AgreeWithOrderProjectionOnARandomisedSequence"/>.
-/// There are now two folds over the same events — this one and <see cref="OrderProjection"/> — and
-/// §8.5's equivalence test only pins <em>that</em> one against the SQL views. Without this test the
-/// guest's screen and the counter's bill could drift apart silently, and the first person to notice
-/// would be a customer being charged something the app had never shown them.</para>
-/// </summary>
 public sealed class OrderNarrativeTests
 {
     private static readonly Guid Order = Guid.Parse("0192f100-0000-7000-8000-0000000000a1");
@@ -59,8 +49,6 @@ public sealed class OrderNarrativeTests
     [Fact]
     public void ARemovedLine_StaysInTheNarrativeWithItsActorAndReason_AndBillsNothing()
     {
-        // §11.1 wants removed lines struck through with actor and reason — which means the fold must
-        // keep them, unlike order_current_line, which is where the two views deliberately differ.
         IReadOnlyList<NarratedOrderLine> lines = OrderNarrative.FromEvents([
             GuestSubmission(Order, 1, Guest, At(0), Add(LineOne, Soup, 1, 4.50m)),
             StaffEdit(Order, 2, Staff, OrderActorRole.Counter, At(60), Remove(LineOne, "comped — long wait")),
@@ -74,7 +62,6 @@ public sealed class OrderNarrativeTests
         Assert.Equal("comped — long wait", line.RemovalReason);
         Assert.Equal(At(60), line.RemovedAt);
 
-        // A removed line contributes nothing to a total, which is what sitting_bill also says (§8.3).
         Assert.Equal(0m, line.LineTotalAmount);
     }
 
@@ -105,8 +92,6 @@ public sealed class OrderNarrativeTests
         Assert.True(line.IsPriceAdjusted);
         Assert.Equal(2, line.PriceAdjustments.Count);
 
-        // The "old" side of the arrow is not stored anywhere — it is the price the fold was holding
-        // when the adjustment arrived, which is exactly why this cannot be answered by a view.
         Assert.Equal(4.50m, line.PriceAdjustments[0].PreviousUnitPriceAmount);
         Assert.Equal(3.00m, line.PriceAdjustments[0].NewUnitPriceAmount);
         Assert.Equal("half portion", line.PriceAdjustments[0].Reason);
@@ -116,7 +101,6 @@ public sealed class OrderNarrativeTests
         Assert.Equal(0m, line.PriceAdjustments[1].NewUnitPriceAmount);
         Assert.Equal(OrderActorRole.Administrator, line.PriceAdjustments[1].ActorRole);
 
-        // The original is kept alongside the current one, so "was 4.50" survives two adjustments.
         Assert.Equal(4.50m, line.OriginalUnitPriceAmount);
         Assert.Equal(0m, line.CurrentUnitPriceAmount);
     }
@@ -139,8 +123,6 @@ public sealed class OrderNarrativeTests
     [Fact]
     public void EventsAreFoldedBySequenceNumber_NotByTheOrderTheyArriveIn()
     {
-        // §6.4: "the latest by parent sequence_number". A reader that trusted list order would report a
-        // pending line here, and the guest would be told their food had not arrived when it had.
         IReadOnlyList<NarratedOrderLine> lines = OrderNarrative.FromEvents([
             Fulfillment(Order, 3, Staff, OrderActorRole.Kitchen, At(120), Fulfill(LineOne)),
             GuestSubmission(Order, 1, Guest, At(0), Add(LineOne, Soup, 1, 4.50m)),
@@ -179,8 +161,6 @@ public sealed class OrderNarrativeTests
             lines.Select(line => line.OrderLineIdentifier).ToArray());
     }
 
-    // --- §6.5.3, restated on the read side so a surface can grey out what the transaction would refuse.
-
     [Fact]
     public void GuestMayRemove_TheirOwnPendingGuestSubmittedLine()
     {
@@ -202,8 +182,6 @@ public sealed class OrderNarrativeTests
     [Fact]
     public void GuestMayNotRemove_ALineStaffAddedForThem()
     {
-        // The actor happens to be the guest's own identifier here, and it still must not qualify: §6.5.3
-        // keys on the adding event being the guest's own guest_submission, not merely on who typed it.
         NarratedOrderLine line = Single(
             StaffEdit(Order, 1, Guest, OrderActorRole.Counter, At(0), Add(LineOne, Soup, 1, 4.50m)));
 
@@ -230,14 +208,6 @@ public sealed class OrderNarrativeTests
         Assert.False(line.GuestMayRemove(Guest));
     }
 
-    /// <summary>
-    /// The drift guard. Two folds now read the same log — this one for the guest, and
-    /// <see cref="OrderProjection"/> for the bill, whose agreement with the SQL views §8.5 pins. This
-    /// asserts the third edge of that triangle: on a seeded random sequence, the narrative's
-    /// non-removed lines are the projection's lines, field for field and in the same order. Seeded, not
-    /// random, for the reason the §8.5 test is: a projection bug that only reproduces on Tuesdays is
-    /// worse than no test.
-    /// </summary>
     [Fact]
     public void NonRemovedLines_AgreeWithOrderProjectionOnARandomisedSequence()
     {
@@ -267,10 +237,8 @@ public sealed class OrderNarrativeTests
             Assert.Equal(theirs.LineTotalAmount, mine.LineTotalAmount);
         }
 
-        // And the totals a guest reads must be the total the bill reads.
         Assert.Equal(projected.CurrentTotalAmount, live.Sum(line => line.LineTotalAmount));
 
-        // The sequence is only worth anything if it actually exercised every branch.
         Assert.Contains(narrated, line => line.IsRemoved);
         Assert.Contains(narrated, line => line.IsFulfilled);
         Assert.Contains(narrated, line => line.IsPriceAdjusted);
@@ -279,12 +247,6 @@ public sealed class OrderNarrativeTests
     private static NarratedOrderLine Single(params OrderEvent[] events)
         => Assert.Single(OrderNarrative.FromEvents(events));
 
-    /// <summary>
-    /// A deterministic pseudo-random event log. Operations are kept well-formed against the fold's own
-    /// notion of state — a fulfillment targets something pending, a reversal something fulfilled — so
-    /// the sequence looks like a real service rather than noise, and both folds are handed identical
-    /// input either way.
-    /// </summary>
     private static IReadOnlyList<OrderEvent> GenerateSequence(int seed, int eventCount)
     {
         Random random = new(seed);
@@ -295,9 +257,6 @@ public sealed class OrderNarrativeTests
         List<Guid> fulfilled = [];
         List<Guid> live = [];
 
-        // A fixed prologue, so the three coverage assertions above are guaranteed by construction
-        // rather than by the seed happening to be kind. A test whose coverage depends on which
-        // pseudo-random numbers came out is a test that can quietly stop checking anything.
         Guid prologueRemoved = Guid.NewGuid();
         Guid prologueFulfilled = Guid.NewGuid();
         Guid prologueAdjusted = Guid.NewGuid();

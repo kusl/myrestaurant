@@ -3,15 +3,10 @@ using Xunit;
 
 namespace MyRestaurant.Domain.Tests;
 
-/// <summary>
-/// Fixes the Argon2id PHC string format (TECHNICAL_SPECIFICATION §3.2): standard Base64 (not URL-safe),
-/// no padding, canonical <c>$argon2id$v=19$m=..,t=..,p=..$salt$tag</c> shape. The all-zero salt/tag
-/// encodings are hardcoded (independently computed) so the alphabet choice cannot silently regress.
-/// </summary>
 public sealed class Argon2PhcStringTests
 {
-    private const string ZeroSaltBase64 = "AAAAAAAAAAAAAAAAAAAAAA";                            // 16 zero bytes
-    private const string ZeroTagBase64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";        // 32 zero bytes
+    private const string ZeroSaltBase64 = "AAAAAAAAAAAAAAAAAAAAAA";
+    private const string ZeroTagBase64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
     [Fact]
     public void Encode_ProducesTheCanonicalString()
@@ -63,11 +58,11 @@ public sealed class Argon2PhcStringTests
     [Theory]
     [InlineData("")]
     [InlineData("not-a-phc-string")]
-    [InlineData("$argon2i$v=19$m=65536,t=3,p=1$AAAA$AAAA")]     // wrong algorithm
-    [InlineData("$argon2id$v=18$m=65536,t=3,p=1$AAAA$AAAA")]    // wrong version
-    [InlineData("$argon2id$v=19$m=65536,t=3$AAAA$AAAA")]        // only two cost parameters
-    [InlineData("$argon2id$v=19$m=65536,t=3,p=1$AAAA")]         // missing the tag segment
-    [InlineData("$argon2id$v=19$m=65536,t=3,p=1$@@@@$AAAA")]    // salt is not valid base64
+    [InlineData("$argon2i$v=19$m=65536,t=3,p=1$AAAA$AAAA")]
+    [InlineData("$argon2id$v=18$m=65536,t=3,p=1$AAAA$AAAA")]
+    [InlineData("$argon2id$v=19$m=65536,t=3$AAAA$AAAA")]
+    [InlineData("$argon2id$v=19$m=65536,t=3,p=1$AAAA")]
+    [InlineData("$argon2id$v=19$m=65536,t=3,p=1$@@@@$AAAA")]
     public void TryParse_RejectsMalformedInput(string phc)
     {
         Assert.False(Argon2PhcString.TryParse(phc, out Argon2Parameters? parameters));
@@ -86,9 +81,9 @@ public sealed class Argon2PhcStringTests
     }
 
     [Theory]
-    [InlineData(131072, 3, 1)] // memory increased
-    [InlineData(65536, 4, 1)]  // iterations increased
-    [InlineData(65536, 3, 2)]  // parallelism changed
+    [InlineData(131072, 3, 1)]
+    [InlineData(65536, 4, 1)]
+    [InlineData(65536, 3, 2)]
     public void NeedsRehash_IsTrueWhenAnyCostParameterDiffers(int memory, int iterations, int parallelism)
     {
         Argon2Parameters stored = new(65536, 3, 1, new byte[16], new byte[32]);

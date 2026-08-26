@@ -6,19 +6,6 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests;
 
-/// <summary>
-/// Unit tests for <see cref="OrderStaging"/> — the guest's basket (TECHNICAL_SPECIFICATION §6.3,
-/// §6.5.4, §7, §11.1). No database and no rendering: this type exists outside the Razor component
-/// precisely so the decisions in it can be checked here (§16.1 — there is no bUnit in this repository,
-/// so anything with a decision in it moves out of the component).
-///
-/// <para>Two of these protect requirements that fail quietly. <see cref="PruneRemovals"/> is the one
-/// that stops a stale tick from sinking every subsequent send — §6.5.9 refuses the <em>whole</em> event
-/// on one bad operation, so a checkbox left over from before the kitchen fulfilled that line would make
-/// the Send button permanently useless with no explanation. And <see cref="Build"/>'s zero price is the
-/// one that keeps §6.5.4 honest: the transaction is the pricing authority, and sending a
-/// plausible-looking number instead would let a regression there pass unnoticed.</para>
-/// </summary>
 public sealed class OrderStagingTests
 {
     private static readonly Guid SoupIdentifier = Guid.Parse("0192f200-0000-7000-8000-0000000000a1");
@@ -78,7 +65,6 @@ public sealed class OrderStagingTests
     [Fact]
     public void Stage_RefusesAnItemThatIsCurrentlyUnavailable()
     {
-        // §7: a deactivated item stays visible on the menu and cannot be added to a send.
         OrderStaging staging = new();
 
         StagingResult result = staging.Stage(Salmon, 1, null);
@@ -125,7 +111,6 @@ public sealed class OrderStagingTests
     [Fact]
     public void StagingTheSameItemTwice_MakesTwoRows_NotOneDoubled()
     {
-        // Two portions with different notes are two lines in the log (§6.3), so they are two rows here.
         OrderStaging staging = new();
 
         staging.Stage(Soup, 1, "no salt");
@@ -213,8 +198,6 @@ public sealed class OrderStagingTests
     [Fact]
     public void PruneRemovals_DropsMarksForLinesThatAreNoLongerTheGuestsToRemove()
     {
-        // The kitchen fulfilled LineTwo while the tick sat there. Left alone, §6.5.9 would refuse every
-        // send from now on, and the guest would have no idea why.
         OrderStaging staging = new();
         staging.SetMarkedForRemoval(LineOne, "1 × Soup", marked: true);
         staging.SetMarkedForRemoval(LineTwo, "1 × Salad", marked: true);
@@ -273,8 +256,6 @@ public sealed class OrderStagingTests
         LineRemovedOperation third = Assert.IsType<LineRemovedOperation>(batch.Operations[2]);
         Assert.Equal(LineOne, third.OrderLineIdentifier);
 
-        // The descriptions are what the rejection panel prints against OperationIndex, so they must be
-        // in exactly the same order as the operations.
         Assert.Equal("2 × Soup", batch.Descriptions[0]);
         Assert.Equal("1 × Salad", batch.Descriptions[1]);
         Assert.Equal("Remove 1 × Bread", batch.Descriptions[2]);
@@ -283,7 +264,6 @@ public sealed class OrderStagingTests
     [Fact]
     public void Build_MintsAFreshLineIdentifierForEachAddedLine()
     {
-        // §6.4: the identifier is the line's identity. Two portions of soup are two lines.
         OrderStaging staging = new();
         staging.Stage(Soup, 1, null);
         staging.Stage(Soup, 1, null);
@@ -303,9 +283,6 @@ public sealed class OrderStagingTests
     [Fact]
     public void Build_ProposesEveryAddedLineAtZero_BecauseTheTransactionIsThePricingAuthority()
     {
-        // §6.5.4: "unit_price_amount set server-side from the current menu price (client-sent prices
-        // are ignored)". Sending zero means a regression in that overwrite shows up as a free lunch on
-        // the very first order rather than as a stale price nobody spots.
         OrderStaging staging = new();
         staging.Stage(Soup, 3, null);
 
@@ -317,7 +294,6 @@ public sealed class OrderStagingTests
     [Fact]
     public void Build_SendsNoReasonWithAGuestRemoval()
     {
-        // §11.1 asks the guest to tick a line, not to justify it; §6.3 makes the reason nullable.
         OrderStaging staging = new();
         staging.SetMarkedForRemoval(LineOne, "1 × Soup", marked: true);
 
@@ -349,31 +325,8 @@ public sealed class OrderStagingTests
         Assert.Empty(staging.Removals);
     }
 
-    /// <summary>
-    /// The one heading these items are filed under. <c>0005</c> made
-    /// <see cref="MenuItemSummary.MenuSectionIdentifier"/> a mandatory member, so a stand-in has to name
-    /// one; every item here shares it, because nothing in <see cref="OrderStaging"/> groups.
-    /// </summary>
     private static readonly Guid SectionIdentifier = Guid.Parse("0192f200-0000-7000-8000-0000000000c1");
 
-    /// <summary>
-    /// A menu item for the staging tests. Every member <see cref="OrderStaging"/> does not read is at its
-    /// least interesting value — the description is <c>""</c>, the position is 0, and the heading is one
-    /// shared <see cref="SectionIdentifier"/> that is active — because this class stages by identifier,
-    /// prices from <c>PriceAmount</c>, and refuses on <c>IsActive</c> alone. Giving any of them a
-    /// meaningful value would suggest this file has an opinion about it.
-    ///
-    /// <para><b>This factory did not compile after <c>0005</c> (F-84).</b> The record grew from seven
-    /// members to ten — an item's heading, that heading's name, and whether the heading is one a guest
-    /// can see — and a positional constructor call is the one construction that cannot absorb a widened
-    /// record silently. It is therefore the good failure: CS7036 named the missing parameter, where a
-    /// <c>with</c> expression or an object initialiser would have compiled and left this file describing
-    /// an item under no heading.</para>
-    ///
-    /// <para>It is the whole reason this is a factory and the eleventh member cost one line. Slice 49
-    /// joined the heading's <em>description</em> on so §11.1 can render it, and the same CS7036 named the
-    /// same place — which is what a single positional construction site buys.</para>
-    /// </summary>
     private static MenuItemSummary Item(Guid identifier, string name, decimal price, bool isActive)
         => new(
             identifier,
@@ -388,10 +341,6 @@ public sealed class OrderStagingTests
             isActive,
             new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
 
-    /// <summary>
-    /// A deterministic stand-in for <see cref="IIdentifierFactory"/> (§16.1 — hand-written fakes, no
-    /// Moq). Real UUIDv7s would be fine too; counting makes a failure message readable.
-    /// </summary>
     private sealed class CountingIdentifierFactory : IIdentifierFactory
     {
         private int _next;

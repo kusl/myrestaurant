@@ -11,24 +11,8 @@
 @inject RestaurantOptions Options
 @inject RestaurantTime RestaurantClock
 
-@* The counter's landing board (TECHNICAL_SPECIFICATION §11.3, §5.3, §5.4).
-
-   Every open sitting with what is on it, plus the tables settled in the last few hours so a receipt can
-   be checked against the record. Interactive server and subscribed to the broadcaster, because §9 lists
-   the counter as a consumer of OrderLinesChanged: a table's total moving while somebody is standing at
-   the till reading it is the entire point.
-
-   No money is decided here. This screen reads two queries and links; the bill, the adjustments, and
-   Close & settle all live one click in, on the sitting page, which is where the §5.3 transaction is
-   reachable from. *@
-
 <PageTitle>Counter</PageTitle>
 
-@* §11.10's pair. data-live says whether a circuit produced this markup at all, and data-loaded
-   whether the two queries behind it have answered yet — see IsLiveAttributeValue and
-   IsLoadedAttributeValue. The pair is what the §16.3 harness waits on, and the second half is not
-   optional: the circuit's very first render happens with _loaded still false, so data-live alone names
-   the one moment when neither list below exists. *@
 <section class="panel counter-board" id="counter-board-surface"
          data-live="@IsLiveAttributeValue"
          data-loaded="@IsLoadedAttributeValue">
@@ -66,7 +50,6 @@
             }
         </p>
 
-        @* ---- open sittings (§11.3) ------------------------------------------------------------- *@
         @foreach (CounterSittingSummary sitting in _openSittings)
         {
             <article class="counter-sitting" @key="sitting.SittingIdentifier">
@@ -116,14 +99,12 @@
 
                 <div class="counter-sitting-actions">
                     <a class="button-primary" href="@SittingPath(sitting.SittingIdentifier)">Bill &amp; settle</a>
-                    @* §4.5, §11.3: the same rotating QR the table's display shows — the fallback for
-                       when that display is dead. Static SSR, so a plain link rather than a handler. *@
+
                     <a class="button-secondary" href="@JoinCodePath(sitting.TableIdentifier)">Show join code</a>
                 </div>
             </article>
         }
 
-        @* ---- recently settled (§11.3, read-only) ------------------------------------------------ *@
         <section class="counter-settled">
             <h2 class="counter-settled-heading">Settled today</h2>
             <p class="muted">
@@ -161,8 +142,6 @@
                                 @Money(sitting.SettledTotalAmount ?? 0m)
                                 @if (sitting.HasPostCloseCorrections)
                                 {
-                                    @* §5.3: "the UI shows both the stamped settled total and, when
-                                       corrective events exist, the current corrected total". *@
                                     <span class="counter-settled-corrected">
                                         now @Money(sitting.CurrentTotalAmount)
                                     </span>
@@ -177,12 +156,6 @@
 </section>
 
 <style>
-    /* Component-local, like KitchenBoard's and TableDisplay's: every .counter-* class below is read by
-       this file and CounterSitting.razor only, and the shared vocabulary it leans on — .panel, .chip,
-       .lede, .muted, .button-primary — is app.css's and is only consumed here.
-
-       The colours are app.css's as well, unconditionally (F-68), and no var() below carries a
-       fallback (F-69). */
 
     .counter-header {
         display: flex;
@@ -319,19 +292,10 @@
 </style>
 
 @code {
-    /// <summary>
-    /// How far back "settled today" reaches. Long enough to cover a whole service and the shift change
-    /// either side of it, short enough that this stays a working list rather than an archive — the
-    /// archive is administration's (§11.4). Not configuration: §13 does not name it, and a setting
-    /// nobody would change is only another way to be wrong.
-    /// </summary>
     private static readonly TimeSpan RecentlySettledWindow = TimeSpan.FromHours(12);
 
-    /// <summary>A hard cap alongside the window, so one absurd day cannot render a thousand rows.</summary>
     private const int RecentlySettledLimit = 25;
 
-    // Captured once, so nothing touches _lifetime.Token after Dispose — the shape KitchenBoard,
-    // TableDisplay, and TableOrderSurface all use.
     private readonly CancellationTokenSource _lifetime = new();
     private CancellationToken _stopping;
     private IDisposable? _subscription;
@@ -344,45 +308,8 @@
     private decimal _openTotal;
     private int _openPendingLines;
 
-    /// <summary>
-    /// Whether a circuit produced this markup, published as an attribute — §11.10's first bit, which
-    /// every interactive surface publishes: <c>KitchenBoard</c>, <c>CounterSitting</c>,
-    /// <c>TableOrderSurface</c>, <c>TableDisplay</c> and <c>TableArea</c>.
-    ///
-    /// <para>This board is the one screen in the application whose entire purpose is a number that
-    /// moves while somebody stands reading it (§11.3, §9). A prerendered copy of it is correct as of the
-    /// request and then correct forever, which is the failure mode that looks most like success — so
-    /// "a circuit is behind this" has to be assertable from outside.</para>
-    ///
-    /// <para><b>The sentence that used to end this paragraph was wrong, and its wrongness is F-47.</b>
-    /// It read "until now it was the only one of the five live surfaces that did not say". There is no
-    /// list of five. <c>App.razor</c>'s <c>RenderModeForPage</c> makes <em>every</em> routable page
-    /// interactive unless it carries <c>[ExcludeFromInteractiveRouting]</c>, which is six pages plus the
-    /// island hosted inside <c>/table/{id}</c> — and <c>/table</c> had been one of them since M3 while
-    /// publishing nothing at all. A rule enforced as a list of examples is enforced as a list of
-    /// examples (F-46); §11.10 states the rule and §16.4's contract test derives the set from the
-    /// attribute rather than from anybody's memory.</para>
-    /// </summary>
     private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
 
-    /// <summary>
-    /// Whether <see cref="LoadAsync"/> has answered, published alongside <c>data-live</c> — §11.10's
-    /// second bit.
-    ///
-    /// <para><b>Why both, rather than either.</b> <c>ComponentBase</c> renders the moment
-    /// <c>OnInitializedAsync</c> yields, so the circuit's first render is <c>data-live="true"</c> with
-    /// <c>_loaded</c> still false — the one state in which neither the open-sittings list nor "Settled
-    /// today" is in the document. A reader that waited on <c>data-live</c> alone would be steered
-    /// <em>towards</em> that instant rather than past it, and would see two empty lists and believe
-    /// them.</para>
-    ///
-    /// <para>The window is real rather than theoretical, and it is not the prerender: prerendering runs
-    /// the whole lifecycle before it emits, so the first HTML a browser gets is fully loaded. It is the
-    /// hand-over. The circuit builds this component again from nothing, and the DOM goes back to
-    /// "Loading the floor…" for as long as two queries take — milliseconds on a workstation, long
-    /// enough on a loaded CI runner for §16.3 scenario 10 to read the board mid-reload and find a
-    /// settled table on neither list (F-44).</para>
-    /// </summary>
     private string IsLoadedAttributeValue => _loaded ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
@@ -396,13 +323,10 @@
     {
         if (firstRender)
         {
-            // Only on the circuit: OnAfterRender does not run during prerendering, so no subscription is
-            // created for a render about to be thrown away.
             _subscription = Broadcaster.Subscribe(OnDomainNotification);
         }
     }
 
-    /// <summary>Both queries, one pass. Small and indexed; a counter is not a hot path.</summary>
     private async Task LoadAsync()
     {
         _openSittings = await CounterReads.ListOpenSittingsAsync(_stopping);
@@ -416,11 +340,6 @@
         _openPendingLines = _openSittings.Sum(sitting => sitting.PendingLineCount);
     }
 
-    /// <summary>
-    /// §9 lists the counter as a consumer of OrderLinesChanged; a close and a join both change what this
-    /// list says too, so all four are handled with one re-read. Nothing is filtered by identifier: this
-    /// board is the whole floor by definition, so every one of these events is its business.
-    /// </summary>
     private void OnDomainNotification(DomainNotification notification)
     {
         bool concernsTheFloor = notification
@@ -448,11 +367,9 @@
             }
             catch (OperationCanceledException)
             {
-                // Disposed between the broadcast and the query; nothing to update.
             }
             catch (ObjectDisposedException)
             {
-                // Same, one layer down.
             }
         });
     }
@@ -463,10 +380,6 @@
 
     private static string JoinCodePath(Guid tableIdentifier) => $"/counter/tables/{tableIdentifier}/join-code";
 
-    /// <summary>
-    /// How long a table has been sitting, rendered coarsely — a duration, not an instant, so it does not
-    /// go through <see cref="RestaurantTime"/>: there is no zone to render an elapsed span in.
-    /// </summary>
     private string Elapsed(DateTimeOffset since)
     {
         TimeSpan elapsed = Clock.UtcNow - since;

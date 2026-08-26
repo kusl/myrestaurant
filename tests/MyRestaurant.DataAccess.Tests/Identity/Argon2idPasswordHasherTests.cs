@@ -5,15 +5,8 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Identity;
 
-/// <summary>
-/// Unit tests for the Argon2id <see cref="IPasswordHasher{TUser}"/> (TECHNICAL_SPECIFICATION §3.2,
-/// ADR-0008). These compute real Argon2, so they need no container — but they do use modest cost
-/// parameters (still above the startup floor) to stay fast. They assert the round-trip, rejection
-/// of wrong/garbage input, PHC-string shape, salt randomness, and the transparent-rehash signal.
-/// </summary>
 public sealed class Argon2idPasswordHasherTests
 {
-    // Above the §3.2 floor (19456/2/1) yet quick enough for a unit test.
     private static readonly Argon2HashingOptions FastOptions = new(
         MemoryKibibytes: 19456, Iterations: 2, Parallelism: 1, MaxConcurrentHashes: 4);
 
@@ -85,8 +78,6 @@ public sealed class Argon2idPasswordHasherTests
     [Fact]
     public void Verify_AgainstAHashMadeWithDifferentParameters_SignalsRehashNeeded()
     {
-        // A hash produced with weaker (still-valid) parameters must verify but ask to be rehashed
-        // when the current configuration is stronger — Identity then rehashes at sign-in.
         Argon2HashingOptions weaker = FastOptions with { Iterations = FastOptions.Iterations + 1 };
         using Argon2idPasswordHasher legacyHasher = NewHasher(weaker);
         using Argon2idPasswordHasher currentHasher = NewHasher(FastOptions);

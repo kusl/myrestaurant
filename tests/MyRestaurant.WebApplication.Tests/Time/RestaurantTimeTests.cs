@@ -5,31 +5,9 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Time;
 
-/// <summary>
-/// The rendering half of F-36 (TECHNICAL_SPECIFICATION §8.1: instants are "stored <c>timestamptz</c>
-/// UTC; rendered in <c>RESTAURANT_TIME_ZONE</c>"; §13, §11.7).
-///
-/// <para>Two properties matter more than any individual format string, and both are asserted directly
-/// rather than left to inspection. First, the <em>reader's</em> zone never enters: the same instant
-/// renders differently for a Tokyo restaurant than for a New York one, and identically for every
-/// viewer of either. Second, the text is culture-independent — a container image that ships a
-/// different default locale must not change what a guest sees, which is exactly the failure mode
-/// <c>ToString("t")</c> had.</para>
-///
-/// <para>The literal expectations below double as the specification <c>js/clock.js</c> is written
-/// against: the footer's ticking text must be byte-identical to what the server painted, or the
-/// handover at page load is visible as a flicker.</para>
-/// </summary>
 public sealed class RestaurantTimeTests
 {
-    /// <summary>
-    /// Sunday 26 July 2026, 19:04:05 UTC. Chosen so that every zone below lands somewhere interesting:
-    /// New York is in daylight saving (UTC−4), Tokyo has already rolled into Monday, and Kathmandu sits
-    /// on a 45-minute offset — the case a naive "offset is a whole number of hours" assumption breaks.
-    /// </summary>
     private static readonly DateTimeOffset Instant = new(2026, 7, 26, 19, 4, 5, TimeSpan.Zero);
-
-    // --- the reader's zone is irrelevant; the restaurant's is everything -------------------------
 
     [Fact]
     public void Time_RendersInTheRestaurantZone_NotUtc()
@@ -46,13 +24,9 @@ public sealed class RestaurantTimeTests
     [Fact]
     public void Date_RollsForwardWhenTheRestaurantZoneHasAlreadyPassedMidnight()
     {
-        // The instant is still the 26th in UTC and in New York, and already the 27th in Tokyo. A guest
-        // reading their history from abroad must see the restaurant's date, not their own.
         Assert.Equal("26 Jul 2026", NewYork().Date(Instant));
         Assert.Equal("27 Jul 2026", Tokyo().Date(Instant));
     }
-
-    // --- the individual formats -------------------------------------------------------------------
 
     [Fact]
     public void TimeWithSeconds_IsTheTimeToTheSecond()
@@ -78,8 +52,6 @@ public sealed class RestaurantTimeTests
     public void MachineReadable_APositiveOffsetIsSigned()
         => Assert.Equal("2026-07-27T04:04:05+09:00", Tokyo().MachineReadable(Instant));
 
-    // --- the 12-versus-24 decision (§13) ----------------------------------------------------------
-
     [Fact]
     public void Time_TwentyFourHourClock_PadsAndDropsTheMeridiem()
         => Assert.Equal("15:04", NewYork(usesTwelveHourClock: false).Time(Instant));
@@ -97,8 +69,6 @@ public sealed class RestaurantTimeTests
     [Fact]
     public void Time_Midnight_RendersAsTwelveAmNotZeroAm()
     {
-        // 04:00 UTC is 00:00 in New York on the same day — the hour a modulo-12 that forgets to remap
-        // zero gets wrong, and the one js/clock.js has to remap the same way.
         DateTimeOffset midnightInNewYork = new(2026, 7, 26, 4, 0, 0, TimeSpan.Zero);
 
         Assert.Equal("12:00 AM", NewYork().Time(midnightInNewYork));
@@ -114,13 +84,9 @@ public sealed class RestaurantTimeTests
         Assert.Equal("12:00", NewYork(usesTwelveHourClock: false).Time(noonInNewYork));
     }
 
-    // --- the culture independence that F-36 was really about --------------------------------------
-
     [Fact]
     public void EveryFormat_IsUnaffectedByTheAmbientCulture()
     {
-        // The deployed container's locale is whatever its base image carries. Before this class, that
-        // decided 12- versus 24-hour, the separator, and the month names. It must now decide nothing.
         RestaurantTime restaurantTime = NewYork();
 
         string time = restaurantTime.Time(Instant);
@@ -142,8 +108,6 @@ public sealed class RestaurantTimeTests
         }
     }
 
-    // --- the zone label the footer shows ----------------------------------------------------------
-
     [Theory]
     [InlineData("America/New_York", "New York")]
     [InlineData("Asia/Tokyo", "Tokyo")]
@@ -156,15 +120,13 @@ public sealed class RestaurantTimeTests
     public void ZoneIdentifier_IsTheConfiguredString_NotWhateverTheHostNormalizedItTo()
         => Assert.Equal("America/New_York", NewYork().ZoneIdentifier);
 
-    // --- the snapshot js/clock.js anchors from ----------------------------------------------------
-
     [Fact]
     public void Snapshot_CarriesTheInstantAndTheOffsetThatAppliesToIt()
     {
         RestaurantClockSnapshot snapshot = NewYork().Snapshot(Instant);
 
         Assert.Equal(Instant.ToUnixTimeMilliseconds(), snapshot.EpochMilliseconds);
-        Assert.Equal(-240, snapshot.UtcOffsetMinutes);   // EDT
+        Assert.Equal(-240, snapshot.UtcOffsetMinutes);
         Assert.Equal("America/New_York", snapshot.ZoneIdentifier);
         Assert.Equal("New York", snapshot.ZoneLabel);
         Assert.True(snapshot.UsesTwelveHourClock);
@@ -177,17 +139,14 @@ public sealed class RestaurantTimeTests
     [Fact]
     public void Snapshot_FindsTheNextDaylightSavingTransition()
     {
-        // A page left open across the first Sunday in November must not keep rendering EDT. The clocks
-        // go back at 02:00 EDT = 06:00 UTC on 2026-11-01.
         RestaurantClockSnapshot snapshot = NewYork().Snapshot(Instant);
 
         Assert.NotNull(snapshot.NextTransitionEpochMilliseconds);
-        Assert.Equal(-300, snapshot.NextUtcOffsetMinutes);   // EST
+        Assert.Equal(-300, snapshot.NextUtcOffsetMinutes);
 
         DateTimeOffset transition =
             DateTimeOffset.FromUnixTimeMilliseconds(snapshot.NextTransitionEpochMilliseconds!.Value);
 
-        // Bisection stops at one-second precision, so assert the second rather than the millisecond.
         Assert.True(
             (transition - new DateTimeOffset(2026, 11, 1, 6, 0, 0, TimeSpan.Zero)).Duration()
                 <= TimeSpan.FromSeconds(1),
@@ -197,8 +156,6 @@ public sealed class RestaurantTimeTests
     [Fact]
     public void Snapshot_TheReportedTransitionIsWhereTheOffsetActuallyChanges()
     {
-        // Guards the bisection against an off-by-one that would have the script switch offsets an hour
-        // early or late — a bug nobody would see until the day it happened.
         TimeZoneInfo zone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
         RestaurantClockSnapshot snapshot = NewYork().Snapshot(Instant);
 
@@ -239,8 +196,6 @@ public sealed class RestaurantTimeTests
     [Fact]
     public void Snapshot_AfterTheCachedTransition_ReportsTheFollowingOne()
     {
-        // The memo must expire at the transition it named, or a display left running through November
-        // would keep insisting the change is still ahead of it.
         RestaurantTime restaurantTime = NewYork();
         _ = restaurantTime.Snapshot(Instant);
 
@@ -248,10 +203,8 @@ public sealed class RestaurantTimeTests
         RestaurantClockSnapshot snapshot = restaurantTime.Snapshot(afterTheChange);
 
         Assert.Equal(-300, snapshot.UtcOffsetMinutes);
-        Assert.Equal(-240, snapshot.NextUtcOffsetMinutes);   // the following March
+        Assert.Equal(-240, snapshot.NextUtcOffsetMinutes);
     }
-
-    // --- construction from configuration ----------------------------------------------------------
 
     [Fact]
     public void ConstructedFromOptions_TakesTheZoneAndTheClockFormat()
@@ -267,8 +220,6 @@ public sealed class RestaurantTimeTests
     public void ConstructedFromOptions_DefaultsToTheTwelveHourClock()
         => Assert.True(new RestaurantTime(Options("America/New_York", RestaurantOptions.DefaultClockFormat))
             .UsesTwelveHourClock);
-
-    // --- helpers ------------------------------------------------------------------------------------
 
     private static RestaurantTime NewYork(bool usesTwelveHourClock = true)
         => Build("America/New_York", usesTwelveHourClock);
@@ -300,10 +251,6 @@ public sealed class RestaurantTimeTests
         GuestRegistrationWindowMinutes = 0,
     };
 
-    /// <summary>
-    /// Swaps the ambient culture for the duration of a block and puts it back. Hand-written rather than
-    /// reached for from a package, in the spirit of §16.1's preference for fakes over machinery.
-    /// </summary>
     private sealed class CultureScope : IDisposable
     {
         private readonly CultureInfo _previousCulture;

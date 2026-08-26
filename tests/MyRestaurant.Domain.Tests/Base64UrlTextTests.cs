@@ -3,17 +3,11 @@ using Xunit;
 
 namespace MyRestaurant.Domain.Tests;
 
-/// <summary>
-/// Locks the Base64Url encoding (RFC 4648 §5, no padding) used for join tokens and secret material
-/// (TECHNICAL_SPECIFICATION §4.3). The alphabet must be URL-safe (<c>-</c>/<c>_</c>, never
-/// <c>+</c>/<c>/</c>) with padding stripped, and decoding must reject malformed input without throwing.
-/// </summary>
 public sealed class Base64UrlTextTests
 {
     [Fact]
     public void Encode_UsesUrlSafeAlphabetWithoutPadding()
     {
-        // Standard Base64 of these bytes is "+/8="; URL-safe, unpadded, that is "-_8".
         string encoded = Base64UrlText.Encode([0xFB, 0xFF]);
 
         Assert.Equal("-_8", encoded);
@@ -47,7 +41,6 @@ public sealed class Base64UrlTextTests
     [Fact]
     public void TryDecode_RejectsImpossibleLength()
     {
-        // A single leftover Base64 character (length % 4 == 1) can never be valid.
         Assert.False(Base64UrlText.TryDecode("A", out _));
     }
 

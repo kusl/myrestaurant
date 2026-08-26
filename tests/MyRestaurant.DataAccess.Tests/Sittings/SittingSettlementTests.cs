@@ -8,20 +8,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Sittings;
 
-/// <summary>
-/// Integration tests for <see cref="DapperSittingSettlement"/> against a real PostgreSQL 17 container —
-/// TECHNICAL_SPECIFICATION §5.3, the transaction that decides what a table is charged.
-///
-/// <para>The facts worth pinning are about <em>which</em> number gets stamped. §8.3 is explicit that the
-/// bill "includes still-pending lines by design", so a table that walks out with a starter still in the
-/// pass is charged for it and the count of what was outstanding is reported rather than silently
-/// dropped. Price adjustments move the total, removals take lines off it, and every member's order is in
-/// it — none of which is obvious from the two-line summary the counter reads, and all of which is what
-/// somebody would argue about at the till.</para>
-///
-/// <para>Each test truncates first (xUnit builds a fresh instance per test and runs them sequentially).
-/// Own <c>IClassFixture</c>, own container; if no container engine is available, every test skips.</para>
-/// </summary>
 public sealed class SittingSettlementTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private readonly PostgreSqlFixture _fixture;
@@ -100,17 +86,11 @@ public sealed class SittingSettlementTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(closedAt, result.ClosedAt);
         Assert.Equal(_counterIdentifier, result.ClosedByPersonIdentifier);
 
-        // All three columns move together — the schema's paired CHECKs would reject a partial stamp.
         Assert.Equal(9.00m, await StoredTotalAsync(cancellationToken));
         Assert.Equal(closedAt, await StoredClosedAtAsync(cancellationToken));
         Assert.Equal(_counterIdentifier, await StoredClosedByAsync(cancellationToken));
     }
 
-    /// <summary>
-    /// §8.3: "The bill … <b>includes still-pending lines</b> by design; the counter reviews them before
-    /// close (§5.3)." A table that leaves with something still in the pass is charged for it, and the
-    /// result says how many so the confirmation can admit it rather than imply a clean close.
-    /// </summary>
     [Fact]
     public async Task CloseAndSettle_ChargesForStillPendingLinesAndReportsHowManyThereWere()
     {
@@ -137,7 +117,6 @@ public sealed class SittingSettlementTests : IClassFixture<PostgreSqlFixture>, I
         SkipIfNoContainer();
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
 
-        // Three characters minimum: person.username carries CHECK (char_length BETWEEN 3 AND 64) (§8.2).
         Guid second = await World().AddPersonAsync("bode", "Bo", cancellationToken);
         await World().JoinAsync(_sittingIdentifier, second, cancellationToken);
 
@@ -150,11 +129,6 @@ public sealed class SittingSettlementTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(46.50m, result.SettledTotalAmount);
     }
 
-    /// <summary>
-    /// A price adjustment is what the counter reaches for when the charge is wrong (§6.3, §11.3), and a
-    /// removal is what they reach for when the line should not be there at all. Both have to reach the
-    /// stamped total, or the till and the record disagree about the same meal.
-    /// </summary>
     [Fact]
     public async Task CloseAndSettle_HonoursPriceAdjustmentsAndDropsRemovedLines()
     {
@@ -166,7 +140,6 @@ public sealed class SittingSettlementTests : IClassFixture<PostgreSqlFixture>, I
         (_, Guid steakLine) = await SendAsync(
             _guestIdentifier, _steakIdentifier, quantity: 1, cancellationToken);
 
-        // 2 × 4.50 becomes 2 × 3.00, and the steak comes off entirely: 6.00.
         await AdjustPriceAsync(orderIdentifier, soupLine, 3.00m, "cold when it arrived", cancellationToken);
         await RemoveLineAsync(orderIdentifier, steakLine, "sent back", cancellationToken);
 
@@ -175,18 +148,9 @@ public sealed class SittingSettlementTests : IClassFixture<PostgreSqlFixture>, I
 
         Assert.Equal(6.00m, result.SettledTotalAmount);
 
-        // One, not zero. A removal takes its line out of order_current_line entirely, so the steak is
-        // neither charged for nor counted — but the soup was only repriced, and nothing fulfilled it, so
-        // it is still outstanding at the moment the total is stamped. Adjusting a price is not the same
-        // act as passing the plate, and the count says what was actually still with the kitchen.
         Assert.Equal(1, result.PendingLineCountAtClose);
     }
 
-    /// <summary>
-    /// <c>sitting_bill</c> is built from <c>guest_order</c>, so a sitting where everybody joined and
-    /// nobody ordered has no rows at all — and <c>sum()</c> over no rows is NULL, not zero. The stamped
-    /// total must still be a number, because the column is NOT NULL whenever <c>closed_at</c> is set.
-    /// </summary>
     [Fact]
     public async Task CloseAndSettle_ASittingNobodyOrderedIn_SettlesAtZero()
     {
@@ -201,11 +165,6 @@ public sealed class SittingSettlementTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(0m, await StoredTotalAsync(cancellationToken));
     }
 
-    /// <summary>
-    /// Two counters pressing Close at the same moment. The second one's transaction blocks on the first
-    /// one's <c>FOR UPDATE</c>, then sees a closed row — it must write nothing and report the close that
-    /// actually happened, rather than re-stamping a total §5.3 says is never rewritten.
-    /// </summary>
     [Fact]
     public async Task CloseAndSettle_AlreadyClosed_WritesNothingAndReportsTheEarlierClose()
     {
@@ -227,7 +186,6 @@ public sealed class SittingSettlementTests : IClassFixture<PostgreSqlFixture>, I
         Assert.False(second.IsClosed);
         Assert.True(second.SittingIsClosed);
 
-        // The earlier close is what is reported, and what is still stored.
         Assert.Equal(first.SettledTotalAmount, second.SettledTotalAmount);
         Assert.Equal(first.ClosedAt, second.ClosedAt);
         Assert.Equal(_counterIdentifier, second.ClosedByPersonIdentifier);
@@ -248,15 +206,9 @@ public sealed class SittingSettlementTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Null(result.SettledTotalAmount);
         Assert.Null(result.ClosedAt);
 
-        // The real sitting is untouched.
         Assert.Null(await StoredClosedAtAsync(cancellationToken));
     }
 
-    /// <summary>
-    /// The other half of §5.3 and §6.5.8, asserted here rather than only in the mutation tests because
-    /// this is the pair that matters: once this transaction has stamped a total, the order path must stop
-    /// accepting guest sends against it, or the settled number stops meaning anything.
-    /// </summary>
     [Fact]
     public async Task AfterClose_AGuestSendIsRejectedAndTheStampedTotalDoesNotMove()
     {
@@ -284,10 +236,6 @@ public sealed class SittingSettlementTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(4.50m, await StoredTotalAsync(cancellationToken));
     }
 
-    /// <summary>
-    /// §6.7's post-close correction is an administrator appending beside the stamped total, never over
-    /// it. Both numbers then exist and differ, which is exactly the case §5.3 requires the UI to show.
-    /// </summary>
     [Fact]
     public async Task AfterClose_AnAdministratorsCorrection_LeavesTheStampedTotalAlone()
     {
@@ -310,7 +258,6 @@ public sealed class SittingSettlementTests : IClassFixture<PostgreSqlFixture>, I
 
         Assert.True(correction.IsAppended);
 
-        // The stamp is unchanged; the correction lives beside it.
         Assert.Equal(4.50m, await StoredTotalAsync(cancellationToken));
     }
 
@@ -322,8 +269,6 @@ public sealed class SittingSettlementTests : IClassFixture<PostgreSqlFixture>, I
     {
         Guid lineIdentifier = _identifiers.Create();
 
-        // The unit price passed in is deliberately wrong: §6.5.4 has the transaction price every line
-        // from the menu row it reads under the lock, and these totals depend on that being true.
         AppendOrderEventResult result = await Mutations().AppendToLivingOrderAsync(
             _sittingIdentifier,
             guestIdentifier,

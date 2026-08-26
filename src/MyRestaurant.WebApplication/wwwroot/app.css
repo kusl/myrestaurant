@@ -1,44 +1,3 @@
-/*
- * The application's only stylesheet. App.razor links this file rather than the component-scoped
- * bundle, so component CSS isolation is not active anywhere in this tree: a rule read by more than
- * one component belongs here, and a rule read by exactly one may stay inline in that component.
- *
- * Deliberately small and self-contained: no external fonts or CDNs, because the application is
- * self-hosted and must render behind a tunnel with no outbound calls. The palette is a cool
- * near-white with a single pine accent.
- *
- * ORDER OF WRITING: handheld first (TECHNICAL_SPECIFICATION §11.12). Every layout rule below is
- * written for the narrow screen and widened by exactly one min-width query near the bottom of this
- * file. That direction is normative rather than stylistic, and the reason is in §11.12: a browser
- * that never applies the query — or a reader who has never been asked about one — lands on the
- * layout that works on the screen this software is actually used from. The previous direction was
- * the other one, and it produced F-59: an administration row whose only affordance sat off the
- * right-hand edge of a 375px screen, reachable only by scrolling sideways.
- *
- * AND THIS FILE IS THE ONLY PLACE A WIDTH MAY APPEAR (F-63). "Exactly one breakpoint" is a rule
- * about the tree, not about this file. A component may keep an inline <style> for rules nobody else
- * reads — that is this project's standing arrangement, since App.razor links this stylesheet rather
- * than the scoped bundle — but a width media query inside one is a second breakpoint whatever file
- * it is written in, and for a slice it was a second breakpoint no gate could see: the assertion read
- * this file and nothing else. A page whose wide layout differs from its narrow one puts the
- * difference in the one query at the bottom of this file, beside every other page's.
- */
-
-/*
- * THE PALETTE. Every colour this application renders is a value written here and nowhere else
- * (F-68). That is stricter than it sounds and it is stricter than this file used to be: `#ffffff`
- * was written three times below, `rgba(22, 32, 43, …)` — which is `--ink` in decimal — three more,
- * and twenty literals across six components were byte-identical to a property declared right here.
- * The reason it has to be a rule is that a duplicated colour does not fail; it drifts, and then one
- * screen is a different red from every other screen and nobody can say which one was chosen. Two
- * of the copies had already drifted when the rule was written: the guest's irreversible-hide
- * warning drew `#fdecea` on `#f5c2c0` against this file's `--danger-surface` `#fbeaea` on
- * `--danger-hairline` `#f0c7c7`, which is the same defect Slice 34 removed from four chip rules,
- * found in a fifth place one area over.
- *
- * `transparent` and `currentColor` are keywords rather than values and may be written anywhere:
- * neither can drift from anything.
- */
 :root {
     --surface: #f7f8fa;
     --surface-raised: #ffffff;
@@ -50,34 +9,11 @@
     --accent-strong: #0b5a54;
     --focus-ring: #0f766e;
 
-    /*
-     * The accent's three companions, all three of which were literals in this file until F-68.
-     * `--accent-ink` is white and so is `--surface-raised`; they are two names for one value on the
-     * same principle `--focus-ring` and `--accent` already were, because "the ink that sits on the
-     * accent" and "a raised surface" are different jobs that will not necessarily move together.
-     * `--accent-surface-soft` is the paler of the two tints and marks a chosen row rather than a
-     * result.
-     */
     --accent-ink: #ffffff;
     --accent-surface: #e7f4f1;
     --accent-surface-soft: #f2f8f7;
     --accent-hairline: #b9ddd6;
 
-    /*
-     * Danger describes an ACTION: this is destructive, read it before you press it. The three-part
-     * surface/ink/hairline set is the shape every semantic role in this file takes.
-     *
-     * `--danger-signal` is the fourth and is not part of that set, because its job is different:
-     * it is the saturated red of a STATE that has to be noticed from across a room — /kitchen's
-     * alert badge, an eighty-sixed row, a refused adjustment — where `--danger-ink` is the red of a
-     * sentence somebody is being asked to read. It carries less contrast on white than
-     * `--danger-ink` does, which is why it is not called `-strong`.
-     *
-     * `--danger-veil` is `--danger-ink` at 94% and is the table display's unavailable overlay. It
-     * is written out rather than composed, because composing an alpha onto a hex custom property
-     * needs relative colour syntax and nothing in this sandbox can render a page to check that it
-     * took — the value being here at all is the part that matters.
-     */
     --danger-surface: #fbeaea;
     --danger-ink: #7f1d1d;
     --danger-hairline: #f0c7c7;
@@ -87,28 +23,12 @@
     --ok-surface: #e6f4ea;
     --ok-ink: #1e7a37;
 
-    /*
-     * Caution is the amber between the two: a note, a customization the kitchen must not miss, a
-     * total that was corrected after a close. `--caution-ink` is legible on white and on nothing
-     * else, so `--caution-ink-strong` is the darker amber that is legible on `--caution-surface` —
-     * `-strong` meaning more contrast, the sense `--accent-strong` already carries.
-     */
     --caution-surface: #fff7ed;
     --caution-ink: #b45309;
     --caution-ink-strong: #7c2d12;
 
-    /*
-     * A neutral chip's background. Declared rather than written into `.chip` as a literal because two
-     * pages still carry their own chip rule until Stage 1b empties them, and three copies of one hex
-     * value is how `--chip-background` came to be referenced by pages and declared by nobody (F-64).
-     */
     --chip-surface: #eef1f5;
 
-    /*
-     * The two shadows, written whole. The `rgba(22, 32, 43, …)` inside them is `--ink` in decimal —
-     * three references to the palette's own ink in the one form a scan for `#hex` cannot see, which
-     * is why they are named here rather than left where they read as opaque numbers.
-     */
     --shadow-panel: 0 1px 2px rgba(22, 32, 43, 0.04), 0 12px 32px rgba(22, 32, 43, 0.05);
     --shadow-footer: 0 -1px 2px rgba(22, 32, 43, 0.08);
 
@@ -116,22 +36,8 @@
     --font-monospace: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
     --measure: 42rem;
 
-    /*
-     * The smallest comfortable touch target, per §11.12. 2.75rem is 44px at the default root size,
-     * which is the figure both platform guidelines converge on; it is a variable because it is
-     * asserted on every control rather than remembered for some of them.
-     */
     --touch-target: 2.75rem;
 }
-
-/*
- * The one layout breakpoint (§11.12). It is written as a literal in the single min-width query
- * below, because a custom property cannot be used in a media query — so the value lives in exactly
- * one place in this file and this comment is where a reader is told which place. 48rem is 768px:
- * above it a five-to-eight column record table is legible, below it every such table is a list of
- * cards. The primary target is a 375px handset, which is nowhere near the boundary in either
- * direction, so nothing in this project depends on behaviour at the edge.
- */
 
 * {
     box-sizing: border-box;
@@ -157,8 +63,6 @@ body {
     display: flex;
     flex-direction: column;
 }
-
-/* --- Session header (MainLayout) ------------------------------------------------------------- */
 
 .app-header {
     display: flex;
@@ -191,16 +95,6 @@ body {
     font-weight: 600;
 }
 
-/*
- * The session links are the chrome a guest reaches for with a thumb while holding a phone in one
- * hand and a fork in the other, so they carry the §11.12 target height even though they are text.
- *
- * That sentence was here before the height was (F-65). The rule read `min-height: 2.25rem` — 36px,
- * eight under the 44px §11.12 names these links in by name — under a comment that said it complied
- * and that it used "vertical padding rather than a min-height", which was two claims about three
- * lines that declared a min-height and no padding at all. The value is now the property, so the
- * number is written once and cannot drift from it.
- */
 .session-link {
     display: inline-flex;
     align-items: center;
@@ -221,14 +115,6 @@ body {
     margin: 0;
 }
 
-/*
- * A link that acts as a button, which §11.12 names in the same breath as a button — so it carries the
- * same target height, and the 2.25rem literal that was here is the other half of F-65. This one is
- * "Sign out" in the header of every page in both layouts, and it is the destructive action on four
- * administration surfaces: "Revoke role", "Revoke display", "Deactivate account", "Deactivate table".
- * None of those was ever measured, because §16.3 scenario 16's reach selector covers a record row's
- * action, a page-head action and a filter's submit, and none of those is a .link-button.
- */
 .link-button {
     display: inline-flex;
     align-items: center;
@@ -247,14 +133,6 @@ body {
     color: var(--accent);
 }
 
-/* --- Restaurant wall clock (footer, §11.7) ----------------------------------------------------- */
-
-/*
- * On every page, in both layouts. `contain: content` is not decoration: the reading below changes
- * once a second forever, and containment keeps that repaint and its layout inside the footer instead
- * of inviting the browser to re-lay-out the page around it sixty times a minute on a phone.
- * env(safe-area-inset-bottom) keeps it clear of the home indicator on a notched handset.
- */
 .app-footer {
     flex: 0 0 auto;
     contain: content;
@@ -281,10 +159,6 @@ body {
     text-transform: uppercase;
 }
 
-/*
- * Tabular figures so the digits do not change width as they tick — without them every second is a
- * reflow of the whole footer line, and on a narrow screen the wrap point can flicker.
- */
 .restaurant-clock-reading {
     font-variant-numeric: tabular-nums;
     font-weight: 600;
@@ -298,18 +172,6 @@ body {
     white-space: nowrap;
 }
 
-/* --- Colophon (footer, §11.9) ------------------------------------------------------------------ */
-
-/*
- * A sibling of .app-footer rather than a child of it, because the clock component owns that <footer>
- * element and re-rendering is pinned off inside it. The two are always rendered as a pair — both
- * layouts do, and nothing else renders either — so they can be styled as one bar: the clock keeps the
- * top border and background, the colophon carries the bottom padding and the safe-area inset that
- * keeps it clear of a notched handset's home indicator.
- *
- * Quiet on purpose. This is a licence notice and a build stamp: it must be present and legible on
- * every page, and it must not compete with anything a guest is actually trying to do.
- */
 .app-colophon {
     flex: 0 0 auto;
     display: flex;
@@ -330,8 +192,6 @@ body {
     font-weight: 600;
 }
 
-/* Tabular figures for the same reason the clock uses them: a version and a short hash sit next to
-   each other and should not shuffle their own width between pages. */
 .app-colophon-version {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
@@ -348,12 +208,6 @@ body {
     color: var(--accent-strong);
 }
 
-/* --- The source offer page (§11.9) -------------------------------------------------------------- */
-
-/*
- * One column on a handset, label-then-value; two columns once there is room. A 40-character commit
- * hash beside a label in a 375px viewport is the case the two-column form cannot serve.
- */
 .source-facts {
     display: grid;
     grid-template-columns: 1fr;
@@ -373,12 +227,6 @@ body {
     margin: 0 0 0.6rem;
 }
 
-/*
- * Wrapping is allowed and overflow is not. A full commit hash is forty characters and the narrowest
- * target this project supports is a 375px handset; letting it push the page sideways would be a
- * horizontal scrollbar on every screen, caused by the one element whose entire job is to be read and
- * copied.
- */
 .source-revision {
     font-family: var(--font-monospace);
     font-size: 0.85em;
@@ -392,8 +240,6 @@ body {
     font-size: 0.9rem;
     color: var(--ink-soft);
 }
-
-/* --- Main content ----------------------------------------------------------------------------- */
 
 .app-main {
     flex: 1 1 auto;
@@ -414,11 +260,6 @@ body {
     box-shadow: var(--shadow-panel);
 }
 
-/*
- * An administration index is a list of every account, table, menu item or sitting in the
- * restaurant, and --measure is a reading width for prose. A wide panel is not a licence to be
- * wide on a phone: this only takes effect where there is room, because the width is a maximum.
- */
 .panel-wide {
     max-width: 64rem;
 }
@@ -512,8 +353,6 @@ body {
     border-color: var(--accent);
 }
 
-/* --- Forms --------------------------------------------------------------------------------------- */
-
 .form-field {
     margin: 0 0 1.1rem;
 }
@@ -526,25 +365,6 @@ body {
     color: var(--ink-soft);
 }
 
-/*
- * `select` and `textarea` are here beside `input` rather than left to the browser, and the font-size
- * floor is the §11.12 rule that is easiest to get wrong: iOS Safari zooms the whole viewport when a
- * focused control's text is under 16px, and it does not zoom back out. One under-sized field
- * therefore breaks the layout of the page around it, on the platform most guests are holding.
- *
- * `.order-basket-quantity input` IS IN THIS LIST RATHER THAN IN A COPY OF IT (F-118). §11.1's basket
- * declares its quantity box as a bare <input> inside a <label class="order-basket-quantity">, which
- * is not a `.form-field` — so from the slice the basket was written until the slice the guest surface
- * was first measured in a browser, that control had NEITHER of §11.12's two halves: no
- * `--touch-target` floor and no 16px font floor, on the one surface R§1 says a guest reads from their
- * own phone. It is F-66's shape a second time — a form control declared outside the arrangement that
- * carries the control rule — and the repair is a selector rather than a rule, because a third copy of
- * these nine declarations is the mechanism F-48, F-50 and F-56 each are.
- *
- * `.manage-inline-form input` below is the SECOND copy and is deliberately not folded in here: it is
- * four administration detail surfaces, this slice is about the guest's menu, and one change with one
- * failure mode is the rule. That is recorded as an open item rather than left to be noticed.
- */
 .form-field input,
 .form-field select,
 .form-field textarea,
@@ -583,10 +403,6 @@ body {
     color: var(--ink-soft);
 }
 
-/* Checkboxes and radios are `input` too, and the rule above would stretch one across the whole
- * panel with a text field's padding and corner radius. That is exactly what happened to the role
- * options on the staff-creation form. An attribute selector outranks the bare `.form-field input`
- * regardless of source order, so this holds wherever a checkbox lands inside a form field. */
 .form-field input[type="checkbox"],
 .form-field input[type="radio"],
 .choice input[type="checkbox"],
@@ -601,11 +417,6 @@ body {
     accent-color: var(--accent);
 }
 
-/*
- * Stacked and full-width by default, side by side once there is room. A row of buttons that wraps is
- * a row whose second line is a different width from its first, and on a form whose primary action is
- * "Close the ticked sittings" the thumb should not have to find an edge.
- */
 .form-actions {
     display: flex;
     flex-direction: column;
@@ -613,13 +424,6 @@ body {
     gap: 0.6rem;
     margin-top: 1.5rem;
 }
-
-/* --- Choice lists: checkbox / radio option rows ------------------------------------------------ */
-
-/* A fieldset of option rows, each a bordered card with the control aligned to the first line of its
- * label. `.choice-list .choice` is two classes deep on purpose: `.form-field label` is a class plus
- * an element, which outranks a lone `.choice`, and the `display: block` it sets is what dropped the
- * label text below the control. Everything here degrades cleanly without `:has()`. */
 
 .choice-fieldset {
     margin: 0 0 1.1rem;
@@ -662,7 +466,7 @@ body {
 }
 
 .choice-list .choice input {
-    /* Optical alignment with the cap height of the first line of label text. */
+
     margin-top: 0.2rem;
 }
 
@@ -695,8 +499,6 @@ body {
     font-size: 0.88rem;
     line-height: 1.45;
 }
-
-/* --- Buttons -------------------------------------------------------------------------------------- */
 
 .button-primary,
 .button-secondary {
@@ -783,8 +585,6 @@ ul.status-error {
     font-size: 0.95rem;
 }
 
-/* --- TOTP enrollment --------------------------------------------------------------------------- */
-
 .totp-qr {
     display: flex;
     justify-content: center;
@@ -851,7 +651,6 @@ a:focus-visible,
     outline-offset: 2px;
 }
 
-/* Blazor's default connection-lost UI. */
 #blazor-error-ui {
     display: none;
     position: fixed;
@@ -870,12 +669,6 @@ a:focus-visible,
     }
 }
 
-/* -----------------------------------------------------------------------------
- * Passkeys (§3.3): the sign-in alternative button and the management list.
- * ---------------------------------------------------------------------------*/
-
-/* The passkey button on the sign-in form sits under the primary action, split
- * off by a faint "or". */
 .sign-in-alternative {
     display: flex;
     flex-direction: column;
@@ -952,9 +745,6 @@ a:focus-visible,
     margin-top: 1.25rem;
 }
 
-/* First-administrator setup wizard (§3.6). Reuses the account-panel, form-field, TOTP, and
-   recovery-code styles above; these cover only what is specific to the wizard. */
-
 .optional {
     font-weight: 400;
     color: var(--ink-soft);
@@ -1006,7 +796,7 @@ a:focus-visible,
 }
 
 .setup-step.is-done::before {
-    content: "\2713"; /* check mark */
+    content: "\2713";
     border-color: var(--accent);
     background-color: var(--accent);
     color: var(--accent-ink);
@@ -1064,17 +854,6 @@ a:focus-visible,
     margin-top: 0.25rem;
 }
 
-/* -----------------------------------------------------------------------------
- * Status chips, the person's own profile page (§4.6, §11.6), and the shared
- * pieces every record surface reads.
- *
- * The chip vocabulary was invented five times — once here and once inline in
- * each of four administration pages — which is what a shared stylesheet is for.
- * The four inline copies are gone; anything still declaring one inline is a page
- * this slice did not restructure, and `HandheldLayoutContractTests` names the
- * set that may not be re-declared.
- * ---------------------------------------------------------------------------*/
-
 .chip {
     display: inline-block;
     margin: 0.1rem 0.2rem 0.1rem 0;
@@ -1105,12 +884,6 @@ a:focus-visible,
     color: var(--ink-soft);
 }
 
-/*
- * One declaration for the whole tree. Every page that needs it may use it; no page needs to invent
- * it. `clip-path` rather than the deprecated `clip`, and the element keeps a single pixel of size so
- * that it stays in the accessibility tree — a `display: none` label is a label no screen reader
- * reads, which defeats the reason these exist.
- */
 .visually-hidden {
     position: absolute;
     width: 1px;
@@ -1164,8 +937,6 @@ a:focus-visible,
     border-top: 1px solid var(--hairline);
 }
 
-/* One row per credential: what it is, whether it is set, and the way to change it. Stacked on a
- * phone rather than squeezing the button onto the same line. */
 .account-security {
     display: flex;
     flex-direction: column;
@@ -1198,36 +969,6 @@ a:focus-visible,
     font-weight: 600;
 }
 
-/* -----------------------------------------------------------------------------
- * THE RECORD LIST (§11.12)
- *
- * The shared shape behind every administration index: every account, every
- * table, every menu item, every open and settled sitting. One vocabulary,
- * declared once, read by four pages — replacing `.admin-people`,
- * `.admin-tables`, `.admin-menu` and `.admin-sittings`, which were four
- * near-identical inline copies of the same eighty lines.
- *
- * Handheld first, and this is the file's central rule rather than an example of
- * it. Below the breakpoint each row is a CARD: the table's own display roles are
- * dropped, every cell states its own label from `data-label`, and the row's
- * action is a full-width control at the bottom of the card. Above it, the same
- * markup is a table with a header row.
- *
- * Why the cells label themselves. Overriding `display` on table parts drops the
- * element's table semantics in every engine, so the `<thead>` stops being what
- * associates a cell with a column — which means a card whose cells are unlabelled
- * is a column of bare values with nothing saying what they are. `data-label` is
- * therefore not decoration: it is the replacement for the header, it is required
- * on every cell that is not self-describing, and `HandheldLayoutContractTests`
- * is what keeps a new page from omitting it.
- *
- * Why the action is not a right-hand column. That is F-59 exactly: `text-align:
- * right` inside `overflow-x: auto` put the only affordance on the row off the
- * right-hand edge of a 375px screen. It is now the last thing in the card and
- * the full width of it, and the row's primary cell is also a link — so the way
- * in is at x=0 whatever the viewport does.
- * ---------------------------------------------------------------------------*/
-
 .record-list {
     margin: 0.5rem 0 0;
 }
@@ -1238,11 +979,6 @@ a:focus-visible,
     font-size: 0.95rem;
 }
 
-/*
- * The header exists for the wide layout. On a handset it is removed from the visual flow but kept in
- * the document, because a `display: none` header is one a screen reader in table mode cannot fall
- * back to at any width.
- */
 .record-list thead {
     position: absolute;
     width: 1px;
@@ -1273,10 +1009,6 @@ a:focus-visible,
     border: 0;
 }
 
-/*
- * The label. `attr()` in `content` is the one form of `attr()` with universal support, and it is
- * exactly what is needed here — a string, not a length.
- */
 .record-list td[data-label]::before {
     content: attr(data-label);
     display: block;
@@ -1287,7 +1019,6 @@ a:focus-visible,
     color: var(--ink-soft);
 }
 
-/* A cell whose content says what it is — a name, a row of chips — opts out with an empty label. */
 .record-list td[data-label=""]::before {
     content: none;
 }
@@ -1318,10 +1049,6 @@ a:focus-visible,
     font-variant-numeric: tabular-nums;
 }
 
-/*
- * The row's way in. A full-width control at the foot of the card on a handset, a plain right-aligned
- * link in a table cell once there is room.
- */
 .record-actions {
     margin-top: 0.55rem;
 }
@@ -1331,12 +1058,6 @@ a:focus-visible,
     width: 100%;
 }
 
-/*
- * The one control on an administration index that changes money (§5.4's batch close), so it is the first
- * thing in the card and the whole width of it is the target. Its height is `--touch-target` because
- * §11.12 says so, not because this list has an opinion — the rule it replaced was an inline
- * `input { width: 1.35rem }` on one page, which is the same number arrived at privately.
- */
 .record-tick {
     display: flex;
     align-items: center;
@@ -1367,10 +1088,6 @@ a:focus-visible,
     color: var(--ink-soft);
 }
 
-/*
- * The count-and-caveat line under a record list. Distinct from `.form-footnote`, which has a rule
- * above it and belongs to a form.
- */
 .record-note {
     margin: 0.4rem 0 0;
     color: var(--ink-soft);
@@ -1384,35 +1101,6 @@ a:focus-visible,
     color: var(--caution-ink);
 }
 
-/* -----------------------------------------------------------------------------
- * THE PAGE HEAD (§11.4, §11.12)
- *
- * A title, and the way to every other surface in the same area. On a handset the
- * area links are a horizontally scrollable single row rather than a wrapped pile
- * of six: a pile pushes the page's first record below the fold, and the links are
- * navigation rather than the thing the operator came for. The page's own primary
- * action is not in that row — it is a full-width button underneath, because it is
- * the thing the operator came for.
- *
- * `.page-head` rather than `.admin-header`, which is the name four pages declared
- * inline. The two coexisted on purpose for exactly as long as the migration took:
- * a shared declaration under the old name would have been overridden on every page
- * that still carried the inline copy — same specificity, later in the document —
- * so the four restructured pages would have silently kept the old behaviour while
- * the stylesheet said otherwise. A new name cannot lose that argument.
- * `.admin-header` left the tree in Slice 34 with the last page that declared it,
- * and `HandheldLayoutContractTests` now asserts that the retired set is empty
- * rather than listing who still holds it.
- *
- * **The area row is an optional child.** An index surface renders
- * `AdministrationAreaLinks` inside the head; a detail surface — one table, one
- * account, one menu item, one sitting — renders a title and, where it has one,
- * its own primary action. Both are heads: what the class provides is the column,
- * the gap, and the row it becomes above the breakpoint. Every surface §16.3
- * scenario 16 measures has one, which is what the barrier waits on to know the
- * page arrived.
- * ---------------------------------------------------------------------------*/
-
 .page-head {
     display: flex;
     flex-direction: column;
@@ -1420,7 +1108,6 @@ a:focus-visible,
     margin-bottom: 1rem;
 }
 
-/* Lets the scrolling strip inside shrink to the column rather than widening its parent. */
 .page-head-nav {
     min-width: 0;
 }
@@ -1432,7 +1119,7 @@ a:focus-visible,
     padding: 0.15rem 0 0.35rem;
     list-style: none;
     overflow-x: auto;
-    /* Keeps a partly-scrolled row from resting between two links, so the row always reads as a row. */
+
     scroll-snap-type: x proximity;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
@@ -1495,30 +1182,6 @@ a:focus-visible,
     color: var(--danger-ink);
 }
 
-/* -----------------------------------------------------------------------------
- * THE FILTER FORM (§11.4, §11.12)
- *
- * The shape both administration explorers take: a bookmarkable GET question over
- * a log. Declared once here, replacing `.event-filter` and `.hidden-filter`,
- * which were two inline copies of the same twelve lines — the same duplication
- * `.admin-people` and its three siblings were, one register smaller, and caught
- * for the same reason.
- *
- * Handheld first, and the direction matters here for a specific reason. The
- * retired copies were `display: flex; flex-wrap: wrap; align-items: flex-end`
- * with no column fallback, so on a 375px screen five fields wrapped into five
- * rows of unequal width, each field as wide as its own content, and the submit
- * button ended up wherever the wrap left it. A column is what a stack of fields
- * on a phone is; the row is what there is room for above the breakpoint.
- *
- * The actions are a block of their own rather than the last flex child, because
- * a submit button that has wrapped onto a line with a date field beside it is a
- * target whose width is decided by the field. §16.3 scenario 16 measures the
- * controls in here for exactly that reason: on these two pages the filter's
- * submit IS what the operator opened the page to press, so it is held to the
- * same reach and touch-target rules as a record row's action.
- * ---------------------------------------------------------------------------*/
-
 .filter-form {
     display: flex;
     flex-direction: column;
@@ -1529,16 +1192,10 @@ a:focus-visible,
     border-radius: 0.5rem;
 }
 
-/* A field inside a filter carries no bottom margin: the flex gap is the spacing. */
 .filter-form .form-field {
     margin: 0;
 }
 
-/*
- * A group of checkbox options — the event explorer's three streams. `min-width: 0` so the group can
- * shrink to the column rather than widening its parent, which is the same rule `.page-head-nav`
- * carries and for the same reason.
- */
 .filter-fieldset {
     min-width: 0;
     margin: 0;
@@ -1554,11 +1211,6 @@ a:focus-visible,
     color: var(--ink-soft);
 }
 
-/*
- * One option. A row rather than an inline label, and `--touch-target` tall, because the checkbox
- * itself is 1.35rem and the thing a thumb finds is the row — the same arrangement `.record-tick`
- * arrived at for the one administration control that charges somebody money.
- */
 .filter-choice {
     display: flex;
     align-items: center;
@@ -1580,43 +1232,11 @@ a:focus-visible,
     gap: 0.5rem;
 }
 
-/* The count-and-caveat line above a filtered list. */
 .filter-count {
     margin: 1rem 0 0;
     color: var(--ink-soft);
     font-size: 0.9rem;
 }
-
-/* -----------------------------------------------------------------------------
- * THE DETAIL SURFACE (§11.4, §11.12)
- *
- * One table, one account, one menu item, one sitting: a set of facts at the top,
- * then a rule and a heading per thing that can be changed, then one small form
- * under each. Four pages declared this vocabulary inline — `ManageMenuItem`,
- * `ManagePerson`, `ManageTable`, `TableDisplays` — which made it the fifth copy
- * of F-59 one register down, and it had drifted in five rules by the time
- * anybody diffed them (**F-66**).
- *
- * The drift was the cheap half. The expensive half is `.manage-inline-form`,
- * which was `display: flex; align-items: center` with its `input` and `select`
- * given `padding: 0.45rem 0.6rem` and NO `min-height` and NO font-size floor. So
- * the one control each of those pages exists for — rename this table, revoke
- * this role, change this price, revoke this display — was about 34px tall
- * against §11.12's 44, and typing in it zoomed an iPhone's viewport and left it
- * there. Both halves of §11.12's control rule, broken on four surfaces, by a
- * page-local rule that overrode the shared one from later in the document.
- *
- * It is a column here for the same reason `.filter-form` is: a stack of fields
- * is what a form on a phone is, and the row is what there is room for above the
- * breakpoint. The controls inherit the field treatment rather than restating it,
- * so the 44px and the 16px are read from `--touch-target` and from
- * `.form-field`'s own floor and are not written a second time.
- *
- * Where the two retired copies disagreed on a number, one had to win and the
- * choice is written down: `min-width` above the breakpoint was 8rem in
- * `ManageMenuItem` and 12rem in the other three, and 12rem wins because it is
- * the one a label fits in.
- * ---------------------------------------------------------------------------*/
 
 .manage-facts {
     display: grid;
@@ -1649,11 +1269,6 @@ a:focus-visible,
     border-top: 1px solid var(--hairline);
 }
 
-/*
- * A statement about why there is nothing to do here — "this table is still open,
- * so there is nothing to correct yet". Distinct from `.record-warning`, which is
- * the danger palette and says something went wrong.
- */
 .manage-note {
     margin: 0.9rem 0 0;
     padding: 0.6rem 0.85rem;
@@ -1663,7 +1278,6 @@ a:focus-visible,
     color: var(--ink-soft);
 }
 
-/* The currency code beside a bare price field, which is a unit rather than a label. */
 .manage-currency {
     font-size: 0.85rem;
     color: var(--ink-soft);
@@ -1701,7 +1315,6 @@ a:focus-visible,
     width: 100%;
 }
 
-/* A full-width text button reads as a button when its label is centred in it. */
 .manage-inline-form .link-button {
     justify-content: center;
 }
@@ -1710,24 +1323,6 @@ a:focus-visible,
     margin-top: 1.5rem;
 }
 
-/*
- * THE MENU ITEM'S PICTURE (§7, §11.4, §11.12).
- *
- * `max-width: 100%` is the load-bearing declaration and it is not a
- * presentational choice. §7 stores what it is given and nothing in this stack
- * can resize an image, so the intrinsic width of this element is whatever
- * somebody's camera produced. Without a constraint a 3000px photograph makes
- * the DOCUMENT wider than the viewport, and §16.3 scenario 16 measures exactly
- * that — a page whose every control is correctly placed would fail on its
- * illustration.
- *
- * `height: auto` beside it because the height attribute is not set: the two
- * together are what keep the aspect ratio when the width is clamped.
- *
- * `.manage-` rather than a `.picture-` prefix of its own, so this vocabulary is
- * inside the set `HandheldLayoutContractTests` already forbids a component from
- * redeclaring, from its first day rather than from the slice somebody notices.
- */
 .manage-picture {
     margin: 0.75rem 0;
 }
@@ -1741,46 +1336,11 @@ a:focus-visible,
     background-color: var(--surface);
 }
 
-/* The three facts under it are metadata about the file, not a caption a guest reads. */
 .manage-picture-facts {
     margin-top: 0.4rem;
     font-size: 0.85rem;
     color: var(--ink-soft);
 }
-
-/* -----------------------------------------------------------------------------
- * THE SECTIONS-FIRST MENU INDEX (§7, §11.4, §11.12)
- *
- * `/administration/menu` is a list of HEADINGS, each holding the items filed
- * under it. Before this it was a flat list of every item with the heading as a
- * column, which is what a menu index looks like when the model has just learned
- * to express a menu and the surface has not caught up.
- *
- * THE GROUP IS A `<details>` AND THE HEADING IS ITS `<summary>`. A native
- * disclosure widget, which is the whole reason for the choice: it collapses with
- * no script on a page that is static SSR and carries no island, it is in the
- * accessibility tree as a disclosure rather than as a div somebody wired up, and
- * it needs no state on the server. `.menu-group-summary` keeps `summary`'s own
- * `display: list-item` — the marker is the affordance, and setting `display:
- * flex` here removes it in every engine that draws one.
- *
- * IT IS RENDERED OPEN ON EVERY REQUEST, and that is a decision rather than a
- * default. A heading collapsed by the server is a heading whose items nobody
- * looking for an item can find, and §16.3 scenario 16 measures what the layout
- * engine laid out — a control inside a closed `<details>` has no box, so a
- * collapsed group would quietly remove itself from the barrier that exists to
- * find exactly that. Collapsing is the operator's, not the server's.
- *
- * NO NEW BREAKPOINT (§11.12, F-63). The group is a block, the item list inside
- * it is `.record-list` and already knows how to be a table above the one query,
- * and the only thing this vocabulary contributes there is a button that stops
- * being full-width. That one rule is in the query at the bottom of this file
- * beside every other page's.
- *
- * THE SUMMARY CARRIES `--touch-target`, because it is a control a thumb presses
- * (§11.12). NO COLOUR LITERAL and NO `var()` FALLBACK below: every value is a
- * property `:root` declares (F-64, F-68, F-69).
- * ---------------------------------------------------------------------------*/
 
 .menu-groups {
     margin: 0.5rem 0 0;
@@ -1820,11 +1380,6 @@ a:focus-visible,
     font-variant-numeric: tabular-nums;
 }
 
-/*
- * The rule under the heading is a border rather than an `<hr>`, for the reason the guest menu's
- * headings give one block down: a separator between a heading and what it holds is presentation, and
- * a reader should hear "Starters, disclosure, expanded" rather than a horizontal rule per heading.
- */
 .menu-group-body {
     padding: 0 0.85rem 0.85rem;
     border-top: 1px solid var(--hairline);
@@ -1836,11 +1391,6 @@ a:focus-visible,
     color: var(--ink-soft);
 }
 
-/*
- * The heading's own way in. Full width at the foot of the group on a handset, which is F-59's rule
- * one register up from the row it was found on: the group is the card here, so its affordance is the
- * bottom of it and not a right-hand corner.
- */
 .menu-group-actions {
     margin-top: 0.7rem;
 }
@@ -1848,15 +1398,6 @@ a:focus-visible,
 .menu-group-actions .button-secondary {
     width: 100%;
 }
-
-/* -----------------------------------------------------------------------------
- * The table surface: roster, staging area, living order, party orders (§11.1).
- *
- * These live here rather than inline in the component for one concrete reason:
- * /table/{id} is a static-SSR page hosting an interactive island, so the markup
- * is split across two components and an inline <style> in one of them styling
- * the other's markup would be a dependency nobody could see.
- * ---------------------------------------------------------------------------*/
 
 .table-heading {
     font-size: 1.05rem;
@@ -1907,8 +1448,6 @@ a:focus-visible,
     margin-top: 1.5rem;
 }
 
-/* --- the picker and the basket ------------------------------------------------------------------ */
-
 .order-picker {
     margin: 0.75rem 0 1rem;
     padding: 0.9rem 0.85rem 0.4rem;
@@ -1917,37 +1456,10 @@ a:focus-visible,
     background-color: var(--surface-raised);
 }
 
-/* A quantity box wants to be a box, not a full-width text field — but only where there is room for
-   it to be one. On a handset a 6rem field beside its label is a field two thumbs wide.
-
-   THESE TWO ARE NAMED TOGETHER HERE AND WERE COVERED SEPARATELY ABOVE, AND THAT IS WHAT HID F-118.
-   `.order-picker-quantity` is a `.form-field` and inherited §11.12's control rule; `.order-basket-
-   quantity` is a bare <label> in a flex row and inherited nothing, so for every slice between the
-   basket being written and Slice 64 the second box was a UA-default control — about 13px of Arial in
-   roughly 21px of height — sitting one card below a correct one. A pair of selectors written side by
-   side reads as a pair of controls treated alike; the declarations that decide whether they are alike
-   are two hundred lines away. Both now take the shared block above, and this rule is the only thing
-   that has ever been true of exactly these two. */
 .order-picker-quantity input,
 .order-basket-quantity input {
     max-width: 8rem;
 }
-
-/* --- the guest menu: a list of items, not a dropdown (§7, §11.1) --------------------------------- */
-
-/*
- * M6 Slice 39 replaced the item <select> with this. The reasoning is in TableOrderSurface.razor at
- * the markup, and the two things worth knowing HERE are both about widths.
- *
- * NO MEDIA QUERY, and none is needed (§11.12). `.order-menu` and `.order-menu-facts` are `auto-fit`
- * grids, so one column on a 375px handset and as many as fit on a counter's laptop is the same rule
- * either way — which is what that section means by preferring an intrinsic grid to a breakpoint. A
- * width written here would have been the tree's second one.
- *
- * The card is the BUTTON rather than the <li> around it, so the whole card is the target: an
- * affordance that is the full width of the thing it acts on is F-59's rule read at the item level,
- * one area over from the administration rows it was found on.
- */
 
 .order-picker-heading {
     margin: 0 0 0.15rem;
@@ -1962,22 +1474,6 @@ a:focus-visible,
 .order-menu-empty {
     margin: 0 0 0.5rem;
 }
-
-/*
- * The headings, added in M6 Slice 40 with `0005`. Three notes, and all three are about restraint.
- *
- * NO NEW BREAKPOINT, and nothing here introduces one: a heading is a block above a grid that was
- * already intrinsic, so it is one column on a handset and as many as fit on a laptop without this
- * block having an opinion about width (§11.12, F-63).
- *
- * NO COLOUR LITERAL and NO `var()` FALLBACK. Every value below is a declared custom property, which
- * is §11.12's rule as a MUST since Slice 35 — F-68 is what a drifted copy of `--danger-surface` cost
- * the last time, and F-64 is what an undeclared property renders in silence.
- *
- * THE RULE IS A BORDER RATHER THAN AN `<hr>`. A separator between headings is presentation, and a
- * guest using a screen reader should hear "Drinks, list of 4 items", not a horizontal rule between
- * every one of them.
- */
 
 .order-menu-section + .order-menu-section {
     margin-top: 0.9rem;
@@ -1994,13 +1490,6 @@ a:focus-visible,
     color: var(--ink-soft);
 }
 
-/*
- * The heading's own line (S7, S11.1). The same three declarations `.menu-group-description` carries on
- * the administration index, because it is the same sentence read by a different person and a second
- * opinion about how a description looks would be a second vocabulary. No `text-transform` — the rule
- * above has one and it belongs to a label; this is prose, and F-88 is the finding that a harness reading
- * transformed text cannot tell a stored name from a rendering of it.
- */
 .order-menu-section-description {
     margin: 0 0 0.6rem;
     font-size: 0.9rem;
@@ -2016,18 +1505,6 @@ a:focus-visible,
     grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
 }
 
-/*
- * A COLUMN, BECAUSE A CARD CAN NOW HAVE A SIBLING (Stage 5c). §7 keeps a deactivated item's card
- * `disabled`, so the way into its detail panel is a second control — and it cannot be inside the
- * card, which is itself a <button>, because the parser splits a nested one. It is therefore the
- * <li>'s second child, and the <li> stacks.
- *
- * `flex-grow` ON THE CARD IS WHAT KEEPS THE ROW LEVEL. This <li> is a grid item stretched to its
- * row's height, and while it had exactly one child the default `align-items: stretch` of a row-
- * direction flex container made that child fill it. In a column the cross axis is the one that
- * stretches, so without this the card would shrink to its own content and a card beside a taller
- * neighbour would leave a gap under it.
- */
 .order-menu-item {
     display: flex;
     flex-direction: column;
@@ -2061,7 +1538,6 @@ a:focus-visible,
     outline-offset: 2px;
 }
 
-/* A chip is inline-block, so inside a grid it would stretch to the column. */
 .order-menu-choice .chip {
     justify-self: start;
 }
@@ -2071,28 +1547,12 @@ a:focus-visible,
     background-color: var(--accent-surface-soft);
 }
 
-/*
- * §7: a deactivated item stays on the menu, marked, and cannot be ordered. It is quietened rather
- * than hidden, and it keeps its description — an item a guest cannot have tonight is still an item
- * they may want to read about, which is the whole of "the guest sees that the salmon exists and is
- * out". `cursor: default` because a disabled button is not a thing to press, and no `opacity`,
- * because dimming text is how a description stops being legible.
- */
 .order-menu-item.is-unavailable .order-menu-choice {
     background-color: var(--surface);
     color: var(--ink-soft);
     cursor: default;
 }
 
-/*
- * The way into the detail panel for a dish that cannot be staged (Stage 5c). Quiet rather than
- * primary: it is not the thing a guest came to the menu to press, and a dish that is off should not
- * shout louder than the ones that are on.
- *
- * `--touch-target` and not a smaller number that merely looks right (§11.12), and `align-self: start`
- * rather than stretching, because a full-width control under a card reads as a second card. It is
- * still `--touch-target` TALL, which is the half the layout contract is about.
- */
 .order-menu-inspect {
     align-self: start;
     display: inline-flex;
@@ -2147,29 +1607,6 @@ a:focus-visible,
     color: var(--ink-soft);
 }
 
-/* -----------------------------------------------------------------------------
- * THE PICTURE ON A GUEST'S CARD (S7, S11.1, S11.12; Stage 4c)
- *
- * A THUMBNAIL BESIDE THE NAME RATHER THAN A HERO ABOVE IT, and that is the whole
- * layout decision of this stage rather than a taste. An image per card above the
- * text roughly DOUBLES the height of the menu; at 375px the card grid is already
- * one column, so doubling card height doubles how far a guest scrolls to compare
- * two dishes. Beside the name it costs one row's worth of height and nothing
- * more.
- *
- * `.order-menu-body` WRAPS THE TEXT ON EVERY CARD, WITH OR WITHOUT A PICTURE.
- * The uniformity is the point: this element carries the row rhythm the card used
- * to carry itself, so a card with a thumbnail and a card without one lay their
- * text out under one rule instead of two.
- *
- * THE `<img>` IS LAST IN THE DOCUMENT AND FIRST ON THE SCREEN. A button's
- * accessible name is computed from its contents in document order, so a
- * captioned picture placed first would announce its own description before the
- * dish it describes. `grid-column`/`grid-row` put it back in the left column
- * visually. Reordering a NON-interactive element costs nothing here — there is
- * no focus order for the visual order to disagree with, which is exactly why the
- * same trick would be wrong for a control.
- */
 .order-menu-body {
     display: grid;
     gap: 0.2rem;
@@ -2188,22 +1625,6 @@ a:focus-visible,
     grid-row: 1;
 }
 
-/*
- * A FIXED SQUARE UNDER `object-fit: cover`, AND THE CROP IS THE PRICE OF A
- * BOUNDED CARD. Nothing in this stack can resize an image (S7: the server stores
- * what it is given), so the intrinsic size of this element is whatever somebody's
- * camera produced — a portrait photograph at `height: auto` would be twice as
- * tall as it is wide and would put the card height back where this stage started.
- * `cover` fills the square from the middle of the picture instead. What it costs
- * is the edges of the frame, and the guest who wants the whole photograph taps
- * the card: `.order-menu-detail-picture` below renders it uncropped.
- *
- * Reverting the crop is one declaration — `height: auto` and drop `object-fit` —
- * and the consequence is stated above rather than left to be rediscovered.
- *
- * `flex-shrink` is not needed and not present: this is a grid item in an `auto`
- * column, so it is sized by these declarations and by nothing else.
- */
 .order-menu-item.has-picture .order-menu-thumbnail {
     grid-column: 1;
     grid-row: 1;
@@ -2215,8 +1636,6 @@ a:focus-visible,
     border-radius: 6px;
     background-color: var(--surface);
 }
-
-/* --- what is known about the chosen item ---------------------------------------------------------- */
 
 .order-menu-detail {
     margin: 0 0 0.9rem;
@@ -2231,19 +1650,6 @@ a:focus-visible,
     font-size: 1rem;
 }
 
-/*
- * The same picture, uncropped, because this panel is what a guest opened to look
- * closer. `max-width: 100%` is the load-bearing declaration and it is not a
- * presentational choice — it is `.manage-picture-image`'s reason, one surface
- * over: an <img> with no width constraint renders at whatever a camera produced,
- * so a 3000px photograph would make the DOCUMENT wider than a 375px viewport and
- * S16.3 scenario 16 would fail on a page whose every control is correctly placed.
- *
- * `height: auto` beside it because no height attribute is set; the two together
- * are what keep the aspect ratio while the width is clamped. No `object-fit`
- * here, deliberately: cropping is the card's bargain, and this element is the
- * one place the whole frame is shown.
- */
 .order-menu-detail-picture {
     display: block;
     max-width: 100%;
@@ -2284,14 +1690,6 @@ a:focus-visible,
     font-size: 0.9rem;
 }
 
-/* --- the guest's own like (S11.1, Stage 5b) ------------------------------------------------------- */
-
-/*
- * A row rather than a bare button, so that a second control added to this panel
- * later sits beside this one instead of on top of it. `flex-wrap` because the
- * panel is inside `.order-picker` on a 375px handset and a row that cannot wrap
- * is how S16.3 scenario 16 finds a document wider than its viewport.
- */
 .order-menu-detail-actions {
     display: flex;
     flex-wrap: wrap;
@@ -2299,18 +1697,6 @@ a:focus-visible,
     margin: 0.8rem 0 0;
 }
 
-/*
- * S11.12's floor applies here as it does to every control: `min-height` is
- * `--touch-target` and not a smaller number that merely looks right, because a
- * heart is the smallest thing on this surface anybody presses and it is pressed
- * with a thumb while holding a menu.
- *
- * The pressed state is carried by SHAPE as well as by colour — the glyph is a
- * filled heart when liked and an outlined one when not — so the two states are
- * distinguishable without colour vision. The colour change below is therefore
- * reinforcement rather than the signal, which is the opposite of what a
- * colour-only toggle does.
- */
 .order-menu-like {
     display: inline-flex;
     align-items: center;
@@ -2342,12 +1728,6 @@ a:focus-visible,
     color: var(--danger-ink);
 }
 
-/*
- * The glyph is `aria-hidden` in the markup, so nothing here changes what a
- * screen reader announces; `line-height: 1` keeps the two characters on one
- * optical baseline, since an outlined heart and a filled one are not the same
- * height in every font.
- */
 .order-menu-like-glyph {
     font-size: 1.15rem;
     line-height: 1;
@@ -2380,7 +1760,6 @@ a:focus-visible,
     background: var(--surface-raised);
 }
 
-/* The basket is a proposal, not a record — dashed, so it never reads as something already sent. */
 .order-basket-line {
     border-style: dashed;
 }
@@ -2417,8 +1796,6 @@ a:focus-visible,
     font-weight: 600;
     color: var(--ink-soft);
 }
-
-/* --- one committed line -------------------------------------------------------------------------- */
 
 .order-line-main {
     display: flex;
@@ -2467,8 +1844,6 @@ a:focus-visible,
     margin: 0.25rem 0 0;
 }
 
-/* §11.1: "removed lines struck-through". The line stays visible — that is the whole point of an
- * append-only log — but it must never be mistaken for something still on its way. */
 .order-line.is-removed .order-line-name,
 .order-line.is-removed .order-line-price,
 .order-line.is-removed .order-line-note {
@@ -2496,8 +1871,6 @@ a:focus-visible,
     margin-top: 0.2rem;
     accent-color: var(--accent);
 }
-
-/* --- totals and the rest of the party ------------------------------------------------------------- */
 
 .order-totals {
     display: grid;
@@ -2549,8 +1922,6 @@ a:focus-visible,
     color: var(--ink);
 }
 
-/* --- the all-or-nothing rejection panel (§6.5.9) --------------------------------------------------- */
-
 .order-reject-lede {
     margin: 0 0 0.4rem;
 }
@@ -2561,17 +1932,6 @@ a:focus-visible,
     display: grid;
     gap: 0.2rem;
 }
-
-/* -----------------------------------------------------------------------------
- * THE ONE LAYOUT BREAKPOINT (§11.12)
- *
- * 48rem. Everything above this comment is the handheld layout; everything inside
- * this query is what changes once there is room for a table to be a table and a
- * row of buttons to be a row. There is deliberately exactly one of these, and
- * `HandheldLayoutContractTests` asserts both that fact and its direction — a
- * second breakpoint, or one written as `max-width`, is the rule being abandoned
- * one page at a time, which is how F-59 happened.
- * ---------------------------------------------------------------------------*/
 
 @media (min-width: 48rem) {
     .page-head {
@@ -2598,11 +1958,6 @@ a:focus-visible,
         align-items: center;
     }
 
-    /*
-     * The filter becomes the row it used to be unconditionally. `flex-end` so the submit button and
-     * the fields sit on one baseline, which is what the retired inline copies were reaching for and
-     * what there is room for here.
-     */
     .filter-form {
         flex-direction: row;
         flex-wrap: wrap;
@@ -2620,11 +1975,6 @@ a:focus-visible,
         align-items: center;
     }
 
-    /*
-     * The detail surface's facts spread into as many columns as fit, and its small forms become the
-     * row they used to be unconditionally. `flex-end` so a field and its button sit on one baseline,
-     * which is what the four retired copies were reaching for and what there is room for here.
-     */
     .manage-facts {
         grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
     }
@@ -2653,7 +2003,6 @@ a:focus-visible,
         margin-bottom: 0;
     }
 
-    /* The record list becomes a table again. */
     .record-list table {
         display: table;
     }
@@ -2716,7 +2065,6 @@ a:focus-visible,
         white-space: nowrap;
     }
 
-    /* In a table cell the action is a link again: a full-width button in a 6rem column is not one. */
     .record-actions .button-secondary,
     .record-actions .button-primary {
         width: auto;
@@ -2735,12 +2083,6 @@ a:focus-visible,
         color: var(--accent);
     }
 
-    /*
-     * A heading's own action stops needing the whole width once there is room for a row. It stays a
-     * real button rather than becoming a bare link the way `.record-actions` does above — that
-     * conversion exists because a full-width button inside a 6rem table column is not a button, and
-     * this control is not in a table cell.
-     */
     .menu-group-actions .button-secondary {
         width: auto;
     }
@@ -2758,10 +2100,6 @@ a:focus-visible,
         min-height: 0;
     }
 
-    /*
-     * The tick's visible verb is the card layout's replacement for a column header, so it goes away
-     * where the header itself is on screen — otherwise every row repeats the word above it.
-     */
     .record-tick-verb {
         position: absolute;
         width: 1px;

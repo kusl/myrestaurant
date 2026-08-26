@@ -11,176 +11,14 @@
 #   scripts/dev_instance.sh logs [what]  one container's log: web (default), postgres, or tunnel
 #   scripts/dev_instance.sh diagnose     why it is not serving: both logs, and how to read them
 #   scripts/dev_instance.sh down         stop the tunnel and the stack, KEEPING the named volumes
-#   scripts/dev_instance.sh reset        down, and then DESTROY the named volumes — see below
+#   scripts/dev_instance.sh reset        down, and then DESTROY the named volumes
 #   scripts/dev_instance.sh --help       this text
 #
 # Flags:  --no-build  --no-cache  --new-url  --follow/-f  --tail N  --yes
 #
-# EXIT STATUS IS A CLAIM ABOUT THE INSTANCE, NOT ABOUT THIS SCRIPT (F-55)
+# A quick tunnel's hostname rotates per run, so passkeys registered on one URL do not carry to
+# the next. Never bootstrap a real instance through one (§3.6, §14.3).
 #
-# `up` exits 0 only when the application answered /healthz/ready on this host. It exits 1 when the
-# stack was started and the application never answered — and it leaves everything running when it
-# does, because the containers and their logs are the evidence. So `time bash scripts/dev_instance.sh`
-# now fails loudly on a broken instance instead of printing a URL banner over a dead application.
-#
-# HOW THIS DIFFERS FROM scripts/quick_tunnel.sh, AND WHY BOTH EXIST
-#
-# `quick_tunnel.sh` runs cloudflared as a CHILD of the shell and blocks on it, so the URL lives
-# exactly as long as the terminal does. That is the right shape for a demo you are standing in
-# front of, and the wrong shape for the case this script is for: a spare machine on the LAN,
-# reached over SSH, serving a build that testers will use for days. There, the terminal is a
-# remote session that will be closed, and a tunnel owned by it dies with it.
-#
-# So the tunnel here is a DETACHED CONTAINER rather than a child process. Nothing this script
-# starts is its own descendant, which is what lets it exit while the instance keeps serving.
-#
-# Two consequences of the tunnel outliving the shell, both deliberate:
-#
-#   • The URL survives `up`, so a second `up` REUSES it instead of minting a new one. That is
-#     the difference that matters to a tester: a re-registered passkey is worth keeping, and a
-#     new random hostname throws every one of them away. Pass --new-url when you want a fresh
-#     hostname on purpose.
-#   • Nothing else will ever stop it. `down` is not optional housekeeping here — it is the only
-#     thing that closes the tunnel.
-#
-# NO CALL IN HERE MAY OWN THE TERMINAL INDEFINITELY (F-53)
-#
-# The first run of this script hung, silently, forever — and not in anything below. It hung inside
-# `podman-compose up -d`. podman-compose 1.3.0, which is what Debian trixie ships, implements
-# `up -d` as `podman run -d` for every container FOLLOWED BY a wait on each dependency's
-# `depends_on` condition, in an unbounded `while True:` retry loop that logs at debug level and
-# prints nothing at all. So the stack was up, the tunnel was open, the public URL was serving —
-# and the command never returned, with no output to say why.
-#
-# `compose.yaml` no longer asks for a health condition, which removes that cause. The shape of the
-# failure is the lasting lesson though: a script whose entire purpose is to hand the terminal back
-# must not contain a call that can keep it. So every compose invocation here runs under a deadline,
-# and when one trips this script says so, reports what the containers are actually doing, repairs
-# anything that was created but not started, and goes on to verify readiness itself — because a
-# compose command that did not return is not the same thing as a stack that did not start.
-#
-# NO WAIT MAY OUTLIVE ITS OWN EVIDENCE, AND A FAILURE MUST PRINT THE LOG (F-55)
-#
-# The second run did not hang. It did something worse, and it took six minutes and fifty-five
-# seconds to do it: `postgres` restarted in a loop, `web` exited 1, and this script sat out the
-# full 300-second readiness deadline against a container that was already dead — then printed the
-# DEV INSTANCE banner with a public URL in it, held twenty more seconds probing that URL, warned
-# that it had not answered, and exited 0. The one thing it never did was print either container's
-# log, which is where the reason was the entire time. `logs` would not have helped: it showed the
-# tunnel's log and had no way to ask for the application's.
-#
-# F-53 was a wait with no deadline. This was a wait with a deadline and no evidence — and the two
-# call for opposite fixes, which is why the rule is stated separately: a deadline stops a wait that
-# cannot end, and only a liveness check stops a wait that cannot succeed. Every wait below is
-# bounded AND watched:
-#
-#   • the database wait ends early when postgres has restarted CRASH_LOOP_RESTARTS times, because
-#     a container that keeps exiting is not going to start accepting connections at second 179;
-#   • both waits start a stopped container again first, up to START_ATTEMPTS times, and then give
-#     up on it — because the application's own database retry is bounded at sixty seconds (ADR-0012),
-#     so a slow first postgres boot outlives it and leaves a correctly built image stopped with
-#     nothing wrong, and because a container that will not stay started will not start later either;
-#   • the settle phase is SKIPPED when readiness already failed, because probing a public URL for
-#     an application that is not answering on loopback cannot produce information;
-#   • and when anything fails, `up` prints both containers' log tails and a key for reading them,
-#     which is what turns "it did not come up" into a cause.
-#
-# THE ONE FAILURE THIS SCRIPT CANNOT REPAIR, AND THE COMMAND THAT CAN
-#
-# `down` deliberately keeps the named volumes: the database and the Data Protection key ring are
-# what make a test instance worth returning to. But a PostgreSQL data directory that cannot start —
-# an interrupted first initdb, a half-written checkpoint after a hard reboot, a directory written by
-# a different major version — survives `down` and `up` for exactly the same reason, and no amount of
-# restarting fixes it. `podman system prune -a` does not touch volumes either, so an operator can
-# reasonably believe they have cleared everything and still be starting the same poisoned directory.
-#
-# `reset` is the escape hatch, and it is destructive on purpose: it removes this project's named
-# volumes, which is the database AND the key ring — every account, every passkey, every enrolled
-# TOTP secret on this instance. It asks before doing it, and needs --yes when stdin is not a
-# terminal. Take a backup first (OPERATIONS §6) if the data mattered.
-#
-# THE ENGINE'S DEFAULTS ARE VERIFIED, NOT ASSUMED (F-57)
-#
-# `compose.yaml` sets twenty-three values with the `${NAME:-default}` form, and on Debian trixie's
-# podman-compose — the canonical engine — the DEFAULT branch is not applied. Every variable not already
-# set in the environment reaches the container as the placeholder text. That is one engine behaviour
-# with two victims: the application refuses its own configuration and exits 1, and `POSTGRES_USER`
-# reaches initdb as punctuation, so the database wipes its data directory and crash-loops forever.
-# Both of the failures this script was rewritten to diagnose had that single cause.
-#
-# So `up` asks scripts/check_compose_substitution.sh BEFORE the build, and refuses rather than
-# spending twenty minutes producing an image the stack cannot use. And after `up -d` it re-reads the
-# question from the containers' own environment, which needs no subcommand and cannot be fooled —
-# because whether an EMPTY assignment in `.env` counts as supplying a variable is a property of the
-# engine that no file in this repository can know.
-#
-# ADDRESSES ARE LITERALS HERE, NOT NAMES (F-56)
-#
-# `compose.yaml` publishes the web port as `127.0.0.1:8080:8080` — an IPv4 loopback address and
-# nothing else. So everything that dials it names `127.0.0.1`, never `localhost`: a name that
-# resolves to `::1` first depends on every client falling back to the second address, and BusyBox
-# `wget` — a real possibility on a minimal host, and the second entry in this script's own probe
-# chain — does not. `run.sh` has probed the literal since M1 and the two tunnel helpers named the
-# host; that is a rule applied to one example and never generalised.
-#
-# THE HOST THIS TARGETS
-#
-# Debian, rootless Podman, podman-compose, and no .NET SDK — `run.sh` is unusable there, since
-# its default and --smoke modes both need `dotnet` on the host. Nothing below calls `dotnet`:
-# the image is built by the SDK container the Containerfile names.
-#
-# ORDER OF OPERATIONS, AND THE ONE THING IT FIXES
-#
-# The image is built FIRST, before the tunnel opens. `quick_tunnel.sh` opens the tunnel first
-# and builds afterwards, which on a cold host means the URL is printed and then unreachable for
-# as long as the build takes — measured at nineteen minutes on the machine this script was
-# written for. Building first costs nothing and closes that window to the time it takes to
-# start two containers.
-#
-# The public origin is therefore known BEFORE `web` is created, which is the other half of the
-# same reordering: `RESTAURANT_PUBLIC_ORIGIN` is exported and then the stack comes up once,
-# rather than coming up with a placeholder origin and being force-recreated with the real one.
-# Worth knowing about the flag this avoids: podman-compose implements `up --force-recreate web`
-# as a `down` of the WHOLE project followed by an `up` of the named service, so what looks like
-# recreating one container restarts the database too. The engine still recreates when it has
-# to — the config hash it labels containers with is computed after interpolation, so a changed
-# origin is a changed hash — and that is the mechanism this script relies on instead.
-#
-# LOGGING OUT AFTERWARDS
-#
-# Rootless containers belong to your user session. Debian's logind default (KillUserProcesses=no)
-# leaves them alone when you disconnect, but the durable answer is `loginctl enable-linger`,
-# which OPERATIONS §2 already asks for on a production host. This script reports which of the
-# two you are relying on rather than assuming.
-#
-# WHAT A QUICK TUNNEL IS STILL NOT FOR
-#
-# Passkeys work here — the relying-party ID is derived per request and `https://*.trycloudflare.com`
-# is trusted by default (ADR-0005, §3.3) — but the hostname is random per tunnel and on the Public
-# Suffix List, so passkeys registered against one URL are worthless against the next. Never
-# bootstrap a real instance (§3.6) through a quick tunnel: the first administrator's credentials
-# would not survive the first `--new-url`. Use the named tunnel (CLOUDFLARE_TUNNEL_TOKEN) for that.
-#
-# Environment:
-#   TUNNEL_TARGET                  what cloudflared points at (default http://127.0.0.1:8080)
-#   TUNNEL_URL_WAIT                seconds to wait for the tunnel URL          (default 120)
-#   DEV_INSTANCE_COMPOSE_WAIT      seconds any one compose command may take    (default 240)
-#   DEV_INSTANCE_BUILD_WAIT        seconds the image build may take            (default 5400)
-#   DEV_INSTANCE_DATABASE_WAIT     seconds to wait for postgres to accept connections (default 180)
-#   DEV_INSTANCE_READY_WAIT        seconds to wait for /healthz/ready          (default 300)
-#   DEV_INSTANCE_SETTLE_SECONDS    seconds to re-probe the public URL before exiting (default 20)
-#   DEV_INSTANCE_LOG_TAIL          log lines printed per container on a failure (default 40)
-#   DEV_INSTANCE_START_ATTEMPTS    times a stopped container is started again before giving up
-#                                  (default 3)
-#   DEV_INSTANCE_CRASH_LOOP_RESTARTS restarts that count as a crash loop       (default 3)
-#   DEV_INSTANCE_TUNNEL_CONTAINER  the tunnel container's name (default myrestaurant_quicktunnel)
-#   DEV_INSTANCE_STATE_DIRECTORY   where the URL is recorded
-#                                  (default ${XDG_STATE_HOME:-~/.local/state}/myrestaurant)
-#   CLOUDFLARED_IMAGE              fully qualified, so a short-name registry prompt cannot hang an
-#                                  unattended bring-up (default docker.io/cloudflare/cloudflared:latest)
-#   CONTAINER_ENGINE               force podman or docker instead of taking the first on PATH
-#   COMPOSE_PROJECT_NAME           overrides the project name the engine labels containers with
-#   SOURCE_REVISION                stamped into the image; defaults to the checked-out commit
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -189,9 +27,6 @@ log()  { printf '[dev-instance] %s\n' "$*" >&2; }
 warn() { printf '[dev-instance] warning: %s\n' "$*" >&2; }
 die()  { printf '[dev-instance] error: %s\n' "$*" >&2; exit 1; }
 
-# ---------------------------------------------------------------------------------------------------
-# 0. Arguments
-# ---------------------------------------------------------------------------------------------------
 COMMAND="up"
 COMMAND_GIVEN=0
 NO_BUILD=0
@@ -255,13 +90,6 @@ if [[ -n "$LOG_TARGET" && "$COMMAND" != "logs" ]]; then
     die "'${LOG_TARGET}' only means something to 'logs' (try: $0 logs ${LOG_TARGET})."
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# 1. Settings
-#
-# TUNNEL_TARGET names 127.0.0.1 rather than localhost, deliberately (F-56): compose publishes the web
-# port on that address and no other, and this value is dialled by cloudflared, by curl, and by wget —
-# the last of which, in its BusyBox form, does not try a second address when the first refuses.
-# ---------------------------------------------------------------------------------------------------
 TUNNEL_TARGET="${TUNNEL_TARGET:-http://127.0.0.1:8080}"
 URL_WAIT="${TUNNEL_URL_WAIT:-120}"
 COMPOSE_WAIT="${DEV_INSTANCE_COMPOSE_WAIT:-240}"
@@ -279,14 +107,6 @@ STATE_FILE="${STATE_DIRECTORY}/dev-instance.env"
 
 PUBLIC_URL=""
 
-# ---------------------------------------------------------------------------------------------------
-# 2. Engine and compose command
-#
-# The engine is chosen first and the compose command is chosen to MATCH it, rather than each being
-# picked independently off PATH. On a host with both engines those two searches can disagree — the
-# stack ends up in one engine's store and `logs`, `exec` and `rm` go looking in the other's, which
-# is F-43 with a different pair of commands.
-# ---------------------------------------------------------------------------------------------------
 if [[ -n "${CONTAINER_ENGINE:-}" ]]; then
     command -v "$CONTAINER_ENGINE" >/dev/null 2>&1 \
         || die "CONTAINER_ENGINE is '${CONTAINER_ENGINE}' and that is not on PATH."
@@ -313,32 +133,16 @@ else
     die "docker is on PATH but 'docker compose' is not available."
 fi
 
-# The project name both engines derive from the directory this file sits in, unless the environment
-# overrides it. It is used to NARROW container discovery below and to find this project's volumes;
-# discovery falls back to the service label on its own if the derivation is wrong.
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-}"
 if [[ -z "$PROJECT_NAME" ]]; then
     PROJECT_NAME="$(basename "$PWD" | tr '[:upper:]' '[:lower:]' | tr --complement --delete 'a-z0-9_-')"
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# 3. Compose, under a deadline (F-53)
-#
-# `timeout` is coreutils and present on every host this project targets; where it is not, the call
-# runs unguarded and the preflight says so, because silently dropping a safety net is worse than
-# not having one. 124 is timeout's own "the deadline passed"; 137 is what it reports when SIGTERM
-# was ignored and it escalated to SIGKILL. Both mean the same thing to a caller here.
-#
-# Killing a compose command is safe in the one way that matters: the containers it has already
-# created belong to the engine, not to this shell, so they keep running. That is the same property
-# the detached tunnel relies on.
-# ---------------------------------------------------------------------------------------------------
 HAVE_TIMEOUT=0
 if command -v timeout >/dev/null 2>&1; then
     HAVE_TIMEOUT=1
 fi
 
-# compose_guarded <seconds> <compose arguments...>
 compose_guarded() {
     local seconds="$1"
     shift
@@ -365,16 +169,6 @@ report_deadline() {
     warn "  containers are normally already running by then, so this is not fatal by itself."
 }
 
-# ---------------------------------------------------------------------------------------------------
-# 4. Container facts
-#
-# The name of the compose-managed container for a service, or empty. Found by LABEL rather than by
-# guessing at "<project>_<service>_1", because the naming scheme is the engine's business and both
-# engines label what they create. The project label is tried first, so that a `web` service
-# belonging to a different compose project on the same host cannot be mistaken for this one; the
-# service label alone is the fallback, because the project name is derived here and the engine is
-# the authority on it.
-# ---------------------------------------------------------------------------------------------------
 compose_container() {
     local service="$1" found=""
 
@@ -398,19 +192,10 @@ container_state() {
     "$ENGINE" inspect --format '{{.State.Status}}' "$1" 2>/dev/null || true
 }
 
-# The exit code of the last run, or empty when the engine will not say. Printed rather than
-# interpreted: 1 from this application means it refused its own configuration and said so on stderr
-# (Program.cs returns 1 for that and nothing else), which is exactly the kind of thing the log tail
-# below answers and a status word does not.
 container_exit_code() {
     "$ENGINE" inspect --format '{{.State.ExitCode}}' "$1" 2>/dev/null || true
 }
 
-# How many times the engine has restarted this container under its restart policy. The crash-loop
-# signal: a number that keeps climbing while nothing else changes is a container that cannot start,
-# and it is the reason the database wait can end at second thirty instead of second one hundred and
-# eighty. Absent or unparseable reads as 0, so a host whose engine omits the field simply loses the
-# early exit rather than misreporting one.
 container_restarts() {
     local value
     value="$("$ENGINE" inspect --format '{{.RestartCount}}' "$1" 2>/dev/null || true)"
@@ -420,19 +205,10 @@ container_restarts() {
     printf '%s\n' "$value"
 }
 
-# The health status of a container, or empty when it has no healthcheck. REPORTED, never waited on,
-# and that distinction is the whole of F-53: a health status of "starting" that never advances is
-# exactly what hung the documented command, so this prints it and moves on.
 container_health() {
     "$ENGINE" inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$1" 2>/dev/null || true
 }
 
-# One line describing a service, on stdout. Callers redirect: `status` writes to stdout because that
-# is its output, and `up` writes to stderr because `up` puts nothing on stdout at all.
-#
-# A stopped container reports its EXIT CODE and its restart count, and does not report health — the
-# previous version printed "(stopped, health: starting)" for a container that had exited 1 six
-# minutes earlier, which reads as a container still on its way up (F-55).
 describe_service() {
     local service="$1" name state health code restarts detail
 
@@ -466,9 +242,6 @@ describe_service() {
     printf '  %-10s %s (%s)\n' "${service}:" "$name" "$detail"
 }
 
-# Start a container the engine already knows about but which is not running. Engine-level and
-# deliberately not a compose call: the repair needed after a compose command was cut short is
-# "start what was created", and asking compose again invites the same wait that was just abandoned.
 start_if_stopped() {
     local service="$1" name state
     name="$(compose_container "$service")"
@@ -487,21 +260,12 @@ start_if_stopped() {
 tunnel_is_running() { [[ "$(container_state "$TUNNEL_CONTAINER")" == "running" ]]; }
 tunnel_exists()     { [[ -n "$(container_state "$TUNNEL_CONTAINER")" ]]; }
 
-# The assigned hostname, read out of the tunnel's own log. cloudflared prints it once, inside a box,
-# and it is the only *.trycloudflare.com string it ever emits.
 tunnel_url() {
     "$ENGINE" logs "$TUNNEL_CONTAINER" 2>&1 \
         | grep --only-matching --extended-regexp 'https://[A-Za-z0-9][A-Za-z0-9.-]*\.trycloudflare\.com' \
         | head -n 1 || true
 }
 
-# ---------------------------------------------------------------------------------------------------
-# 5. Reading the logs, which is the part that was missing (F-55)
-#
-# Captured and reprinted rather than streamed, so that both containers' output can be framed, and so
-# that an empty log is reported as an empty log instead of as a blank gap. Bounded by --tail, because
-# the point is the last thing that happened.
-# ---------------------------------------------------------------------------------------------------
 print_container_log() {
     local service="$1" lines="$2" name output
 
@@ -531,9 +295,6 @@ print_container_log() {
     printf '%s\n' "$output" | sed 's/^/  | /' >&2
 }
 
-# The reading key. Every line of it is a symptom this project can actually produce, paired with what
-# it means and what to do — because "the app did not answer" is not a diagnosis, and an operator who
-# has just watched a bring-up fail should not have to guess which of two logs matters.
 print_reading_key() {
     cat >&2 <<'KEY'
 
@@ -582,8 +343,6 @@ print_reading_key() {
 KEY
 }
 
-# Everything an operator needs in one screen, and the body of `diagnose`. Written to stderr for the
-# same reason the rest of `up` is: stdout belongs to `url`.
 print_diagnosis() {
     local lines="${1:-$LOG_TAIL}"
 
@@ -610,15 +369,6 @@ print_diagnosis() {
     printf '%s\n' '──────────────────────────────────────────────────────────────────────────────' >&2
 }
 
-# ---------------------------------------------------------------------------------------------------
-# 6. HTTP probing without assuming the host has an HTTP client
-#
-# A machine chosen for having Podman on it is not necessarily a machine with curl on it. Three ways
-# are tried in order of directness, and the last one is the reason this works on a bare host: the
-# runtime image installs curl for its own compose healthcheck, so `exec`ing it is a client that is
-# guaranteed to exist whenever there is anything to probe. It reaches both the app (it *is* the app)
-# and the public URL (it has egress, the same egress the tunnel uses).
-# ---------------------------------------------------------------------------------------------------
 PROBE=""
 if command -v curl >/dev/null 2>&1; then
     PROBE="curl"
@@ -641,23 +391,10 @@ http_ok() {
     "$ENGINE" exec "$web" curl --fail --silent --output /dev/null --max-time 10 "$url" >/dev/null 2>&1
 }
 
-# ---------------------------------------------------------------------------------------------------
-# 7. The two waits that watch what they are waiting for (F-55)
-# ---------------------------------------------------------------------------------------------------
-
-# Does the database answer a connection request? pg_isready is in the postgres image and answers
-# before authentication, so this needs no credentials and cannot be fooled by a password mismatch
-# into reporting a server that is down.
 database_accepts_connections() {
     "$ENGINE" exec "$1" pg_isready --quiet >/dev/null 2>&1
 }
 
-# Wait for postgres to accept connections, watching the container while it does.
-#   0 accepting | 1 deadline passed | 2 no container | 3 it will not run (ended early)
-#
-# Two ways out early, and they are different failures: a container that keeps being restarted by the
-# engine is crash-looping, and one that stays stopped after being started again is not coming up. Both
-# used to be "the app did not answer /healthz/ready" five minutes later (F-55).
 wait_for_database() {
     local seconds="$1" name deadline baseline churn state starts=0
     name="$(compose_container postgres)"
@@ -700,14 +437,6 @@ wait_for_database() {
     return 1
 }
 
-# Wait for the application to answer /healthz/ready on loopback, watching the container while it does.
-#   0 ready | 1 deadline passed | 2 no way to probe | 3 web will not stay running
-#
-# `web` is started again rather than merely reported, up to START_ATTEMPTS times, and that repair is
-# specific: the application's database retry is bounded at thirty attempts two seconds apart
-# (ADR-0012), so a first postgres boot slower than sixty seconds outlives it and leaves a correctly
-# built image stopped with nothing wrong. The engine's own restart policy usually covers this; usually
-# is not a thing to wait 300 seconds on.
 wait_for_application() {
     local url="$1" seconds="$2" name deadline starts=0 state outcome
     name="$(compose_container web)"
@@ -743,9 +472,6 @@ wait_for_application() {
     return 1
 }
 
-# ---------------------------------------------------------------------------------------------------
-# 8. Commands other than `up`
-# ---------------------------------------------------------------------------------------------------
 read_recorded_url() {
     [[ -f "$STATE_FILE" ]] || return 1
     local line
@@ -758,9 +484,6 @@ read_recorded_url() {
     return 1
 }
 
-# The volumes this project owns, one per line, as the engine names them. Enumerated rather than
-# assumed: the compose convention is "<project>_<volume>", and enumerating means `reset` reports
-# exactly what it removed instead of guessing at two names and silently missing a third.
 project_volumes() {
     [[ -n "$PROJECT_NAME" ]] || return 0
     "$ENGINE" volume ls --format '{{.Name}}' 2>/dev/null \
@@ -769,7 +492,6 @@ project_volumes() {
 
 case "$COMMAND" in
     url)
-        # The running tunnel is the truth; the state file is a cache for when it is gone.
         if tunnel_is_running; then
             PUBLIC_URL="$(tunnel_url)"
         fi
@@ -798,15 +520,11 @@ case "$COMMAND" in
             fi
         fi
 
-        # Read straight from the engine, and before compose is asked anything: these two lines are
-        # the facts an operator needs, and they arrive even on a host where compose itself is stuck.
         echo
         echo "containers (engine):"
         describe_service postgres
         describe_service web
 
-        # A container that is not running is the answer to "why is this not serving", so say where the
-        # rest of the answer is rather than leaving an exit code sitting on the line above.
         for status_service in postgres web; do
             status_container="$(compose_container "$status_service")"
             [[ -n "$status_container" ]] || continue
@@ -829,9 +547,6 @@ case "$COMMAND" in
         ;;
 
     logs)
-        # Defaults to `web`, and that is the fix rather than a preference (F-55): when this instance
-        # is not serving, the application's log is where the reason is, and the previous version could
-        # only ever show the tunnel's. `logs tunnel` still says what cloudflared thinks.
         log_target="${LOG_TARGET:-web}"
         case "$log_target" in
             tunnel)
@@ -888,9 +603,6 @@ case "$COMMAND" in
         ;;
 
     reset)
-        # The escape hatch for a data directory that cannot start, and destructive by definition.
-        # Confirmed interactively, or with --yes; refused outright when neither, because a script
-        # that silently destroys a key ring because stdin was a pipe would be worse than useless.
         volumes="$(project_volumes)"
 
         cat >&2 <<'RESETWARNING'
@@ -943,9 +655,6 @@ RESETWARNING
             done
         fi
 
-        # Asked of the engine either way, because `down --volumes` is the part most likely to have
-        # been the thing that was cut short, and a volume that survived a reset is the whole defect
-        # this command exists to fix.
         while IFS= read -r volume; do
             [[ -n "$volume" ]] || continue
             if "$ENGINE" volume rm "$volume" >/dev/null 2>&1; then

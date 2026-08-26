@@ -4,37 +4,13 @@ using MyRestaurant.Domain.Orders;
 
 namespace MyRestaurant.DataAccess.Orders;
 
-/// <summary>
-/// Reads one order's complete append-only event log as domain
-/// <see cref="OrderEvent"/>s (TECHNICAL_SPECIFICATION §6.2, §6.3, §8.5).
-///
-/// <para>This is the source of truth being read, not a projection: the same list feeds
-/// <see cref="OrderProjection.FromEvents"/> (the fold whose equivalence with the SQL views §8.5 asserts),
-/// the §6.5 validation the order-mutating transaction runs under the lock (§6.6), and the administration
-/// event explorer's "complete stored record, never projected or truncated" requirement (§11.4). Nothing
-/// is filtered out and nothing is summarised — removed lines, reverted fulfillments, and superseded
-/// prices are all still here, because the whole point of an event log is that the history survives the
-/// state.</para>
-/// </summary>
 public interface IOrderEventLog
 {
-    /// <summary>
-    /// Every event on the order, ascending by <c>sequence_number</c>, each carrying its typed operations
-    /// in the order they were written. An unknown order yields an empty list rather than throwing — a
-    /// living order is created lazily (§6.1), so "no events yet" and "no order yet" are the same answer
-    /// to a reader.
-    /// </summary>
     Task<IReadOnlyList<OrderEvent>> ReadEventsAsync(
         Guid guestOrderIdentifier,
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// The Dapper implementation of <see cref="IOrderEventLog"/>. One connection per call, no transaction —
-/// the transactional read used inside the order-mutating transaction goes through
-/// <see cref="OrderEventReader"/> directly, sharing exactly the same SQL so the validator can never
-/// disagree with a reader about what the log says.
-/// </summary>
 public sealed class DapperOrderEventLog : IOrderEventLog
 {
     private readonly IDatabaseConnectionFactory _connectionFactory;
@@ -58,20 +34,6 @@ public sealed class DapperOrderEventLog : IOrderEventLog
     }
 }
 
-/// <summary>
-/// The shared two-query read behind <see cref="IOrderEventLog"/> and the order-mutating transaction.
-///
-/// <para>Two queries, not six: the event headers, and then the five typed operation tables folded into
-/// one flat result by <c>UNION ALL</c>. Every branch projects the same nine columns with the missing ones
-/// cast to their target type (<c>NULL::uuid</c>, <c>NULL::numeric(10,2)</c>, …), because in a union
-/// PostgreSQL resolves the column type from the branches and a bare <c>NULL</c> would leave it
-/// <c>unknown</c>. Operations are ordered by their surrogate primary key so a re-read is deterministic,
-/// but that order is <em>not</em> a promise about the order they were written in: the keys are UUIDv7
-/// (ADR-0011) and two minted inside the same millisecond differ only in their random bits. The schema
-/// records no ordinal within an event and nothing needs one — §6.5.5 forbids the one intra-event
-/// ordering that could change an outcome (removing a line the same event added), and the SQL views break
-/// same-event ties arbitrarily too, since every operation of one event shares its sequence number.</para>
-/// </summary>
 internal static class OrderEventReader
 {
     private const string EventsSql = """
@@ -253,8 +215,6 @@ internal static class OrderEventReader
         _ => throw new InvalidOperationException($"Unknown stored order operation kind '{row.OperationKind}'."),
     };
 
-    // The columns below are NOT NULL in their own table and only become nullable in the union; a null
-    // here means a branch of the UNION ALL projects the wrong column, which is a bug in this file.
     private static T Required<T>(T? value, string columnName)
         where T : struct
         => value ?? throw new InvalidOperationException($"Stored order operation is missing '{columnName}'.");
@@ -262,10 +222,6 @@ internal static class OrderEventReader
     private static string Required(string? value, string columnName)
         => value ?? throw new InvalidOperationException($"Stored order operation is missing '{columnName}'.");
 
-    // Dapper binds these positional records by constructor-parameter name against the aliased columns
-    // above; every member's CLR type matches exactly what Npgsql returns for that PostgreSQL type
-    // (bigint → long, integer → int, numeric → decimal, timestamptz → DateTime), because Dapper's
-    // constructor binding does not convert.
     private sealed record OrderEventRow(
         Guid OrderEventIdentifier,
         Guid GuestOrderIdentifier,

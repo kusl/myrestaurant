@@ -8,18 +8,6 @@
 @inject RestaurantOptions Options
 @inject RestaurantTime RestaurantClock
 
-@* The administrator/counter join-code fallback (TECHNICAL_SPECIFICATION §4.5, §11.4). When a table's
-   display device is dead, staff can render the *same* rotating QR here on demand; the guest scans this
-   screen. The join secret never leaves the server — this page shows only the server-rendered QR and the
-   scan URL it encodes (§4.1/§4.5).
-
-   Static SSR, like every administration surface: it sets no cookie and simply reads and renders. It is
-   therefore a snapshot of the current window — a scanned code keeps working for the current *and*
-   previous window (worst case ~2× the rotation, §4.3), so it will not die mid-scan, and a "Show a fresh
-   code" link re-renders the next window on demand. The window-aligned auto-refresh belongs to the paired
-   display surface (§11.5) and lands with it; here a manual refresh is the operational fallback. A
-   deactivated or unknown table renders no code (§4.1). *@
-
 <PageTitle>@(_table is null ? "Join code" : $"Join code — {_table.Label}")</PageTitle>
 
 @if (_table is null)
@@ -45,7 +33,6 @@ else if (!_table.IsActive)
 }
 else if (_qr is null)
 {
-    @* Active table but no code came back — treat as a transient condition rather than dereference null. *@
     <section class="panel account-panel">
         <p class="eyebrow">Administration</p>
         <h1>@_table.Label</h1>
@@ -86,8 +73,6 @@ else
     </section>
 }
 
-@* Namespaced under .join-code-* and inline for the same reason the other administration pages keep
-   their CSS inline: App.razor links the static stylesheet, so component CSS isolation is not active. *@
 <style>
     .join-code-panel .join-qr {
         display: flex;

@@ -9,20 +9,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Displays;
 
-/// <summary>
-/// Integration tests for <see cref="DapperDisplayDevicePairing"/> and
-/// <see cref="DapperDisplayDeviceDirectory"/> (TECHNICAL_SPECIFICATION §4.2) against a real PostgreSQL 17
-/// container. They pin the properties the pairing surface depends on: the plaintext code is never
-/// stored, only its SHA-256 hash; redeeming it once creates the device and burns the code; every way of
-/// failing — unknown, reused, expired, malformed, table deactivated — writes nothing; a code typed the
-/// way a human types it still works; and revocation is stamped once and stays stamped.
-///
-/// <para>Data is arranged through the real <see cref="DapperTableAdministration"/> so the pairing
-/// service is tested against rows written exactly the way the app writes them. Each test truncates the
-/// people, tables, and display tables first (xUnit builds a fresh instance per test and runs them
-/// sequentially). Own <see cref="PostgreSqlFixture"/>; if no container engine is available every test
-/// skips — mirroring <see cref="Tables.TableAdministrationTests"/>.</para>
-/// </summary>
 public sealed class DisplayDevicePairingTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private const string SamplePasswordHash =
@@ -93,7 +79,6 @@ public sealed class DisplayDevicePairingTests : IClassFixture<PostgreSqlFixture>
         Assert.Equal(_clock.UtcNow + CodeLifetime, row.ExpiresAt);
         Assert.Null(row.UsedAt);
 
-        // §4.2: stored hashed. The row must hold sha256(code) and nowhere the plaintext.
         Assert.Equal(Sha256Hashing.Hash(result.Code!), row.CodeHash);
         Assert.Equal(Sha256Hashing.HashByteCount, row.CodeHash.Length);
     }
@@ -139,7 +124,6 @@ public sealed class DisplayDevicePairingTests : IClassFixture<PostgreSqlFixture>
         Assert.NotNull(result.DeviceIdentifier);
         Assert.NotNull(result.DeviceSecret);
 
-        // 32 CSPRNG bytes as unpadded Base64Url is 43 characters (§4.2).
         Assert.Equal(43, result.DeviceSecret!.Length);
         Assert.DoesNotContain(":", result.DeviceSecret, StringComparison.Ordinal);
 
@@ -153,13 +137,11 @@ public sealed class DisplayDevicePairingTests : IClassFixture<PostgreSqlFixture>
         Assert.Null(device.RevokedByPersonIdentifier);
         Assert.Null(device.LastSeenAt);
 
-        // §4.2: the server stores only sha256(secret) — of the Base64Url text that travels in the cookie.
         Assert.Equal(Sha256Hashing.Hash(result.DeviceSecret), device.DeviceSecretHash);
 
         PairingCodeProbeRow burnt = await ReadOnlyPairingCodeAsync(cancellationToken);
         Assert.Equal(_clock.UtcNow, burnt.UsedAt);
 
-        // And the directory shows it, with the pairer resolved to a username and no hash in sight.
         IReadOnlyList<TableDisplayDeviceSummary> listed =
             await Directory().ListDevicesForTableAsync(tableId, cancellationToken);
         TableDisplayDeviceSummary summary = Assert.Single(listed);
@@ -186,7 +168,6 @@ public sealed class DisplayDevicePairingTests : IClassFixture<PostgreSqlFixture>
 
         RedeemPairingCodeResult second = await Pairing().RedeemPairingCodeAsync(code, "Second", cancellationToken);
 
-        // §4.2: single-use. A used code is indistinguishable from one that never existed.
         Assert.Equal(RedeemPairingCodeOutcome.CodeNotRecognized, second.Outcome);
         Assert.Null(second.DeviceSecret);
         Assert.Equal(1, await CountAsync("SELECT count(*)::int FROM table_display_device;", cancellationToken));
@@ -209,7 +190,6 @@ public sealed class DisplayDevicePairingTests : IClassFixture<PostgreSqlFixture>
         Assert.Equal(RedeemPairingCodeOutcome.CodeNotRecognized, result.Outcome);
         Assert.Equal(0, await CountAsync("SELECT count(*)::int FROM table_display_device;", cancellationToken));
 
-        // The code is untouched, not burnt: a failed attempt "burns nothing but the rate budget" (§4.2).
         Assert.Null((await ReadOnlyPairingCodeAsync(cancellationToken)).UsedAt);
     }
 
@@ -244,7 +224,6 @@ public sealed class DisplayDevicePairingTests : IClassFixture<PostgreSqlFixture>
         Guid administrator = await SeedPersonAsync("ada", cancellationToken);
         string code = await IssueCodeAsync(tableId, administrator, cancellationToken);
 
-        // Lower case, hyphenated in the middle, and padded with the space a phone keyboard adds.
         string asTyped = $" {code[..4].ToLowerInvariant()}-{code[4..].ToLowerInvariant()} ";
 
         RedeemPairingCodeResult result = await Pairing().RedeemPairingCodeAsync(asTyped, null, cancellationToken);
@@ -285,7 +264,6 @@ public sealed class DisplayDevicePairingTests : IClassFixture<PostgreSqlFixture>
 
         RedeemPairingCodeResult result = await Pairing().RedeemPairingCodeAsync(code, "Tablet", cancellationToken);
 
-        // §4.1: a deactivated table takes no new displays. Nothing is written, and the code is not burnt.
         Assert.Equal(RedeemPairingCodeOutcome.TableUnavailable, result.Outcome);
         Assert.Equal(0, await CountAsync("SELECT count(*)::int FROM table_display_device;", cancellationToken));
         Assert.Null((await ReadOnlyPairingCodeAsync(cancellationToken)).UsedAt);
@@ -310,7 +288,6 @@ public sealed class DisplayDevicePairingTests : IClassFixture<PostgreSqlFixture>
             RevokeDisplayDeviceOutcome.Revoked,
             await Pairing().RevokeDeviceAsync(deviceId, administrator, cancellationToken));
 
-        // A second attempt, by someone else and later, must not overwrite who revoked it or when.
         _clock.UtcNow = _clock.UtcNow.AddHours(1);
         Assert.Equal(
             RevokeDisplayDeviceOutcome.AlreadyRevoked,
@@ -348,8 +325,6 @@ public sealed class DisplayDevicePairingTests : IClassFixture<PostgreSqlFixture>
         Assert.Null(await Directory().GetDeviceAsync(_identifiers.Create(), cancellationToken));
     }
 
-    // --- helpers -----------------------------------------------------------------------------------
-
     private void SkipIfNoContainer()
         => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
 
@@ -376,7 +351,6 @@ public sealed class DisplayDevicePairingTests : IClassFixture<PostgreSqlFixture>
         return issued.Code!;
     }
 
-    /// <summary>Seeds a bare active person (a password, no roles, no obligations) and returns its id.</summary>
     private async Task<Guid> SeedPersonAsync(string username, CancellationToken cancellationToken)
     {
         Guid id = _identifiers.Create();
@@ -446,8 +420,6 @@ public sealed class DisplayDevicePairingTests : IClassFixture<PostgreSqlFixture>
             sql, cancellationToken: cancellationToken));
     }
 
-    // Plain mutable POCOs so Dapper's default property mapping applies; the SELECTs alias their
-    // snake_case columns to these PascalCase names.
     private sealed class PairingCodeProbeRow
     {
         public Guid RestaurantTableIdentifier { get; set; }

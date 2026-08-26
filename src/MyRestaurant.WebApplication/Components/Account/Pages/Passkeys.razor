@@ -9,19 +9,6 @@
 @inject NavigationManager Navigation
 @inject RestaurantTime RestaurantClock
 
-@* The voluntary passkey-management page (TECHNICAL_SPECIFICATION §3.3): any signed-in user can add a
-   passkey, rename it, or remove it. Static SSR, like every account page — registering a passkey writes
-   through the Identity store and records a security_event, and the ceremony's challenge lives in a
-   cookie the server sets. Not in the obligations-exempt list: it is a normal authenticated destination,
-   so a user with an outstanding obligation is routed to the relevant pipeline page, never here.
-
-   Forms on this page all submit natively (the add button via the passkey-submit custom element, the
-   per-row buttons as ordinary posts), each carrying its @formname so the framework can dispatch it:
-     • "add-passkey"      — the attestation credential the browser produced (bound to Input);
-     • "passkey-{id}"     — one per credential, carrying the credential id, an Action (rename|delete),
-                            and the new name for a rename. The shared Action/CredentialId/NewName bind
-                            from whichever row posted. *@
-
 <PageTitle>Passkeys</PageTitle>
 
 <section class="panel account-panel">
@@ -89,7 +76,6 @@
     [SupplyParameterFromForm(FormName = "add-passkey")]
     private PasskeyInputModel Input { get; set; } = default!;
 
-    // Shared by every per-row "passkey-{id}" form; only the submitted row's values arrive.
     [SupplyParameterFromForm]
     private string? Action { get; set; }
 
@@ -104,7 +90,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // BL0008: a form POST binds Input itself and may assign null, so the default lives here.
         Input ??= new();
         _statusMessage = Status;
 
@@ -146,7 +131,6 @@
             return;
         }
 
-        // The authenticator does not supply a name; give it a readable default the user can change.
         UserPasskeyInfo passkey = attestation.Passkey;
         passkey.Name = $"Passkey added {RestaurantClock.Date(DateTimeOffset.UtcNow)}";
 
@@ -207,8 +191,6 @@
                 return;
             }
 
-            // Blank keeps the current name; the store's update path writes only the mutable fields,
-            // so the public key and backup-eligible bit captured at registration are untouched.
             existing.Name = string.IsNullOrWhiteSpace(NewName) ? existing.Name : NewName.Trim();
             IdentityResult renamed = await UserManager.AddOrUpdatePasskeyAsync(user, existing);
             if (!renamed.Succeeded)
@@ -224,14 +206,12 @@
         await FailAsync(user, "That action was not recognized.");
     }
 
-    // Re-load the list and show an error on the same render (no redirect, so no status query needed).
     private async Task FailAsync(Person user, string message)
     {
         _errorMessage = message;
         _passkeys = await UserManager.GetPasskeysAsync(user);
     }
 
-    // Post/redirect/get: carry a one-line confirmation back through the query string.
     private void Redirect(string status)
         => Navigation.NavigateTo($"{AccountRoutes.Passkeys}?status={Uri.EscapeDataString(status)}");
 }

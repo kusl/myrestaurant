@@ -3,11 +3,6 @@ using Xunit;
 
 namespace MyRestaurant.Domain.Tests;
 
-/// <summary>
-/// Verifies the human-facing code formats (TECHNICAL_SPECIFICATION §4.2, §3.4): the unambiguous
-/// 31-symbol alphabet (no I/L/O/0/1), the 8-character pairing code, and the ten single-use,
-/// distinct recovery codes rendered as two dash-separated groups.
-/// </summary>
 public sealed class PairingAndRecoveryCodeTests
 {
     [Fact]
@@ -31,10 +26,10 @@ public sealed class PairingAndRecoveryCodeTests
     }
 
     [Theory]
-    [InlineData("ABCDEFG")]        // too short
-    [InlineData("ABCDEFGHJ")]      // too long
-    [InlineData("ABCDEFG0")]       // contains an excluded digit
-    [InlineData("ABCDEFGI")]       // contains an excluded letter
+    [InlineData("ABCDEFG")]
+    [InlineData("ABCDEFGHJ")]
+    [InlineData("ABCDEFG0")]
+    [InlineData("ABCDEFGI")]
     public void IsWellFormed_RejectsBadCodes(string code)
         => Assert.False(PairingCode.IsWellFormed(code));
 

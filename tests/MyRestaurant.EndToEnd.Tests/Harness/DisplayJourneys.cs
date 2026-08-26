@@ -4,58 +4,17 @@ using MyRestaurant.WebApplication.Displays;
 
 namespace MyRestaurant.EndToEnd.Tests.Harness;
 
-/// <summary>
-/// The display-device journeys the §16.3 scenarios walk: redeeming a pairing code at
-/// <c>/display/pair</c>, and watching the rotating QR on <c>/display/{table}</c>
-/// (TECHNICAL_SPECIFICATION §4.2, §4.3, §11.5).
-///
-/// <para><b>These always run on their own page, in their own browser context.</b> Not for tidiness:
-/// <c>DisplayDeviceAuthenticationMiddleware</c> ignores the device credential whenever the Identity
-/// cookie has already authenticated the request — "a signed-in person always wins", so that a member of
-/// staff who opens the display URL on a paired tablet is themselves rather than the screen. Pair inside
-/// the administrator's browser and the resulting surface would resolve as
-/// <c>DisplayStage.NotPaired</c> and bounce to <c>/display/pair</c>, for a reason that looks nothing like
-/// the cause. <see cref="RestaurantInstance.OpenIsolatedPageAsync"/> is what a tablet is.</para>
-/// </summary>
 internal static class DisplayJourneys
 {
-    /// <summary>
-    /// The QR's path element. Scoped to the surface's own id so it cannot accidentally match the
-    /// authenticator QR on an account page, and so a selector failure names the surface it wanted.
-    /// </summary>
     private const string JoinQrPathSelector = "#table-display-surface svg.join-qr-svg path";
 
-    /// <summary>The surface itself, whatever state it is in.</summary>
     private const string SurfaceSelector = "#table-display-surface";
 
-    /// <summary>
-    /// The surface as rendered by a live circuit that has a code on the glass — §11.10's pair, both
-    /// halves demanded (M6 Slice 23, F-47).
-    ///
-    /// <para><c>[data-live='true']</c> alone is what stood here, and on this surface the state it fails
-    /// to exclude is not a loading state at all. Two branches of <c>TableDisplay.razor</c> carry
-    /// <c>id="table-display-surface"</c>: the QR, and the "Preparing the join code…" card the component
-    /// renders when <c>DescribeCurrentAsync</c> came back empty. The second is transient rather than
-    /// fatal and is deliberately not an error page, so it is fully resolved, fully interactive, and
-    /// carries no QR — which meant this barrier returned happily and
-    /// <see cref="ReadJoinQrPathAsync"/> then spent sixty seconds failing two steps from the
-    /// cause.</para>
-    ///
-    /// <para>That is why <c>data-loaded</c> here means "a code came back" rather than "a query
-    /// answered". §11.10 defines the bit as <em>the surface has what it renders itself for</em>, and on
-    /// this screen that is the QR and nothing else.</para>
-    /// </summary>
     private const string LiveSurfaceSelector =
         "#table-display-surface[data-live='true'][data-loaded='true']";
 
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
-    /// <summary>
-    /// Redeems a pairing code as an unpaired screen would (§4.2) and returns the table the device landed
-    /// on, read out of the URL the application redirected to rather than assumed from the caller — which
-    /// is what makes "the code paired this device to <em>that</em> table" an assertion the scenario can
-    /// make rather than a premise it supplies.
-    /// </summary>
     internal static async Task<Guid> PairAsync(IPage page, string pairingCode, string deviceLabel)
     {
         ArgumentNullException.ThrowIfNull(page);
@@ -66,10 +25,6 @@ internal static class DisplayJourneys
         await page.FillAsync("#device-label", deviceLabel);
         await page.ClickAsync("button:has-text('Pair this display')");
 
-        // Pairing's last act writes the year-long credential cookie and redirects (§4.2), so the URL is
-        // the observable outcome. A refusal instead re-renders the form with one deliberately vague
-        // sentence (§4.2 forbids an oracle), which is unhelpful to a prober and equally unhelpful to
-        // whoever is reading this failure — hence quoting it verbatim into the exception.
         try
         {
             await page.WaitForURLAsync(IsTableDisplayUrl, new PageWaitForURLOptions { Timeout = 30_000 });
@@ -91,18 +46,6 @@ internal static class DisplayJourneys
         return tableIdentifier;
     }
 
-    /// <summary>
-    /// Waits until the surface on screen was rendered by a live circuit rather than by prerendering,
-    /// <em>and</em> has a join code on it.
-    ///
-    /// <para><b>Why any scenario that watches the QR must do this first.</b> Prerendering produces the
-    /// entire surface server-side: the table label, the party-size chip, and a genuinely current, valid
-    /// join code. What it does not produce is anything that keeps happening — no §4.3 refresh timer, no
-    /// §9 subscription. So a page that never becomes interactive passes every assertion about the
-    /// <em>first</em> code and then fails, sixty seconds later, with "the QR did not change": a symptom
-    /// two steps removed from its cause, in a scenario that had no way to say so. Waiting here turns that
-    /// into one sentence about interactivity, at the moment interactivity was needed.</para>
-    /// </summary>
     internal static async Task WaitForLiveSurfaceAsync(IPage page, TimeSpan timeout)
     {
         ArgumentNullException.ThrowIfNull(page);
@@ -117,17 +60,12 @@ internal static class DisplayJourneys
         }
         catch (PlaywrightException exception)
         {
-            // Read the page BEFORE composing the message: an await inside an interpolated string that
-            // binds to a handler is CS4007, and the diagnosis is worth more than the one-liner.
             string surface = await DescribeSurfaceAsync(page);
 
             throw new InvalidOperationException(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    // Concatenated interpolated strings rather than a raw literal: a raw string literal
-                    // processes no escape sequences at all, so the trailing backslashes that used to wrap
-                    // these lines were printed verbatim, along with the newlines they were meant to hide.
-                    // Every operand must carry the $ or the addition stops binding to the handler (CS1620).
+
                     $"The table display was not live and showing a code within"
                     + $" {timeout.TotalSeconds:F0}s ({surface}). A surface present with"
                     + $" data-live='false' is still the prerendered markup: nothing on the page will"
@@ -142,12 +80,6 @@ internal static class DisplayJourneys
         }
     }
 
-    /// <summary>
-    /// The <c>d</c> attribute of the QR currently on screen. Waits for the element to be
-    /// <em>attached</em> rather than visible on purpose: the offline curtain <c>js/display.js</c> raises
-    /// over a stale code (§11.5) sits on top of this element, and a scenario diagnosing a frozen display
-    /// must still be able to read what it froze on.
-    /// </summary>
     internal static async Task<string> ReadJoinQrPathAsync(IPage page)
     {
         ArgumentNullException.ThrowIfNull(page);
@@ -164,21 +96,6 @@ internal static class DisplayJourneys
                 "The join QR on the display has a <path> element with no 'd' attribute.");
     }
 
-    /// <summary>
-    /// Polls the QR until <paramref name="isAcceptable"/> is satisfied, and returns the path that
-    /// satisfied it.
-    ///
-    /// <para>Polling rather than a Blazor-aware wait because the thing being waited on is a
-    /// <em>server</em> timer: §4.3 has the display re-render at <c>(window_index+1) × rotation</c>, and
-    /// nothing in the DOM announces that in advance. The predicate is evaluated immediately after each
-    /// read, so a predicate that samples the clock is sampling it after the observation rather than
-    /// before — which is what keeps "is this code live?" from racing the boundary it is asking about.</para>
-    /// </summary>
-    /// <param name="expectation">
-    /// Completes the sentence "the table display did not show …". A timeout here is the most likely way
-    /// either scenario fails, so the message has to say what was being waited for and what was on screen
-    /// instead.
-    /// </param>
     internal static async Task<string> WaitForJoinQrPathAsync(
         IPage page,
         Func<string, bool> isAcceptable,
@@ -205,8 +122,6 @@ internal static class DisplayJourneys
             }
             catch (PlaywrightException)
             {
-                // The surface re-rendered between the locator resolving and the attribute read, or the
-                // code is not on screen yet. Both are ordinary; try again until the deadline.
             }
 
             await Task.Delay(PollInterval, cancellationToken);
@@ -218,10 +133,6 @@ internal static class DisplayJourneys
             + $" What was on screen last: {Fingerprint(lastObserved)}."));
     }
 
-    /// <summary>
-    /// A short, quotable stand-in for a QR path, which runs to a couple of thousand characters and is
-    /// unreadable in full. Two different codes practically never share both a length and a tail.
-    /// </summary>
     internal static string Fingerprint(string? joinQrPath)
     {
         if (joinQrPath is null)
@@ -238,11 +149,6 @@ internal static class DisplayJourneys
 
     private static bool IsTableDisplayUrl(string url) => TryReadTableIdentifier(url, out _);
 
-    /// <summary>
-    /// Reads the table identifier out of a <c>/display/{table}</c> URL. <c>/display/pair</c> fails the
-    /// <see cref="Guid.TryParse(string, out Guid)"/>, which is exactly what makes this usable as the
-    /// "have we left the pairing page?" predicate as well.
-    /// </summary>
     private static bool TryReadTableIdentifier(string url, out Guid tableIdentifier)
     {
         tableIdentifier = Guid.Empty;
@@ -263,11 +169,6 @@ internal static class DisplayJourneys
         return Guid.TryParse(path[prefix.Length..], out tableIdentifier);
     }
 
-    /// <summary>
-    /// What the surface currently claims about itself, for the interactivity failure above. Reported as
-    /// the attribute values rather than as a screenshot, because the two states differ in exactly one
-    /// attribute and in nothing a human eye could distinguish.
-    /// </summary>
     private static async Task<string> DescribeSurfaceAsync(IPage page)
     {
         ILocator surface = page.Locator(SurfaceSelector).First;

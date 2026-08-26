@@ -6,18 +6,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Menu;
 
-/// <summary>
-/// Integration tests for <see cref="DapperMenuAvailability"/> against a real PostgreSQL 17 container —
-/// the "86" write behind §11.2's availability panel.
-///
-/// <para>Two properties matter more than the flag itself. The first is that §7's promise survives:
-/// deactivating an item must <b>not</b> remove it from the menu — "the guest sees that the salmon exists
-/// and is out, rather than watching it silently vanish" — and
-/// <see cref="DeactivatingDoesNotHideTheItemFromTheMenu"/> asserts that against the real directory
-/// rather than trusting the two files to agree. The second is that the append-only history stays
-/// truthful (ADR-0002): a toggle that changed nothing must write nothing, or §11.4's per-item event
-/// history becomes a log of button presses instead of a log of what happened to the salmon.</para>
-/// </summary>
 public sealed class MenuAvailabilityTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private const string CountEventsSql = """
@@ -120,11 +108,6 @@ public sealed class MenuAvailabilityTests : IClassFixture<PostgreSqlFixture>, IA
         Assert.Equal(_clock.UtcNow.UtcDateTime, DateTime.SpecifyKind(occurredAt, DateTimeKind.Utc));
     }
 
-    /// <summary>
-    /// §7: a deactivated item "stays on the menu marked 'currently unavailable' and cannot be added to a
-    /// send". If this ever turns into a delete, the guest watches the salmon vanish and asks a member of
-    /// staff what happened to it.
-    /// </summary>
     [Fact]
     public async Task DeactivatingDoesNotHideTheItemFromTheMenu()
     {
@@ -142,10 +125,6 @@ public sealed class MenuAvailabilityTests : IClassFixture<PostgreSqlFixture>, IA
         Assert.Contains(menu, item => item.Name == "Salmon" && !item.IsActive);
     }
 
-    /// <summary>
-    /// An append-only log of "somebody pressed a button that changed nothing" is noise, and §11.4's
-    /// per-item history is meant to be read by a person.
-    /// </summary>
     [Fact]
     public async Task DeactivatingTwiceIsANoOpAndWritesNoSecondEvent()
     {
@@ -194,7 +173,6 @@ public sealed class MenuAvailabilityTests : IClassFixture<PostgreSqlFixture>, IA
         Assert.True(stored.IsActive);
     }
 
-    /// <summary>A full off-and-on cycle leaves two events in order, not one overwritten row (ADR-0002).</summary>
     [Fact]
     public async Task TheHistoryKeepsEveryFlip()
     {

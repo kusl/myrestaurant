@@ -10,31 +10,11 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Identity;
 
-/// <summary>
-/// Integration tests for <see cref="DapperFirstAdministratorBootstrap"/> (the <c>/setup</c> commit,
-/// TECHNICAL_SPECIFICATION §3.6) against a real PostgreSQL 17 container. They pin the three things that
-/// make the bootstrap correct: the unlocked <see cref="IFirstAdministratorBootstrap.AdministratorExistsAsync"/>
-/// gate flips once an administrator exists; a create on an empty database writes the whole account —
-/// person, passkey, ten recovery codes, the self-granted <c>administrator</c> role, and all four
-/// <c>security_event</c> rows — in one go, with the TOTP secret and recovery codes round-tripping
-/// through <see cref="DapperUserStore"/> (proving the bootstrap used the same at-rest encoding the sign-in
-/// path reads); and a second create once an administrator already exists writes nothing and reports the
-/// loss (§3.6: "one wins, the other sees 404 on retry").
-///
-/// <para>The bootstrap's zero-administrator condition is global, so — unlike the per-person passkey
-/// tests — the auth tables are truncated before every test. xUnit builds a fresh instance of this class
-/// per test method and runs the methods in a class sequentially, so <see cref="InitializeAsync"/> gives
-/// each test a clean database regardless of order. Own <c>IClassFixture</c> (own container); if no
-/// container engine is available, every test skips.</para>
-/// </summary>
 public sealed class FirstAdministratorBootstrapTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
-    // A plausibly-shaped Argon2id PHC string. The bootstrap stores the wizard-supplied hash verbatim
-    // (it does not hash here, §3.2/§3.6), so the exact bytes never matter — only that it round-trips.
     private const string SamplePasswordHash =
         "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0c2FsdA$b3JpZ2luYWxvcmlnaW5hbG9yaWdpbg";
 
-    // A fixed 20-byte secret (exactly 32 Base32 characters) so the round-trip assertion has a known value.
     private static readonly string TotpSecret = Base32Text.Encode(Bytes(0x5A, 20));
 
     private readonly PostgreSqlFixture _fixture;
@@ -52,7 +32,6 @@ public sealed class FirstAdministratorBootstrapTests : IClassFixture<PostgreSqlF
             return;
         }
 
-        // Idempotent: brings the schema (including migration 0002) up so the tables exist.
         new SchemaMigrationRunner(_fixture.ConnectionString)
         {
             MaximumAttempts = 3,
@@ -61,8 +40,6 @@ public sealed class FirstAdministratorBootstrapTests : IClassFixture<PostgreSqlF
 
         _connectionFactory = new NpgsqlDatabaseConnectionFactory(_fixture.ConnectionString);
 
-        // Reset to a zero-administrator state before each test. CASCADE also clears the child tables
-        // (person_role, passkey_credential, totp_recovery_code, security_event) via their FKs to person.
         await using DbConnection connection = await _connectionFactory
             .OpenConnectionAsync(TestContext.Current.CancellationToken);
         await connection.ExecuteAsync(new CommandDefinition(
@@ -125,8 +102,6 @@ public sealed class FirstAdministratorBootstrapTests : IClassFixture<PostgreSqlF
 
         await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
 
-        // (a) The person row: obligation flags cleared (this account enrolled its own TOTP, §3.5),
-        // active, no contact details, password hash stored verbatim, a real security stamp minted.
         PersonRow person = await connection.QuerySingleAsync<PersonRow>(new CommandDefinition(
             """
             SELECT username AS Username, display_name AS DisplayName, email_address AS EmailAddress,
@@ -147,8 +122,6 @@ public sealed class FirstAdministratorBootstrapTests : IClassFixture<PostgreSqlF
         Assert.True(person.IsActive);
         Assert.NotEqual(Guid.Empty, person.SecurityStamp);
 
-        // (b) The passkey row: every registration field the bootstrap carried over, including the three
-        // WebAuthn flags (migration 0002) and the comma-joined transports.
         PasskeyRow storedPasskey = await connection.QuerySingleAsync<PasskeyRow>(new CommandDefinition(
             """
             SELECT credential_id AS CredentialId, public_key AS PublicKey, signature_counter AS SignatureCounter,
@@ -167,7 +140,6 @@ public sealed class FirstAdministratorBootstrapTests : IClassFixture<PostgreSqlF
         Assert.True(storedPasskey.IsBackupEligible);
         Assert.True(storedPasskey.IsBackedUp);
 
-        // (c) The administrator grant, recorded as its own grantor (§3.6).
         RoleRow role = await connection.QuerySingleAsync<RoleRow>(new CommandDefinition(
             """
             SELECT role_name AS RoleName, granted_by_person_identifier AS GrantedBy
@@ -178,8 +150,6 @@ public sealed class FirstAdministratorBootstrapTests : IClassFixture<PostgreSqlF
         Assert.Equal("administrator", role.RoleName);
         Assert.Equal(personIdentifier, role.GrantedBy);
 
-        // (d) The audit trail (§3.7): four events, all about this person; the self-actions carry a NULL
-        // actor and the role grant records the new administrator as their own actor.
         List<EventRow> events = (await connection.QueryAsync<EventRow>(new CommandDefinition(
             """
             SELECT event_type AS EventType, subject_person_identifier AS Subject, actor_person_identifier AS Actor
@@ -200,11 +170,6 @@ public sealed class FirstAdministratorBootstrapTests : IClassFixture<PostgreSqlF
         Assert.Null(totpEnrolled.Actor);
         Assert.Equal(personIdentifier, roleGranted.Actor);
 
-        // (e) The TOTP secret and recovery codes round-trip through the store, which reads them the way
-        // the sign-in path does. GetAuthenticatorKeyAsync returning the original secret proves the
-        // bootstrap protected it under the encoding the store unprotects with; redeeming one of the
-        // returned plaintext codes proves those codes are exactly the ones persisted (as hashes) and
-        // are single-use.
         DapperUserStore store = BuildStore();
         Person? admin = await store.FindByNameAsync(username, cancellationToken);
         Assert.NotNull(admin);
@@ -228,8 +193,6 @@ public sealed class FirstAdministratorBootstrapTests : IClassFixture<PostgreSqlF
             cancellationToken);
         Assert.Equal(FirstAdministratorBootstrapStatus.Created, first.Status);
 
-        // A second, fully-formed candidate: it got past the unlocked gate in a racing browser, then lost
-        // the re-check under the advisory lock.
         string loserUsername = UniqueUsername("loser");
         FirstAdministratorBootstrapResult second = await bootstrap.CreateFirstAdministratorAsync(
             NewAdmin(_identifiers.Create(), loserUsername, MakePasskey(Bytes(0xC3, 16))),
@@ -240,8 +203,6 @@ public sealed class FirstAdministratorBootstrapTests : IClassFixture<PostgreSqlF
 
         await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
 
-        // Nothing was written for the loser: still exactly one person, one administrator, and no row for
-        // the losing username (the whole transaction rolled back).
         Assert.Equal(1, await connection.ExecuteScalarAsync<int>(new CommandDefinition(
             "SELECT count(*)::int FROM person;", cancellationToken: cancellationToken)));
         Assert.Equal(1, await connection.ExecuteScalarAsync<int>(new CommandDefinition(
@@ -252,7 +213,6 @@ public sealed class FirstAdministratorBootstrapTests : IClassFixture<PostgreSqlF
             new { Username = loserUsername }, cancellationToken: cancellationToken)));
     }
 
-    // --- helpers -----------------------------------------------------------------------------------
     private void SkipIfNoContainer()
         => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
 
@@ -265,8 +225,6 @@ public sealed class FirstAdministratorBootstrapTests : IClassFixture<PostgreSqlF
     private static NewAdministrator NewAdmin(Guid personIdentifier, string username, UserPasskeyInfo passkey)
         => new(personIdentifier, username, "Restaurant Owner", SamplePasswordHash, TotpSecret, passkey);
 
-    // Builds a UserPasskeyInfo the way the framework's attestation would. attestationObject /
-    // clientDataJson are set here but the bootstrap does not persist them (attestation is 'none', §3.3).
     private UserPasskeyInfo MakePasskey(
         byte[] credentialId,
         byte[]? publicKey = null,
@@ -304,8 +262,6 @@ public sealed class FirstAdministratorBootstrapTests : IClassFixture<PostgreSqlF
 
     private static string UniqueUsername(string prefix) => $"{prefix}_{Guid.NewGuid():N}";
 
-    // Row DTOs for the direct assertion queries. Plain mutable POCOs like Person, so Dapper's default
-    // property mapping applies; every SELECT aliases its snake_case columns to these PascalCase names.
     private sealed class PersonRow
     {
         public string Username { get; set; } = string.Empty;

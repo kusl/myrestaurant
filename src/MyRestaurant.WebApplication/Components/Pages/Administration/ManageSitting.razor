@@ -18,25 +18,6 @@
 @inject RestaurantTime RestaurantClock
 @inject NavigationManager Navigation
 
-@* One sitting's complete stored record, and the corrections an administrator may append to it
-   (TECHNICAL_SPECIFICATION §5.3, §6.7, §11.4).
-
-   §11.4 is emphatic about what this page owes its reader: "Administration renders the complete stored
-   record everywhere — full event streams, visibility logs, security events — never projected or truncated
-   for the administrator; filters narrow only on explicit request." So the history below is every event on
-   every order in the sitting, oldest first, uncapped, including the removals, the reverted fulfillments,
-   and the prices that were superseded. A settled bill is the thing people argue about, and an argument is
-   settled by reading forward from the first send.
-
-   Static SSR, like every administration surface. Corrections are full-page form posts that redirect back
-   here (post/redirect/get) carrying a one-word outcome, so a refresh cannot re-append.
-
-   **The corrective controls appear only once the sitting is settled.** §6.7 is titled "post-close
-   corrections" and §3.7's matrix gives "post-close corrective events" to the administrator alone; while a
-   table is still eating, the screen built for it is the counter's, and an administrator already holds the
-   counter role's capabilities (§3.7), so this page links there instead of growing a second copy of it.
-   The record itself renders either way — an administrator reading an open table's history is not a write. *@
-
 <PageTitle>@(_sitting is null ? "Sitting record" : $"Sitting — {_sitting.TableLabel}")</PageTitle>
 
 @if (_sitting is null)
@@ -67,9 +48,6 @@ else
                 <span class="sitting-total-amount">@Money(_sitting.AmountToShow)</span>
                 @if (_sitting.HasPostCloseCorrections)
                 {
-                    @* §5.3: settled_total_amount is never rewritten. When §6.7 corrections exist both
-                       numbers are shown, because they answer two different questions — what was charged,
-                       and what the record now says is owed. *@
                     <span class="record-corrected">corrected to @Money(_sitting.CurrentTotalAmount)</span>
                 }
             </div>
@@ -85,8 +63,6 @@ else
         }
         @if (_rejectionReasons.Count > 0)
         {
-            @* §6.5.9 is all-or-nothing at the granularity of the event, so a refusal names every reason
-               rather than only the first. *@
             <ul class="sitting-rejection">
                 @foreach (string reason in _rejectionReasons)
                 {
@@ -107,7 +83,6 @@ else
             </div>
         }
 
-        @* ---- who was at the table (§5.1, §5.2) -------------------------------------------------- *@
         <hr class="record-rule" />
 
         <h2 class="record-heading">At the table</h2>
@@ -134,7 +109,6 @@ else
             </ul>
         }
 
-        @* ---- the bill, person by person (§8.3) --------------------------------------------------- *@
         <h2 class="record-heading">The bill</h2>
         @if (_bill.Count == 0)
         {
@@ -194,7 +168,6 @@ else
             </p>
         }
 
-        @* ---- post-close corrections (§6.7) ------------------------------------------------------- *@
         @if (!_sitting.IsOpen)
         {
             <hr class="record-rule" />
@@ -338,7 +311,6 @@ else
             }
         }
 
-        @* ---- the complete stored record (§11.4) -------------------------------------------------- *@
         <hr class="record-rule" />
 
         <h2 class="record-heading">The record</h2>
@@ -419,12 +391,6 @@ else
     </section>
 }
 
-@* Rules nobody else reads: this page's own totals, roster, tally and event stream. Everything it
-   shares — the page head, the record list, the headings, the rules, the corrected total, the numeric
-   treatment, the small forms — is app.css's §11.12 vocabulary and is not restated here (M6 Slice 34).
-   App.razor links the static stylesheet rather than the scoped bundle, so component CSS isolation is
-   not active; a page-local block is the arrangement, and re-declaring a shared name in one would win
-   silently from later in the document, which is F-66. *@
 <style>
     .sitting-meta {
         margin: 0.2rem 0 0;
@@ -432,11 +398,6 @@ else
         color: var(--ink-soft);
     }
 
-    /*
-     * Left-aligned rather than pinned to the right edge, which is what it was when the head was a
-     * space-between row. In a handheld-first column the total reads under the meta line, and there is
-     * nothing to align it to on the right.
-     */
     .sitting-total {
         display: flex;
         flex-direction: column;
@@ -457,7 +418,6 @@ else
         font-variant-numeric: tabular-nums;
     }
 
-    /* §6.5.9 refuses all-or-nothing, so this names every reason at once. */
     .sitting-rejection {
         margin: 0.4rem 0 0;
         padding-left: 1.1rem;
@@ -562,16 +522,8 @@ else
 </style>
 
 @code {
-    /// <summary>Somebody a correction can be billed to: a member, or anyone who already has an order here.</summary>
     private sealed record BillablePerson(Guid PersonIdentifier, string Name);
 
-    /// <summary>
-    /// The two things the one correction form can do. They are two different §6.2 event types with two
-    /// different operation subtypes, so they cannot be one Save — but they are one form, because a
-    /// per-line panel would need a distinct form name per row and static SSR has no model to bind
-    /// a dynamic set of them to. This is the shape TableDisplays and CounterSitting already use: one
-    /// picker, at the bottom, that can name any row above it.
-    /// </summary>
     private const string AdjustAction = "adjust";
 
     private const string RemoveAction = "remove";
@@ -589,7 +541,6 @@ else
     private string? _errorMessage;
     private IReadOnlyList<string> _rejectionReasons = [];
 
-    /// <summary>The sitting this page reports on. Every query is scoped by it, never by the table.</summary>
     [Parameter]
     public Guid SittingId { get; set; }
 
@@ -611,7 +562,6 @@ else
 
     private decimal TableTotal => _bill.Sum(entry => entry.PersonTotalAmount);
 
-    /// <summary>The " · settled 9:14 PM by Cass" tail of the header line, built here because it reads as one sentence.</summary>
     private string SettledSuffix
     {
         get
@@ -631,7 +581,6 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        // BL0008: a form POST binds these itself and may assign null, so the defaults live here.
         CorrectInput ??= new();
         AddInput ??= new();
 
@@ -650,7 +599,6 @@ else
         }
     }
 
-    /// <summary>Everything the page shows, re-read in one pass. Small, indexed queries.</summary>
     private async Task LoadAsync()
     {
         CancellationToken cancellationToken = HttpContext.RequestAborted;
@@ -679,11 +627,6 @@ else
         _peopleAtTheTable = BuildPeopleAtTheTable();
     }
 
-    /// <summary>
-    /// The roster, plus anybody who has an order without a membership row. The union rather than the
-    /// roster alone, because the picker must never be unable to name somebody whose bill is on the screen
-    /// directly above it.
-    /// </summary>
     private IReadOnlyList<BillablePerson> BuildPeopleAtTheTable()
     {
         List<BillablePerson> people = _members
@@ -701,7 +644,6 @@ else
         return people;
     }
 
-    /// <summary>§6.7 through §6.5.8: an administrator's corrective price change or removal on a settled bill.</summary>
     private async Task CorrectLineAsync()
     {
         if (!TryBegin(out Guid administrator))
@@ -720,8 +662,6 @@ else
 
         if (line is null)
         {
-            // Somebody corrected it between this page rendering and the button being pressed. Re-read and
-            // say so rather than sending an operation the transaction would refuse anyway.
             _errorMessage = "That line is no longer on the bill. The record below has been refreshed.";
             await LoadAsync();
             return;
@@ -756,9 +696,6 @@ else
             return;
         }
 
-        // Rounded once, here, away from zero — matching numeric(10,2)'s own rule — so the operation row,
-        // the projection, and the number reported back are the same value rather than three independent
-        // roundings of the same input. The same decision MenuAdministration made for reprice.
         decimal newUnitPrice = Math.Round(CorrectInput.NewUnitPriceAmount, 2, MidpointRounding.AwayFromZero);
 
         await AppendAsync(
@@ -769,11 +706,6 @@ else
             "line-repriced");
     }
 
-    /// <summary>
-    /// §6.7's other half: a plate that went out and was never billed. Routed through the living-order path
-    /// so it works for somebody who joined and never sent anything — their order row is created inside the
-    /// same transaction (§6.1), which is not something this surface can do for itself.
-    /// </summary>
     private async Task AddLineAsync()
     {
         if (!TryBegin(out Guid administrator))
@@ -803,8 +735,6 @@ else
             return;
         }
 
-        // §7 keeps a deactivated item visible and unorderable; the transaction re-checks the flag under
-        // its own lock (§6.5.4), so this only makes the answer immediate.
         if (!item.IsActive)
         {
             _errorMessage =
@@ -818,8 +748,6 @@ else
             return;
         }
 
-        // The line's own identity, UUIDv7 like every other key (ADR-0011). The unit price passed here is
-        // ignored: the transaction prices the line from the menu row it reads under the lock (§6.5.4).
         LineAddedOperation added = new(
             Identifiers.Create(),
             menuItemIdentifier,
@@ -855,11 +783,6 @@ else
         await ReportAsync(result, outcome);
     }
 
-    /// <summary>
-    /// Redirect on success so a refresh cannot re-append; render the refusal in place on failure, because
-    /// the per-operation reasons §6.5.9 produces do not survive a query string and are the whole value of
-    /// the message.
-    /// </summary>
     private async Task ReportAsync(AppendOrderEventResult result, string outcome)
     {
         if (result.IsAppended)
@@ -880,12 +803,6 @@ else
         _ => "Nothing was written. The record below has been refreshed.",
     };
 
-    /// <summary>
-    /// The sitting must still exist and the acting administrator must be identifiable —
-    /// <c>order_event.actor_person_identifier</c> is NOT NULL and §6.2 requires every event to name
-    /// somebody. Endpoint authorization already guarantees the second; this is the belt to that brace.
-    /// Also refuses on an open sitting, which the markup does not offer but a replayed post could.
-    /// </summary>
     private bool TryBegin(out Guid administrator)
     {
         administrator = Guid.Empty;
@@ -944,13 +861,6 @@ else
             ? $"{item.Name} — {Money(item.PriceAmount)}"
             : $"{item.Name} — {Money(item.PriceAmount)} (currently unavailable)";
 
-    /// <summary>
-    /// A friendly label for the five <c>order_event.event_type</c> values §8.2's CHECK admits, falling
-    /// back to the stored string for anything else. The words are spelled out here rather than taken from
-    /// <c>OrderEventVocabulary</c>, which is internal to the data-access assembly on purpose — a display
-    /// label is not the writer's business, and a reader that threw on an unrecognised word would blank the
-    /// one page whose job is to show what is actually stored. Same shape as ManageMenuItem's.
-    /// </summary>
     private static string DescribeEventType(string eventType) => eventType switch
     {
         "guest_submission" => "Guest send",
@@ -961,11 +871,6 @@ else
         _ => eventType,
     };
 
-    /// <summary>
-    /// The four <c>order_event.actor_role</c> values, on the same terms. <c>guest</c> is a capacity rather
-    /// than a stored role (§0, §3.7) — an administrator eating lunch appears here as a guest, and that is
-    /// correct.
-    /// </summary>
     private static string DescribeActorRole(string actorRole) => actorRole switch
     {
         "guest" => "a guest",
@@ -975,10 +880,6 @@ else
         _ => actorRole,
     };
 
-    /// <summary>
-    /// One stored operation in a sentence. The five kinds are the discriminators the reader's UNION
-    /// projects; an unknown one renders as itself beside the line it names, so nothing is ever swallowed.
-    /// </summary>
     private string DescribeOperation(StoredOrderOperation operation) => operation.OperationKind switch
     {
         "line_added" =>

@@ -9,25 +9,15 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Identity;
 
-/// <summary>
-/// Unit tests for <see cref="RestaurantAuthenticatorTokenProvider"/> (TECHNICAL_SPECIFICATION §3.4):
-/// it must accept a code within <b>±1</b> step of the injected clock and reject ±2 (the reason this
-/// provider replaces the framework's ±2 one), tolerate grouped-display spaces/dashes, and fail
-/// closed on a missing key or malformed input. Time is pinned with a fixed clock at the RFC 6238
-/// anchor unix 1111111109; the RFC secret's code at that step is 081804. Driven through a hand-written
-/// fake key store and the 9-argument <see cref="UserManager{TUser}"/> constructor (§16.1: fakes
-/// preferred, no server).
-/// </summary>
 public sealed class RestaurantAuthenticatorTokenProviderTests
 {
-    // RFC 6238 SHA-1 secret "12345678901234567890", Base32 (what the store returns as the key).
     private const string RfcSecretBase32 = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
     private static readonly DateTimeOffset Anchor = DateTimeOffset.FromUnixTimeSeconds(1111111109);
 
     [Theory]
-    [InlineData("081804")] // current step
-    [InlineData("731029")] // step −1
-    [InlineData("050471")] // step +1
+    [InlineData("081804")]
+    [InlineData("731029")]
+    [InlineData("050471")]
     public async Task ValidateAsync_AcceptsCodesWithinOneStep(string code)
     {
         (RestaurantAuthenticatorTokenProvider provider, UserManager<Person> manager, Person user) = Build(RfcSecretBase32);
@@ -38,8 +28,8 @@ public sealed class RestaurantAuthenticatorTokenProviderTests
     }
 
     [Theory]
-    [InlineData("150727")] // step −2
-    [InlineData("266759")] // step +2
+    [InlineData("150727")]
+    [InlineData("266759")]
     public async Task ValidateAsync_RejectsCodesTwoStepsAway(string code)
     {
         (RestaurantAuthenticatorTokenProvider provider, UserManager<Person> manager, Person user) = Build(RfcSecretBase32);
@@ -72,8 +62,8 @@ public sealed class RestaurantAuthenticatorTokenProviderTests
     }
 
     [Theory]
-    [InlineData("81804")]   // too short
-    [InlineData("08180a")]  // non-numeric
+    [InlineData("81804")]
+    [InlineData("08180a")]
     [InlineData("")]
     public async Task ValidateAsync_MalformedInput_IsRejected(string code)
     {
@@ -120,8 +110,6 @@ public sealed class RestaurantAuthenticatorTokenProviderTests
         }
     }
 
-    // --- helpers -----------------------------------------------------------------------------------
-
     private static (RestaurantAuthenticatorTokenProvider, UserManager<Person>, Person) Build(string? key)
     {
         Person user = new()
@@ -154,11 +142,6 @@ public sealed class RestaurantAuthenticatorTokenProviderTests
         public DateTimeOffset UtcNow { get; }
     }
 
-    /// <summary>
-    /// A hand-written fake covering exactly what the provider touches on the manager:
-    /// <c>GetAuthenticatorKeyAsync</c>, which resolves through <see cref="IUserAuthenticatorKeyStore{TUser}"/>.
-    /// Everything else on <see cref="IUserStore{TUser}"/> is unreachable here and says so.
-    /// </summary>
     private sealed class FakeAuthenticatorKeyStore : IUserAuthenticatorKeyStore<Person>
     {
         private readonly Person _user;
@@ -175,8 +158,6 @@ public sealed class RestaurantAuthenticatorTokenProviderTests
 
         public Task SetAuthenticatorKeyAsync(Person user, string key, CancellationToken cancellationToken)
             => throw new NotSupportedException("Not exercised by the token provider.");
-
-        // --- IUserStore members (unreachable in these tests) ---------------------------------------
 
         public Task<string> GetUserIdAsync(Person user, CancellationToken cancellationToken)
             => Task.FromResult(user.PersonIdentifier.ToString());

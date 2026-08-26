@@ -10,18 +10,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Identity;
 
-/// <summary>
-/// Integration tests for <see cref="DapperUserStore"/> (TECHNICAL_SPECIFICATION §3.1, §16.2 — "every
-/// Identity store method") against a real PostgreSQL 17 container. They exercise the store directly
-/// (rather than through <see cref="UserManager{TUser}"/>) so each capability interface is covered
-/// precisely: create/lookup with citext case-insensitivity, the DuplicateUserName / InvalidUserName
-/// mappings, password get/set, security-stamp regeneration, lockout counters, TOTP-secret encryption
-/// at rest, single-use hashed recovery codes, and the role read path — plus the two operations the
-/// store deliberately refuses (delete; unattributed role grant/revoke).
-///
-/// The class shares one container per <c>IClassFixture</c>; tests use unique usernames to stay
-/// independent within the shared database. If no container engine is available, every test skips.
-/// </summary>
 public sealed class DapperUserStoreTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private readonly PostgreSqlFixture _fixture;
@@ -35,7 +23,6 @@ public sealed class DapperUserStoreTests : IClassFixture<PostgreSqlFixture>, IAs
     {
         if (_fixture.ConnectionString is not null)
         {
-            // Idempotent: brings the schema up once so the store has tables to work against.
             new SchemaMigrationRunner(_fixture.ConnectionString)
             {
                 MaximumAttempts = 3,
@@ -73,9 +60,9 @@ public sealed class DapperUserStoreTests : IClassFixture<PostgreSqlFixture>, IAs
         IdentityResult created = await store.CreateAsync(person, cancellationToken);
 
         Assert.True(created.Succeeded);
-        Assert.NotEqual(Guid.Empty, person.PersonIdentifier);   // store assigned the id
-        Assert.NotEqual(Guid.Empty, person.SecurityStamp);       // store assigned a stamp
-        Assert.NotEqual(default, person.CreatedAt);              // store stamped creation time
+        Assert.NotEqual(Guid.Empty, person.PersonIdentifier);
+        Assert.NotEqual(Guid.Empty, person.SecurityStamp);
+        Assert.NotEqual(default, person.CreatedAt);
 
         Person? found = await store.FindByIdAsync(person.PersonIdentifier.ToString(), cancellationToken);
 
@@ -99,7 +86,6 @@ public sealed class DapperUserStoreTests : IClassFixture<PostgreSqlFixture>, IAs
         Person person = new() { Username = UniqueUsername("Casing") };
         await store.CreateAsync(person, cancellationToken);
 
-        // Identity passes the normalized (upper) name; citext matches regardless of case.
         Person? found = await store.FindByNameAsync(person.Username.ToUpperInvariant(), cancellationToken);
 
         Assert.NotNull(found);
@@ -129,7 +115,6 @@ public sealed class DapperUserStoreTests : IClassFixture<PostgreSqlFixture>, IAs
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         DapperUserStore store = BuildStore();
 
-        // 2 characters violates CHECK (char_length(username) BETWEEN 3 AND 64).
         IdentityResult result = await store.CreateAsync(new Person { Username = "ab" }, cancellationToken);
 
         Assert.False(result.Succeeded);
@@ -174,7 +159,7 @@ public sealed class DapperUserStoreTests : IClassFixture<PostgreSqlFixture>, IAs
 
         Assert.NotNull(after);
         Assert.NotEqual(before, after);
-        Assert.True(Guid.TryParse(after, out _)); // still a uuid, as the column requires
+        Assert.True(Guid.TryParse(after, out _));
     }
 
     [Fact]
@@ -221,11 +206,10 @@ public sealed class DapperUserStoreTests : IClassFixture<PostgreSqlFixture>, IAs
 
         Assert.False(await store.GetTwoFactorEnabledAsync(person, cancellationToken));
 
-        const string authenticatorKey = "JBSWY3DPEHPK3PXP"; // opaque to the store; it just protects it
+        const string authenticatorKey = "JBSWY3DPEHPK3PXP";
         await store.SetAuthenticatorKeyAsync(person, authenticatorKey, cancellationToken);
         Assert.True((await store.UpdateAsync(person, cancellationToken)).Succeeded);
 
-        // The at-rest value must be ciphertext, not the plaintext key.
         string? atRest = await ReadRawTotpSecretAsync(person.PersonIdentifier, cancellationToken);
         Assert.NotNull(atRest);
         Assert.NotEqual(authenticatorKey, atRest);
@@ -234,7 +218,6 @@ public sealed class DapperUserStoreTests : IClassFixture<PostgreSqlFixture>, IAs
         Assert.True(await store.GetTwoFactorEnabledAsync(reread, cancellationToken));
         Assert.Equal(authenticatorKey, await store.GetAuthenticatorKeyAsync(reread, cancellationToken));
 
-        // Disabling two-factor clears the secret (== "not enrolled").
         await store.SetTwoFactorEnabledAsync(reread, false, cancellationToken);
         Assert.True((await store.UpdateAsync(reread, cancellationToken)).Succeeded);
 
@@ -258,11 +241,9 @@ public sealed class DapperUserStoreTests : IClassFixture<PostgreSqlFixture>, IAs
 
         Assert.Equal(RecoveryCode.CodesPerSet, await store.CountCodesAsync(person, cancellationToken));
 
-        // Stored hashed, never in plaintext.
         Assert.Equal(1, await CountRecoveryCodeRowsAsync(Sha256Hashing.Hash(codes[1]), cancellationToken));
         Assert.Equal(0, await CountRecoveryCodeRowsAsync(Encoding.UTF8.GetBytes(codes[1]), cancellationToken));
 
-        // Redeem once; the count drops; the same code cannot be reused; an unknown code fails.
         Assert.True(await store.RedeemCodeAsync(person, codes[0], cancellationToken));
         Assert.Equal(RecoveryCode.CodesPerSet - 1, await store.CountCodesAsync(person, cancellationToken));
         Assert.False(await store.RedeemCodeAsync(person, codes[0], cancellationToken));
@@ -283,9 +264,9 @@ public sealed class DapperUserStoreTests : IClassFixture<PostgreSqlFixture>, IAs
         await GrantRoleDirectlyAsync(person.PersonIdentifier, "kitchen", cancellationToken);
 
         IList<string> roles = await store.GetRolesAsync(person, cancellationToken);
-        Assert.Equal(new[] { "administrator", "kitchen" }, roles); // ordered by role_name
+        Assert.Equal(new[] { "administrator", "kitchen" }, roles);
 
-        Assert.True(await store.IsInRoleAsync(person, "ADMINISTRATOR", cancellationToken)); // normalized (upper) input
+        Assert.True(await store.IsInRoleAsync(person, "ADMINISTRATOR", cancellationToken));
         Assert.False(await store.IsInRoleAsync(person, "COUNTER", cancellationToken));
 
         IList<Person> kitchenStaff = await store.GetUsersInRoleAsync("KITCHEN", cancellationToken);
@@ -340,8 +321,6 @@ public sealed class DapperUserStoreTests : IClassFixture<PostgreSqlFixture>, IAs
             () => store.RemoveFromRoleAsync(person, "administrator", cancellationToken));
     }
 
-    // --- helpers -----------------------------------------------------------------------------------
-
     private DapperUserStore BuildStore() => new(
         _connectionFactory!,
         _clock,
@@ -374,8 +353,6 @@ public sealed class DapperUserStoreTests : IClassFixture<PostgreSqlFixture>, IAs
 
     private async Task GrantRoleDirectlyAsync(Guid personIdentifier, string roleName, CancellationToken cancellationToken)
     {
-        // Grants normally flow through the (not-yet-built) administration service; here we insert the
-        // person_role row directly (self-granted) purely to set up the store's read-path tests.
         await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
         await connection.ExecuteAsync(new CommandDefinition(
             """

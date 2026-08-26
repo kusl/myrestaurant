@@ -4,11 +4,6 @@ using static MyRestaurant.Domain.Tests.OrderTestBuilders;
 
 namespace MyRestaurant.Domain.Tests;
 
-/// <summary>
-/// Exercises the pure fold from an order's event log to its current projection (TECHNICAL_SPECIFICATION
-/// §8.5): the same line set, current prices, and fulfillment flags the SQL views produce. Events are
-/// folded by sequence number regardless of input order, and removed lines drop out of the projection.
-/// </summary>
 public sealed class OrderProjectionTests
 {
     [Fact]
@@ -42,7 +37,7 @@ public sealed class OrderProjectionTests
         Assert.Equal(2, order.Lines.Count);
         Assert.Equal(2, order.PendingLineCount);
         Assert.Equal(0, order.FulfilledLineCount);
-        Assert.Equal(23.25m, order.CurrentTotalAmount); // 2*9.50 + 1*4.25
+        Assert.Equal(23.25m, order.CurrentTotalAmount);
         Assert.Equal(At(0), order.FirstSubmittedAt);
         Assert.Equal(At(0), order.LastEventAt);
         Assert.Equal(orderId, order.GuestOrderIdentifier);
@@ -142,7 +137,6 @@ public sealed class OrderProjectionTests
         OrderEvent adjustToEleven = PriceAdjustment(orderId, 2, counter, OrderActorRole.Counter, At(20), AdjustPrice(line, 11.00m, "step one"));
         OrderEvent adjustToTwelve = PriceAdjustment(orderId, 3, counter, OrderActorRole.Counter, At(40), AdjustPrice(line, 12.00m, "step two"));
 
-        // Deliberately shuffled input; the fold must apply seq 2 before seq 3, so 12.00 wins.
         ProjectedOrder order = OrderProjection.FromEvents([adjustToTwelve, add, adjustToEleven]);
 
         Assert.Equal(12.00m, Assert.Single(order.Lines).CurrentUnitPriceAmount);

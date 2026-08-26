@@ -4,11 +4,6 @@ using static MyRestaurant.Domain.Tests.OrderTestBuilders;
 
 namespace MyRestaurant.Domain.Tests;
 
-/// <summary>
-/// Covers the §6.5 order-mutation invariants (and the §6.2/§6.3/§6.4 capability rules) with both a
-/// passing and a failing case for each rule. This is the domain's first line of defence; the database
-/// CHECK/UNIQUE/FK constraints are the backstop. Failures are all-or-nothing with per-operation reasons.
-/// </summary>
 public sealed class OrderMutationValidatorTests
 {
     private static readonly Guid OrderId = Guid.NewGuid();
@@ -19,8 +14,6 @@ public sealed class OrderMutationValidatorTests
     private static readonly Guid Counter = Guid.NewGuid();
     private static readonly Guid Admin = Guid.NewGuid();
     private static readonly Guid Kitchen = Guid.NewGuid();
-
-    // ---- Event-level rules -------------------------------------------------------------------
 
     [Fact]
     public void EmptyOperations_IsRejectedAtEventLevel()
@@ -33,7 +26,6 @@ public sealed class OrderMutationValidatorTests
     [Fact]
     public void RoleThatMayNotAuthorTheEventType_IsRejected()
     {
-        // A guest may not author a price adjustment (§6.2).
         ProposedOrderEvent proposed = new(
             OrderEventType.PriceAdjustment, Guest, OrderActorRole.Guest,
             [AdjustPrice(Guid.NewGuid(), 1.00m, "nope")]);
@@ -50,8 +42,6 @@ public sealed class OrderMutationValidatorTests
 
         AssertInvalidAt(OrderMutationValidator.Validate([], proposed, OpenContext()), OrderMutationValidator.EventLevel);
     }
-
-    // ---- Post-close rules (§6.5.8) -----------------------------------------------------------
 
     [Fact]
     public void ClosedSitting_RejectsNonAdministratorEvents()
@@ -90,8 +80,6 @@ public sealed class OrderMutationValidatorTests
         AssertValid(result);
     }
 
-    // ---- Guest-submission ownership/membership (§6.5.4) --------------------------------------
-
     [Fact]
     public void GuestSubmission_ByNonOwner_IsRejected()
     {
@@ -126,20 +114,15 @@ public sealed class OrderMutationValidatorTests
         AssertValid(OrderMutationValidator.Validate([], proposed, OpenContext()));
     }
 
-    // ---- Operation-subtype ↔ event-type (§6.3) -----------------------------------------------
-
     [Fact]
     public void OperationNotAllowedForEventType_IsRejectedPerOperation()
     {
-        // A LineAdded operation is not permitted inside a PriceAdjustment event.
         ProposedOrderEvent proposed = new(
             OrderEventType.PriceAdjustment, Counter, OrderActorRole.Counter,
             [Add(Guid.NewGuid(), Burger, 1, 9.00m)]);
 
         AssertInvalidAt(OrderMutationValidator.Validate([], proposed, OpenContext()), 0);
     }
-
-    // ---- Line add (§6.5.2, §6.5.4) -----------------------------------------------------------
 
     [Fact]
     public void LineAdd_WithDuplicateExistingIdentifier_IsRejected()
@@ -195,8 +178,6 @@ public sealed class OrderMutationValidatorTests
         AssertInvalidAt(OrderMutationValidator.Validate([], proposed, OpenContext(friesActive: false)), 0);
     }
 
-    // ---- Line removal (§6.5.3, §6.5.5) -------------------------------------------------------
-
     [Fact]
     public void LineRemoval_OfLineAddedInSameEvent_IsRejected()
     {
@@ -234,7 +215,7 @@ public sealed class OrderMutationValidatorTests
     public void GuestRemovingAnotherGuestsLine_IsRejected()
     {
         Guid line = Guid.NewGuid();
-        // Line was added by OtherGuest; Guest tries to remove it.
+
         ProposedOrderEvent proposed = new(
             OrderEventType.GuestSubmission, Guest, OrderActorRole.Guest, [Remove(line)]);
 
@@ -276,8 +257,6 @@ public sealed class OrderMutationValidatorTests
 
         AssertValid(OrderMutationValidator.Validate(WithGuestLine(line, OtherGuest), proposed, OpenContext()));
     }
-
-    // ---- Price adjustment (§6.5.7) -----------------------------------------------------------
 
     [Fact]
     public void PriceAdjustment_OfUnknownLine_IsRejected()
@@ -335,8 +314,6 @@ public sealed class OrderMutationValidatorTests
         AssertValid(OrderMutationValidator.Validate(WithGuestLine(line, Guest), proposed, OpenContext()));
     }
 
-    // ---- Fulfillment and reversal (§6.5.6) ---------------------------------------------------
-
     [Fact]
     public void Fulfillment_OfUnknownLine_IsRejected()
     {
@@ -389,12 +366,9 @@ public sealed class OrderMutationValidatorTests
             OrderMutationValidator.Validate(WithGuestLine(line, Guest, fulfilled: true), proposed, OpenContext()));
     }
 
-    // ---- All-or-nothing (§6.5.9) -------------------------------------------------------------
-
     [Fact]
     public void OneBadOperation_RejectsTheWholeEvent()
     {
-        // First add is fine; second has an out-of-range quantity. The whole event is invalid.
         ProposedOrderEvent proposed = new(
             OrderEventType.GuestSubmission, Guest, OrderActorRole.Guest,
             [Add(Guid.NewGuid(), Burger, 1, 9.00m), Add(Guid.NewGuid(), Burger, 0, 9.00m)]);
@@ -404,8 +378,6 @@ public sealed class OrderMutationValidatorTests
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, error => error.OperationIndex == 1);
     }
-
-    // ---- Fixtures & assertions ---------------------------------------------------------------
 
     private static IReadOnlyList<OrderEvent> WithGuestLine(Guid lineIdentifier, Guid addedBy, bool fulfilled = false, bool removed = false)
     {

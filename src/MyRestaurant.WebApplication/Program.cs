@@ -24,20 +24,9 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-// The composition root (TECHNICAL_SPECIFICATION §14, BUILD_PROGRESS). Startup order is deliberate:
-//   1. bind + validate configuration and fail fast on bad security-relevant settings;
-//   2. wire OpenTelemetry (exporters only when an OTLP endpoint is configured);
-//   3. register services;
-//   4. apply database migrations BEFORE binding HTTP (never serve on a half-applied schema, §17);
-//   5. forwarded headers → public-origin host normalization → response security headers → rate
-//      limiting → auth → display-device principal → obligations pipeline → health endpoints →
-//      Blazor components.
-
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables();
 
-// (1) Configuration is environment-only (§13). Validate before a host exists so a misconfigured
-// deployment exits with a clear message instead of half-starting.
 RestaurantOptions options = RestaurantOptions.FromConfiguration(builder.Configuration);
 IReadOnlyList<string> configurationErrors = options.Validate();
 if (configurationErrors.Count > 0)
@@ -50,14 +39,8 @@ if (configurationErrors.Count > 0)
     return 1;
 }
 
-// (2) OpenTelemetry (§12). The OTLP exporters are attached only when OTEL_EXPORTER_OTLP_ENDPOINT is
-// set, so a plain `dotnet run` with no collector does not spam connection-refused logs. The meter
-// and instrumentation are always registered — they are cheap and keep the custom meter live.
 bool otlpExporterConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]);
 
-// service.version carries the full informational version — "1.0.0+3f2a9c1…" — because the question a
-// collector is asked after a deployment is which build changed, and a semver alone cannot answer it
-// between two builds of the same tag (§12, §11.9). BuildInformation reads it once from the assembly.
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService(
         serviceName: "myrestaurant",
@@ -92,13 +75,10 @@ if (otlpExporterConfigured)
     });
 }
 
-// (3) Services. Everything the domain needs is behind an interface so tests can substitute it.
 builder.Services.AddMetrics();
 builder.Services.AddSingleton(options);
 builder.Services.AddSingleton<IClock, SystemClock>();
-// The only thing allowed to turn a stored UTC instant into text (§8.1, §11.7). Registered by factory
-// rather than by type because RestaurantTime also has a (zone, identifier, format) constructor for
-// tests, and the container should never have to guess which one was meant.
+
 builder.Services.AddSingleton(_ => new RestaurantTime(options));
 builder.Services.AddSingleton<IIdentifierFactory, UuidV7IdentifierFactory>();
 builder.Services.AddSingleton<IDatabaseConnectionFactory>(
@@ -113,61 +93,22 @@ builder.Services.AddSingleton(serviceProvider =>
         message => logger.LogWarning("{MigrationStatus}", message));
 });
 
-// Data-protection keys live on a mounted volume so cookies/tokens survive restarts (§3.4).
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(options.DataProtectionKeysDirectory))
     .SetApplicationName("myrestaurant");
 
-// ASP.NET Core Identity core services over the custom Dapper store, with the Argon2id hasher, plus
-// sign-in, hardened cookie auth, the claims factory (roles + §3.5 obligation claims), security-stamp
-// revalidation, the area authorization policies, cascading authentication state, and the
-// security-event log (§3.1–§3.7, ADR-0003/ADR-0008). Registered after Data Protection because the
-// store encrypts the TOTP secret and the auth cookie is protected with it, and after RestaurantMetrics
-// because the hasher and sign-in manager report there.
 builder.Services.AddRestaurantIdentity(options);
 
-// Table and sitting services (§4, §5): the read-only ITableDirectory the administration tables pages
-// read from and the transactional ITableAdministration they write through; the server-only join-secret
-// reader and the ITableJoinTokens service that renders and validates the rotating QR (§4.3–§4.5); the
-// ISittingDirectory/ISittingMembership pair behind the §4.4 join flow and §5.1 sitting open; and the
-// JoinGrantProtector for the short-lived join-grant cookie. A §4/§5 concern, kept separate from
-// AddRestaurantIdentity; all of it resolves the same connection factory, clock, identifier factory,
-// metrics, and Data Protection provider registered above — hence the position after them.
 builder.Services.AddRestaurantTables();
 
-// Display devices (§4.2, §11.5): the read-only IDisplayDeviceDirectory the administration devices page
-// lists from, the transactional IDisplayDevicePairing behind issue/redeem/revoke, and the
-// IDisplayDeviceAuthenticator the request middleware and the live surface re-validate with. A display is
-// a device principal, not a person, so it is wired apart from AddRestaurantIdentity — but it renders the
-// rotating QR through AddRestaurantTables' ITableJoinTokens, hence the position after it.
 builder.Services.AddRestaurantDisplays();
 
-// Endpoint rate limiting (§4.2, §11.8, §17, F-115). ONE AddRateLimiter for the whole application, and
-// the singular is the design rather than a convention: OnRejected and RejectionStatusCode are properties
-// of the limiter, not of a policy, so a second call anywhere here would silently take the refusal wording
-// away from the first — which is exactly what kept /register unlimited for eleven slices while the fix
-// sat written down in §17. Every policy comes out of RateLimitedSurfaces.All, which cannot hold a policy
-// without a sentence of its own. This used to be a line inside AddRestaurantDisplays.
 builder.Services.AddRestaurantRateLimiting();
 
-// Menu (read side) and orders (§6, §7, §8.3, §9, §12): the IMenuDirectory the staging area and the "86"
-// panel read; IOrderMutations, the single transaction implementing the §6.6 locking protocol;
-// IOrderReadModel over the §8.3 projection views and IOrderEventLog over the raw event log; and
-// IOrderWorkflow, the post-commit shell that records the §12 counters and publishes the §9 notifications
-// — surfaces call that, never IOrderMutations directly, or a send would never reach the kitchen. Last of
-// the four groups because an order hangs off a sitting, which AddRestaurantTables registered above.
 builder.Services.AddRestaurantOrders();
 
-// The §11.4 event explorer: one reader across security_event, order_event and menu_item_event. Its own
-// call rather than a line inside one of the four above, because it belongs to none of them — the orders
-// extension registering a reader of identity's audit log would be a quiet mis-filing, and unlike the
-// reminder loop or the menu directory, leaving this out fails loudly on one administration route rather
-// than half-working everywhere. Last, because it reads what all of them write.
 builder.Services.AddRestaurantEventExplorer();
 
-// The app is only ever reached through a trusted proxy (Caddy in dev, Cloudflare tunnel in prod),
-// so honour its X-Forwarded-* headers. KnownIPNetworks/KnownProxies are cleared deliberately — safe
-// ONLY because the origin is never exposed directly (BUILD_PROGRESS: forwarded-headers trust).
 builder.Services.Configure<ForwardedHeadersOptions>(forwarded =>
 {
     forwarded.ForwardedHeaders =
@@ -181,86 +122,31 @@ builder.Services.AddRazorComponents()
 
 WebApplication app = builder.Build();
 
-// (4) Migrate before binding HTTP. A failure throws and the process exits non-zero without ever
-// serving a request against an incomplete schema (§17: "half-applied schema").
 using (IServiceScope migrationScope = app.Services.CreateScope())
 {
     migrationScope.ServiceProvider.GetRequiredService<SchemaMigrationRunner>().Run();
 }
 
-// Static web assets — which is where /_framework/blazor.web.js comes from, and therefore whether ANY
-// page in this application is interactive at all.
-//
-// The framework wires these up in WebHost.ConfigureWebDefaults, but only `if
-// (ctx.HostingEnvironment.IsDevelopment())`, and only from the build-time
-// `MyRestaurant.WebApplication.staticwebassets.runtime.json` manifest that sits beside the built
-// assembly. So a *build* output run with any environment other than Development serves no
-// /_framework/* at all — the script tag in App.razor 404s, no circuit is ever established, and every
-// interactive surface silently degrades to the prerendered HTML it was born with. On the table display
-// that is precisely §11.5's worst failure: a QR frozen on a code that stopped working, indistinguishable
-// from a live one from every seat in the restaurant. The kitchen board would likewise never alert.
-//
-// That configuration is not hypothetical — it is what the §16.3 end-to-end harness boots (build output,
-// ASPNETCORE_ENVIRONMENT=Production), and what an operator does when reproducing a production
-// configuration locally without publishing first.
-//
-// Asking for the manifest here closes that gap and costs a real deployment nothing:
-// StaticWebAssetsLoader.ResolveManifest returns null when the file is absent, and `dotnet publish`
-// copies these assets into wwwroot/ instead of emitting a runtime manifest — so in the container this
-// call finds no file and does nothing, while UseStaticFiles serves the published copies as before.
-// Skipped in Development, where ConfigureWebDefaults has already done exactly this.
 if (!app.Environment.IsDevelopment())
 {
     StaticWebAssetsLoader.UseStaticWebAssets(app.Environment, app.Configuration);
 }
 
-// (5) HTTP pipeline. No HTTPS redirection — TLS is terminated at the proxy. Authentication populates
-// HttpContext.User from the Identity cookie; authorization enforces the area policies (§3.7) on the
-// pages that carry [Authorize]; the obligations middleware then makes everything except sign-out and
-// the pipeline pages unreachable while a §3.5 flag is set. Static files sit before authentication so
-// css/assets are never blocked; antiforgery sits after auth, before endpoints.
 app.UseForwardedHeaders();
-// Normalize Request.Host to the effective public origin host BEFORE anything derives from it, so the
-// .NET 10 passkey handler (RP ID = ServerDomain ?? Request.Host.Host, and ServerDomain is null by
-// design) sees the host the browser is actually on — including a Cloudflare quick tunnel's per-run
-// *.trycloudflare.com hostname. Sits right after forwarded headers so it can see X-Forwarded-Host and
-// before auth/endpoints so the ceremony sees the corrected host (§3.3, ADR-0005).
+
 app.UseMiddleware<PublicOriginMiddleware>();
-// Response security headers (§11.11, ADR-0013, F-49) — Content-Security-Policy,
-// X-Content-Type-Options and Referrer-Policy, on EVERY response rather than on the ones that happen to
-// render a component.
-//
-// Position is load-bearing in both directions. It is AFTER PublicOriginMiddleware because the policy's
-// connect-src names this request's own host, so the Blazor circuit's WebSocket is admitted by origin
-// rather than by a scheme wildcard — and until the host has been normalized it may still be the
-// internal service address a tunnel left behind. It is BEFORE everything that can produce a response:
-// the rate limiter's 429, UseStaticFiles answering by itself, the obligations redirect, and the
-// router's 404 all short-circuit, and a header set on the way out of a pipeline that never came back
-// is a header nobody sent. Nothing above this line can answer a request — UseForwardedHeaders and
-// PublicOriginMiddleware both rewrite and call on — so those two constraints pick one position.
+
 app.UseMiddleware<SecurityHeadersMiddleware>();
-// Endpoint rate limiting. Two anonymous surfaces carry a policy: /display/pair (§4.2, 5
-// attempts/minute/IP) and /register (§11.8, configurable, sized for a dining room rather than a person).
-// It MUST sit after UseForwardedHeaders, because both partitioners key on the connection's remote
-// address — before the forwarded headers are applied that address is the proxy's, and every device in
-// the building would share one bucket. Only endpoints carrying [EnableRateLimiting] are affected; there
-// is no global limiter, so everything else passes straight through — which is also why the refusal
-// dispatch can rely on an endpoint being in scope when it runs (F-115).
+
 app.UseRateLimiter();
 app.UseStaticFiles();
 app.UseAuthentication();
-// A paired table display is a device principal, not a person (§0, §4.2), so it is resolved from its own
-// long-lived cookie right after the Identity cookie has had its chance — a signed-in person always
-// wins. Plain middleware rather than an authentication scheme on purpose: the display surface is
-// interactive, and a circuit takes its principal from the /_blazor request, which authenticates with
-// the default scheme; middleware runs there too, so the device reaches the circuit (see the class docs).
+
 app.UseMiddleware<DisplayDeviceAuthenticationMiddleware>();
 app.UseAuthorization();
 app.UseMiddleware<ObligationsMiddleware>();
 app.UseAntiforgery();
 
-// Health endpoints (§12). Liveness is "the process answers"; readiness additionally proves the
-// database is reachable and migrations are current — compose healthchecks target these.
 app.MapGet("/healthz/live", () => Results.Text("live"));
 app.MapGet(
     "/healthz/ready",
@@ -283,33 +169,12 @@ app.MapGet(
         }
     });
 
-// The footer clock's anchor (§11.7). Anonymous, no-store, and exempt from the obligations pipeline —
-// it carries no user action and every page's footer, signed in or not, asks the same question.
 app.MapRestaurantClock();
 
-// The POST /sign-out endpoint (antiforgery-protected; exempt from the obligations pipeline).
 app.MapRestaurantAccountEndpoints();
 
-// GET /menu/image/{menu_item_image_identifier} (§7, §11.1, §11.4). Anonymous, because §11.1's guest
-// menu is what it exists for and a guest at a table may not have signed in yet (§4.3). Deliberately
-// NOT added to the §3.5 obligations exemption list, unlike the clock and the source offer: those two
-// are asked for BY a page a locked-down principal is looking at, where this is a subresource of a
-// page such a principal was redirected away from before it rendered. It is mapped after the account
-// endpoints and before the components for readability only — route matching does not depend on the
-// order, and this pattern overlaps nothing.
 app.MapRestaurantMenuImages();
 
-// ContentSecurityFrameAncestorsPolicy = null turns OFF the endpoint convention this call would
-// otherwise install (F-49). Left alone, AddInteractiveServerRenderMode appends
-// "frame-ancestors 'self'" to Content-Security-Policy on every component endpoint — the framework's
-// mitigation for WebSocket compression plus framing, which is real and which this application has been
-// carrying since M1 without anybody knowing. It is not turned off to weaken anything: it APPENDS with
-// StringValues.Concat, so leaving it on would deliver two policies on one response, and the one this
-// application wrote says frame-ancestors 'none' on every response of any kind rather than 'self' on
-// the subset that renders components. The option's own remarks require exactly what replaces it —
-// "care must be taken to apply a policy in this case whenever the first document is rendered" — and
-// SecurityHeadersMiddleware, five lines above the endpoints, applies one to every response there is.
-// WebSocket compression is unaffected: that is DisableWebSocketCompression, which stays at its default.
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode(serverOptions => serverOptions.ContentSecurityFrameAncestorsPolicy = null);
 

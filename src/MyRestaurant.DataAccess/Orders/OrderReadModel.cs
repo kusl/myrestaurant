@@ -3,14 +3,6 @@ using Dapper;
 
 namespace MyRestaurant.DataAccess.Orders;
 
-/// <summary>
-/// One current, non-removed line of an order, read from the <c>order_current_line</c> view
-/// (TECHNICAL_SPECIFICATION §8.3). It is the read-side twin of
-/// <see cref="MyRestaurant.Domain.Orders.ProjectedOrderLine"/> and carries one extra field the fold
-/// deliberately omits — the menu item's <em>current</em> name, which the view joins at read time
-/// (§8.5). The price does not come from the menu: it is the price captured when the line was added,
-/// overridden by the latest <c>price_adjustment</c> if one exists (§6.5.4, §6.3).
-/// </summary>
 public sealed record OrderLineView(
     Guid GuestOrderIdentifier,
     Guid OrderLineIdentifier,
@@ -23,16 +15,9 @@ public sealed record OrderLineView(
     DateTimeOffset AddedAt,
     Guid AddedByOrderEventIdentifier)
 {
-    /// <summary>Extended line price at the current unit price (quantity × current unit price).</summary>
     public decimal LineTotalAmount => Quantity * CurrentUnitPriceAmount;
 }
 
-/// <summary>
-/// One living order's folded state, read from the <c>order_current_state</c> view
-/// (TECHNICAL_SPECIFICATION §8.3). The total <em>includes</em> still-pending lines, matching
-/// <c>sitting_bill</c> — a guest looking at their running total wants what they have ordered, not what
-/// has reached the table.
-/// </summary>
 public sealed record OrderStateView(
     Guid GuestOrderIdentifier,
     Guid SittingIdentifier,
@@ -43,15 +28,6 @@ public sealed record OrderStateView(
     int FulfilledLineCount,
     decimal CurrentTotalAmount);
 
-/// <summary>
-/// One person's share of a sitting's bill, read from the <c>sitting_bill</c> view with the person's
-/// names joined on (TECHNICAL_SPECIFICATION §8.3, §11.3). The view is built <em>from</em>
-/// <c>guest_order</c>, so it lists people who have an order rather than people who are at the table: a
-/// member who joined and never sent anything does not appear at all, while someone whose every line was
-/// removed appears with a zero total. The counter's roster of who is present comes from
-/// <see cref="Sittings.ISittingDirectory.ListMembersAsync"/>, which is the question that actually asks
-/// it.
-/// </summary>
 public sealed record SittingBillEntry(
     Guid SittingIdentifier,
     Guid PersonIdentifier,
@@ -60,17 +36,9 @@ public sealed record SittingBillEntry(
     string? DisplayName,
     decimal PersonTotalAmount)
 {
-    /// <summary>The name to print on the bill: the display name when set, otherwise the username.</summary>
     public string BillName => string.IsNullOrWhiteSpace(DisplayName) ? Username : DisplayName;
 }
 
-/// <summary>
-/// One pending line anywhere in the restaurant, read from the <c>kitchen_pending_line</c> view
-/// (TECHNICAL_SPECIFICATION §8.3, §11.2). The view already restricts to open sittings and unfulfilled,
-/// non-removed lines; this record adds the grouping keys §11.2 orders by (table label → person → order)
-/// and resolves the person's name the way the roster does, so a staff account with no display name does
-/// not produce a blank ticket header.
-/// </summary>
 public sealed record KitchenPendingLineView(
     Guid GuestOrderIdentifier,
     Guid OrderLineIdentifier,
@@ -85,70 +53,37 @@ public sealed record KitchenPendingLineView(
     Guid TableIdentifier,
     string TableLabel);
 
-/// <summary>
-/// The read side of orders (TECHNICAL_SPECIFICATION §8.3, §11.1–§11.3). Every query here goes through
-/// the projection views, which are the schema's own statement of what "current" means; the fold in
-/// <see cref="MyRestaurant.Domain.Orders.OrderProjection"/> reproduces the same answer from the event
-/// log, and §8.5's equivalence test asserts they agree on randomised sequences. Neither is the source
-/// of truth — the event tables are (ADR-0002).
-///
-/// <para>Reads are separated from <see cref="IOrderMutations"/> for the reason every other pair in this
-/// layer is (<c>ITableDirectory</c>/<c>ITableAdministration</c>,
-/// <c>ISittingDirectory</c>/<c>ISittingMembership</c>): a surface that only renders should not be able
-/// to write, and a query needs neither a transaction nor a clock.</para>
-/// </summary>
 public interface IOrderReadModel
 {
-    /// <summary>
-    /// The living order of one person in one sitting, or <c>null</c> if they have not sent anything yet
-    /// (§6.1 — the row is created lazily inside the first send transaction).
-    /// </summary>
     Task<Guid?> FindLivingOrderAsync(
         Guid sittingIdentifier,
         Guid personIdentifier,
         CancellationToken cancellationToken = default);
 
-    /// <summary>One order's current lines, oldest first — the order the guest's own view renders (§11.1).</summary>
     Task<IReadOnlyList<OrderLineView>> ListLinesForOrderAsync(
         Guid guestOrderIdentifier,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Every current line of every order in one sitting — the "party orders" panel and the counter drill-in (§11.1, §11.3).</summary>
     Task<IReadOnlyList<OrderLineView>> ListLinesForSittingAsync(
         Guid sittingIdentifier,
         CancellationToken cancellationToken = default);
 
-    /// <summary>One order's folded state, or <c>null</c> when no such order exists.</summary>
     Task<OrderStateView?> GetOrderStateAsync(
         Guid guestOrderIdentifier,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Every order in a sitting, in creation order — the roster of who has ordered what (§11.1, §11.3).</summary>
     Task<IReadOnlyList<OrderStateView>> ListOrderStatesForSittingAsync(
         Guid sittingIdentifier,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The per-person bill for a sitting, highest total first then by name (§8.3, §11.3).</summary>
     Task<IReadOnlyList<SittingBillEntry>> ListSittingBillAsync(
         Guid sittingIdentifier,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Every pending line in every open sitting, ordered the way the kitchen queue groups them: table
-    /// label, then person, then order, then the moment the line was added (§11.2).
-    /// </summary>
     Task<IReadOnlyList<KitchenPendingLineView>> ListKitchenPendingLinesAsync(
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// The Dapper implementation of <see cref="IOrderReadModel"/>. One connection per call from the
-/// singleton <see cref="IDatabaseConnectionFactory"/>, no transaction, columns aliased to the records'
-/// member names, and rows read into internal row types whose members match what Npgsql returns before
-/// being projected — <c>timestamptz</c> arrives as <see cref="DateTime"/> and <c>count(*)</c> as
-/// <c>bigint</c>, neither of which Dapper's constructor binding will convert, so the counts are cast to
-/// <c>int</c> in SQL and the instants are converted here.
-/// </summary>
 public sealed class DapperOrderReadModel : IOrderReadModel
 {
     private const string LineColumns = """

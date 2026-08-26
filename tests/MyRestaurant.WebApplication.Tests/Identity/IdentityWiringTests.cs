@@ -19,17 +19,6 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests;
 
-/// <summary>
-/// Verifies the sign-in and authorization wiring composed by
-/// <see cref="IdentityServiceCollectionExtensions.AddRestaurantIdentity"/>
-/// (TECHNICAL_SPECIFICATION §3.1, §3.5, §3.7): the auditing <see cref="RestaurantSignInManager"/> is
-/// the resolved <see cref="SignInManager{TUser}"/>; the claims principal factory is the restaurant
-/// one (role + obligation claims — the default single-generic factory emits no role claims at all,
-/// so this registration is what makes the area policies passable); the application cookie is
-/// hardened (Secure, HttpOnly, SameSite=Lax, 24-hour sliding) and points at the account routes; the
-/// security stamp revalidates every 5 minutes; and the four area policies require the right roles.
-/// No server is started — the container is built and inspected.
-/// </summary>
 public sealed class IdentityWiringTests
 {
     [Fact]
@@ -100,8 +89,6 @@ public sealed class IdentityWiringTests
     [Fact]
     public void AuthenticatorTokenProvider_IsTheRestaurantOnePointOneStepOverride()
     {
-        // §3.4 requires a ±1 window; the framework default is ±2. Registering our provider under the
-        // same DefaultAuthenticatorProvider name after AddDefaultTokenProviders must win the map.
         using ServiceProvider provider = BuildProvider();
 
         IdentityOptions options = provider.GetRequiredService<IOptions<IdentityOptions>>().Value;
@@ -124,9 +111,6 @@ public sealed class IdentityWiringTests
     [Fact]
     public void FirstAdministratorBootstrap_IsResolvableInAScope()
     {
-        // §3.6: the /setup wizard and its options endpoint resolve IFirstAdministratorBootstrap for the
-        // zero-administrator gate and the single advisory-locked commit. Constructing it opens no
-        // connection (only a Data-Protection protector), so this resolves without a database.
         using ServiceProvider provider = BuildProvider();
         using IServiceScope scope = provider.CreateScope();
 
@@ -139,8 +123,6 @@ public sealed class IdentityWiringTests
     [Fact]
     public void PasskeyHandler_IsRegistered()
     {
-        // AddIdentityCore does not register IPasskeyHandler (only the monolithic AddIdentity does), so
-        // AddRestaurantIdentity must — otherwise MakePasskey*OptionsAsync throws at runtime (§3.3).
         using ServiceProvider provider = BuildProvider();
         using IServiceScope scope = provider.CreateScope();
 
@@ -152,8 +134,6 @@ public sealed class IdentityWiringTests
     [Fact]
     public void UserManager_SupportsPasskeys()
     {
-        // The Dapper store now implements IUserPasskeyStore, which is how UserManager exposes the
-        // passkey capability (it casts its store).
         using ServiceProvider provider = BuildProvider();
         using IServiceScope scope = provider.CreateScope();
 
@@ -165,9 +145,6 @@ public sealed class IdentityWiringTests
     [Fact]
     public void PasskeyOptions_DeriveRelyingPartyPerRequestAndPreferVerification()
     {
-        // §3.3 / ADR-0005: ServerDomain is left null so the .NET 10 handler derives the RP ID from the
-        // (normalized) request host per request — this is what makes quick-tunnel passkeys work. An
-        // origin validator is installed; residentKey + userVerification are both "preferred".
         using ServiceProvider provider = BuildProvider();
 
         IdentityPasskeyOptions options = provider.GetRequiredService<IOptions<IdentityPasskeyOptions>>().Value;
@@ -179,10 +156,10 @@ public sealed class IdentityWiringTests
     }
 
     [Theory]
-    [InlineData("https://localhost:8443", false, true)]                                  // the configured origin
-    [InlineData("https://marie-editing-committed-preferred.trycloudflare.com", false, true)] // a quick-tunnel origin (default pattern)
-    [InlineData("https://evil.example.com", false, false)]                               // an untrusted origin
-    [InlineData("https://marie-editing-committed-preferred.trycloudflare.com", true, false)] // trusted host but cross-origin iframe
+    [InlineData("https://localhost:8443", false, true)]
+    [InlineData("https://marie-editing-committed-preferred.trycloudflare.com", false, true)]
+    [InlineData("https://evil.example.com", false, false)]
+    [InlineData("https://marie-editing-committed-preferred.trycloudflare.com", true, false)]
     public async Task PasskeyOriginValidation_TrustsConfiguredAndTunnelOrigins(string origin, bool crossOrigin, bool expected)
     {
         using ServiceProvider provider = BuildProvider();
@@ -243,10 +220,6 @@ public sealed class IdentityWiringTests
     [Fact]
     public void GuestRegistration_IsResolvableInAScope()
     {
-        // §4.3: the /register surface resolves IGuestRegistration for its single commit. Registered
-        // separately from IAccountAdministration because self-registration has no acting administrator
-        // to record as the actor; constructing it opens no connection, so this resolves without a
-        // database.
         using ServiceProvider provider = BuildProvider();
         using IServiceScope scope = provider.CreateScope();
 
@@ -266,8 +239,6 @@ public sealed class IdentityWiringTests
         Assert.IsType<DapperPersonDirectory>(directory);
     }
 
-    // --- helpers -----------------------------------------------------------------------------------
-
     private static async Task<AuthorizationPolicy> GetPolicyAsync(string policyName)
     {
         using ServiceProvider provider = BuildProvider();
@@ -283,7 +254,6 @@ public sealed class IdentityWiringTests
     {
         ServiceCollection services = new();
 
-        // Prerequisites Program.cs registers before AddRestaurantIdentity.
         services.AddLogging();
         services.AddMetrics();
         services.AddSingleton<RestaurantMetrics>();
@@ -317,7 +287,6 @@ public sealed class IdentityWiringTests
         GuestRegistrationWindowMinutes = 0,
     };
 
-    /// <summary>The wiring tests never open a connection; this makes that explicit.</summary>
     private sealed class UnusedConnectionFactory : IDatabaseConnectionFactory
     {
         public ValueTask<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)

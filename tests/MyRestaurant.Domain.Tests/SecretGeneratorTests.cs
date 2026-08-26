@@ -3,11 +3,6 @@ using Xunit;
 
 namespace MyRestaurant.Domain.Tests;
 
-/// <summary>
-/// Confirms the sizes and basic randomness of the CSPRNG-backed secrets (TECHNICAL_SPECIFICATION
-/// §4.1, §3.4, §4.2). The point is the contract (correct byte counts, non-repeating output), not
-/// the entropy source, which is <see cref="System.Security.Cryptography.RandomNumberGenerator"/>.
-/// </summary>
 public sealed class SecretGeneratorTests
 {
     [Fact]

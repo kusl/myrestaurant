@@ -1,16 +1,3 @@
--- =============================================================================
--- 0001_initial_schema.sql
---
--- The schema of record, verbatim from TECHNICAL_SPECIFICATION §8.2 (tables) and
--- §8.3 (projection views). Applied at startup by DbUp (ADR-0012). PostgreSQL,
--- current major; the citext extension gives case-insensitive usernames/e-mail.
---
--- All identifiers are snake_case and unabbreviated (carve-out for TOTP/HMAC/QR/
--- URL/SQL/TLS per REQUIREMENTS §8). Primary keys are application-generated
--- UUIDv7 (ADR-0011) — there are deliberately NO database defaults for
--- identifiers. Timestamps are timestamptz in UTC. Money is numeric(10,2).
--- =============================================================================
-
 CREATE EXTENSION IF NOT EXISTS citext;
 
 CREATE TABLE person (
@@ -18,10 +5,10 @@ CREATE TABLE person (
     username                 citext NOT NULL UNIQUE
                              CHECK (char_length(username) BETWEEN 3 AND 64),
     display_name             text NULL,
-    email_address            citext NULL,        -- optional; manual escalation only (§11.1)
-    phone_number             text NULL,          -- optional; manual escalation only (§11.1)
-    password_hash            text NULL,          -- PHC argon2id string (§3.2)
-    totp_secret_protected    text NULL,          -- Data-Protection-encrypted; NULL = not enrolled
+    email_address            citext NULL,
+    phone_number             text NULL,
+    password_hash            text NULL,
+    totp_secret_protected    text NULL,
     must_change_password     boolean NOT NULL DEFAULT false,
     must_enroll_totp         boolean NOT NULL DEFAULT false,
     security_stamp           uuid NOT NULL,
@@ -55,7 +42,7 @@ CREATE TABLE passkey_credential (
 CREATE TABLE totp_recovery_code (
     totp_recovery_code_identifier uuid PRIMARY KEY,
     person_identifier             uuid NOT NULL REFERENCES person (person_identifier),
-    code_hash                     bytea NOT NULL,       -- sha256
+    code_hash                     bytea NOT NULL,
     used_at                       timestamptz NULL,
     created_at                    timestamptz NOT NULL
 );
@@ -64,7 +51,7 @@ CREATE INDEX totp_recovery_code_person_index ON totp_recovery_code (person_ident
 CREATE TABLE person_address (
     person_address_identifier uuid PRIMARY KEY,
     person_identifier         uuid NOT NULL REFERENCES person (person_identifier),
-    label                     text NOT NULL,      -- always free text, chosen by the user ("Home", "Work")
+    label                     text NOT NULL,
     street_line_one           text NULL,
     street_line_two           text NULL,
     city                      text NULL,
@@ -74,13 +61,11 @@ CREATE TABLE person_address (
     created_at                timestamptz NOT NULL
 );
 CREATE INDEX person_address_person_index ON person_address (person_identifier);
--- Deliberate scaffolding for a possible future delivery/takeout feature (REQUIREMENTS §4.6):
--- consumed by nothing in version 1, and not to be removed as dead weight.
 
 CREATE TABLE security_event (
     security_event_identifier uuid PRIMARY KEY,
     subject_person_identifier uuid NOT NULL REFERENCES person (person_identifier),
-    actor_person_identifier   uuid NULL REFERENCES person (person_identifier), -- NULL = the subject themselves / system
+    actor_person_identifier   uuid NULL REFERENCES person (person_identifier),
     event_type                text NOT NULL CHECK (event_type IN (
         'account_created', 'account_deactivated', 'account_reactivated',
         'password_changed', 'password_reset_by_administrator',
@@ -108,7 +93,7 @@ CREATE TABLE table_display_device (
     table_display_device_identifier uuid PRIMARY KEY,
     restaurant_table_identifier     uuid NOT NULL REFERENCES restaurant_table (restaurant_table_identifier),
     device_label                    text NOT NULL,
-    device_secret_hash              bytea NOT NULL CHECK (octet_length(device_secret_hash) = 32), -- sha256
+    device_secret_hash              bytea NOT NULL CHECK (octet_length(device_secret_hash) = 32),
     paired_by_person_identifier     uuid NOT NULL REFERENCES person (person_identifier),
     paired_at                       timestamptz NOT NULL,
     revoked_at                      timestamptz NULL,
@@ -121,7 +106,7 @@ CREATE INDEX table_display_device_table_index ON table_display_device (restauran
 CREATE TABLE table_display_pairing_code (
     table_display_pairing_code_identifier uuid PRIMARY KEY,
     restaurant_table_identifier           uuid NOT NULL REFERENCES restaurant_table (restaurant_table_identifier),
-    code_hash                             bytea NOT NULL CHECK (octet_length(code_hash) = 32), -- sha256
+    code_hash                             bytea NOT NULL CHECK (octet_length(code_hash) = 32),
     created_by_person_identifier          uuid NOT NULL REFERENCES person (person_identifier),
     created_at                            timestamptz NOT NULL,
     expires_at                            timestamptz NOT NULL,
@@ -138,7 +123,7 @@ CREATE TABLE table_sitting (
     CHECK ((closed_at IS NULL) = (closed_by_person_identifier IS NULL)),
     CHECK ((closed_at IS NULL) = (settled_total_amount IS NULL))
 );
--- at most one open sitting per table:
+
 CREATE UNIQUE INDEX table_sitting_one_open_per_table
     ON table_sitting (restaurant_table_identifier) WHERE closed_at IS NULL;
 CREATE INDEX table_sitting_table_index ON table_sitting (restaurant_table_identifier, opened_at);
@@ -192,7 +177,7 @@ CREATE TABLE order_event (
         ('guest', 'kitchen', 'counter', 'administrator')),
     occurred_at             timestamptz NOT NULL,
     UNIQUE (guest_order_identifier, sequence_number),
-    UNIQUE (order_event_identifier, event_type),   -- composite-FK target for subtype enforcement
+    UNIQUE (order_event_identifier, event_type),
     CHECK (event_type <> 'guest_submission'    OR actor_role = 'guest'),
     CHECK (event_type <> 'staff_edit'          OR actor_role IN ('kitchen', 'counter', 'administrator')),
     CHECK (event_type <> 'price_adjustment'    OR actor_role IN ('counter', 'administrator')),
@@ -206,7 +191,7 @@ CREATE TABLE order_operation_line_added (
     order_event_identifier                uuid NOT NULL,
     event_type                            text NOT NULL
         CHECK (event_type IN ('guest_submission', 'staff_edit')),
-    order_line_identifier                 uuid NOT NULL UNIQUE,   -- the line's identity
+    order_line_identifier                 uuid NOT NULL UNIQUE,
     menu_item_identifier                  uuid NOT NULL REFERENCES menu_item (menu_item_identifier),
     quantity                              integer NOT NULL CHECK (quantity BETWEEN 1 AND 100),
     unit_price_amount                     numeric(10,2) NOT NULL CHECK (unit_price_amount >= 0),
@@ -222,7 +207,7 @@ CREATE TABLE order_operation_line_removed (
     order_event_identifier                  uuid NOT NULL,
     event_type                              text NOT NULL
         CHECK (event_type IN ('guest_submission', 'staff_edit')),
-    order_line_identifier                   uuid NOT NULL UNIQUE   -- removal is terminal
+    order_line_identifier                   uuid NOT NULL UNIQUE
         REFERENCES order_operation_line_added (order_line_identifier),
     reason                                  text NULL,
     FOREIGN KEY (order_event_identifier, event_type)
@@ -292,12 +277,6 @@ CREATE TABLE order_visibility_event (
 );
 CREATE INDEX order_visibility_event_order_index
     ON order_visibility_event (guest_order_identifier, occurred_at);
-
--- =============================================================================
--- Projection views (§8.3). Reads only; the event tables above are the source of
--- truth, and MyRestaurant.Domain.OrderProjection.FromEvents folds to the same
--- result (view ≡ fold, asserted by integration tests — §8.5).
--- =============================================================================
 
 CREATE VIEW order_current_line AS
 SELECT

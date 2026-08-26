@@ -10,27 +10,6 @@
 @inject RestaurantOptions Options
 @inject NavigationManager Navigation
 
-@* Display-device pairing (TECHNICAL_SPECIFICATION §4.2, §11.5).
-
-   Anonymous by necessity: this is the one page an unpaired screen can reach, and it is what it reaches
-   INSTEAD of a sign-in page — a tablet has no account and never will. §4.2 pays for that openness with a
-   rate limit rather than a credential: 5 attempts per minute per IP, enforced by the policy named in the
-   attribute above, so an attacker cannot walk the 31^8 code space and a fat-fingered member of staff is
-   barely inconvenienced.
-
-   Static SSR, like every surface that writes a cookie: pairing's last act is to set the year-long device
-   credential, which a Blazor circuit cannot do.
-
-   Three entry states, decided on GET:
-     • already paired  — the middleware resolved a live credential; offer the display, do not re-pair.
-     • disconnected    — a cookie was presented but not honoured, so the middleware cleared it. §11.5
-                         asks for exactly this wording; revoked and mangled look the same, on purpose.
-     • fresh           — no cookie at all; just the form.
-
-   Failures are indistinguishable by design. Unknown, expired, already-used, and malformed codes all
-   produce one sentence, because anything finer turns an anonymous endpoint into an oracle for which
-   codes exist (§4.2: "failed attempts burn nothing but the rate budget"). *@
-
 <PageTitle>Pair this display</PageTitle>
 
 <section class="display-card">
@@ -139,21 +118,13 @@
 
     protected override void OnInitialized()
     {
-        // BL0008: a form POST binds PairInput itself and may assign null, so the default lives here.
         PairInput ??= new();
 
-        // The middleware has already run, so a live credential is visible as the request's principal and
-        // a dead one has already been cleared from the response — but the request's own copy is still
-        // readable, which is how "disconnected" is told apart from "never paired" (§11.5).
         _pairedTable = DisplayDevicePrincipal.TableIdentifierFor(HttpContext.User);
         _pairedTableLabel = DisplayDevicePrincipal.TableLabelFor(HttpContext.User);
         _wasDisconnected = _pairedTable is null && DisplayDeviceCookie.WasPresented(HttpContext.Request);
     }
 
-    /// <summary>
-    /// Redeems the typed code. Normalization (case, spaces, hyphens) happens inside the service, so what
-    /// a person read off one screen and typed into another does not have to match byte for byte.
-    /// </summary>
     private async Task PairAsync()
     {
         RedeemPairingCodeResult result = await Pairing.RedeemPairingCodeAsync(
@@ -164,14 +135,11 @@
             && result.TableIdentifier is { } table
             && result.DeviceSecret is { } secret)
         {
-            // The secret exists in memory exactly once, here: only its SHA-256 hash was stored (§4.2).
             DisplayDeviceCookie.Write(HttpContext.Response, device, secret);
             Navigation.NavigateTo(DisplayRoutes.ForTable(table));
             return;
         }
 
-        // One wording for every refusal. A deactivated table, an expired code, a used code and a typo
-        // must be indistinguishable from out here (§4.2).
         _errorMessage = "That code was not recognised. Codes work once and expire quickly — ask for a "
             + "fresh one and try again.";
     }

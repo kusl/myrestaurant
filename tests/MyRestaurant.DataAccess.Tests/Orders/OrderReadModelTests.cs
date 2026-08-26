@@ -6,24 +6,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Orders;
 
-/// <summary>
-/// Integration tests for <see cref="DapperOrderReadModel"/> and <see cref="DapperOrderEventLog"/>
-/// against a real PostgreSQL 17 container — and, most importantly, for TECHNICAL_SPECIFICATION §8.5:
-/// the SQL projection views and the pure domain fold must agree.
-///
-/// <para>§8.5 is the load-bearing claim of the whole event model. The event tables are the source of
-/// truth (ADR-0002); the views are how the application reads them and the fold is how the domain reasons
-/// about them, and if the two ever disagree, one of the guest's screen and the counter's bill is lying.
-/// <see cref="Views_AndTheDomainFold_AgreeOnARandomisedEventSequence"/> is the assertion that keeps them
-/// honest: it drives dozens of real events — sends, removals, fulfillments, reversals, price
-/// adjustments, staff edits — through the real transaction with a seeded random generator, then compares
-/// every field of every line, both counts, and the total, order by order.</para>
-///
-/// <para>The generator is seeded deliberately rather than time-based: a projection bug that reproduces
-/// only on Tuesdays is worse than no test. Some generated events are rejected by §6.5 (a guest trying to
-/// remove a line the counter added, a reversal of something not fulfilled) and that is left in on
-/// purpose — a rejected event must leave the log and the views equally untouched.</para>
-/// </summary>
 public sealed class OrderReadModelTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private readonly PostgreSqlFixture _fixture;
@@ -97,8 +79,6 @@ public sealed class OrderReadModelTests : IClassFixture<PostgreSqlFixture>, IAsy
 
         for (int step = 0; step < 60; step++)
         {
-            // A distinct instant per step, so `added_at` ordering is total and both sides sort the same
-            // way. Whole seconds keep the DateTimeOffset and the timestamptz bit-identical.
             _clock.UtcNow = _clock.UtcNow.AddSeconds(1);
 
             Guid guest = guests[random.Next(guests.Length)];
@@ -165,8 +145,7 @@ public sealed class OrderReadModelTests : IClassFixture<PostgreSqlFixture>, IAsy
                     break;
 
                 default:
-                    // A staff edit from the counter: adds a line to whichever order it is looking at,
-                    // which is also what makes some later guest removals fail (§6.5.3) — deliberately.
+
                     if (orderIdentifier is { } toEdit)
                     {
                         await Mutations().AppendToOrderAsync(
@@ -191,7 +170,6 @@ public sealed class OrderReadModelTests : IClassFixture<PostgreSqlFixture>, IAsy
         IReadOnlyList<OrderStateView> states = await ReadModel()
             .ListOrderStatesForSittingAsync(sittingIdentifier, cancellationToken);
 
-        // The generator has to have actually produced something, or this test would pass vacuously.
         Assert.NotEmpty(states);
         Assert.True(
             states.Sum(state => state.PendingLineCount + state.FulfilledLineCount) > 5,
@@ -206,12 +184,6 @@ public sealed class OrderReadModelTests : IClassFixture<PostgreSqlFixture>, IAsy
             IReadOnlyList<OrderLineView> viewed = await ReadModel()
                 .ListLinesForOrderAsync(state.GuestOrderIdentifier, cancellationToken);
 
-            // §8.5's contract is the line *set*, its prices, and its fulfillment flags — not a row
-            // order. It has to be, because lines added in one send share an `occurred_at` to the
-            // microsecond, and the tie-breaker cannot agree: the fold's `ThenBy(Guid)` uses .NET's
-            // Guid.CompareTo (Data1 as an int, then two shorts, then bytes) while the view's ORDER BY
-            // uses PostgreSQL's bytewise uuid collation. Both are stable and neither is wrong; asserting
-            // one against the other would be asserting an accident.
             Assert.Equal(folded.Lines.Count, viewed.Count);
 
             Dictionary<Guid, OrderLineView> viewedByLine = viewed.ToDictionary(line => line.OrderLineIdentifier);
@@ -232,20 +204,17 @@ public sealed class OrderReadModelTests : IClassFixture<PostgreSqlFixture>, IAsy
                 Assert.Equal(expected.LineTotalAmount, actual.LineTotalAmount);
             }
 
-            // …and the same summary, which is what the guest's running total and the bill are built on.
             Assert.Equal(folded.PendingLineCount, state.PendingLineCount);
             Assert.Equal(folded.FulfilledLineCount, state.FulfilledLineCount);
             Assert.Equal(folded.CurrentTotalAmount, state.CurrentTotalAmount);
             Assert.Equal(folded.FirstSubmittedAt, state.FirstSubmittedAt);
             Assert.Equal(folded.LastEventAt, state.LastEventAt);
 
-            // Sequence numbers are dense and monotonic from 1 (§6.2), assigned under the order lock.
             Assert.Equal(
                 Enumerable.Range(1, log.Count).Select(number => (long)number).ToArray(),
                 log.Select(orderEvent => orderEvent.SequenceNumber).ToArray());
         }
 
-        // The per-person bill is the same arithmetic seen from the sitting's side (§8.3).
         IReadOnlyList<SittingBillEntry> bill = await ReadModel()
             .ListSittingBillAsync(sittingIdentifier, cancellationToken);
 
@@ -277,7 +246,6 @@ public sealed class OrderReadModelTests : IClassFixture<PostgreSqlFixture>, IAsy
                 [new LineAddedOperation(_identifiers.Create(), soup, 2, 0m, null)]),
             cancellationToken);
 
-        // §7 / §6.5.4: "Prices on existing lines never move when the menu price changes."
         await World().SetMenuItemAsync(soup, 9.99m, isActive: true, cancellationToken);
 
         OrderLineView line = Assert.Single(
@@ -286,7 +254,6 @@ public sealed class OrderReadModelTests : IClassFixture<PostgreSqlFixture>, IAsy
         Assert.Equal(4.50m, line.CurrentUnitPriceAmount);
         Assert.Equal(9.00m, line.LineTotalAmount);
 
-        // The name, though, is a read-time join, so a rename shows through immediately (§8.3).
         Assert.Equal("Soup", line.MenuItemName);
     }
 
@@ -300,7 +267,6 @@ public sealed class OrderReadModelTests : IClassFixture<PostgreSqlFixture>, IAsy
         Guid kitchen = await World().AddPersonAsync("kim", "Kim", cancellationToken);
         Guid counter = await World().AddPersonAsync("cass", "Cass", cancellationToken);
 
-        // Table A stays open: one line is fulfilled, one is removed, one is left pending.
         Guid tableA = await World().AddTableAsync("Table A", cancellationToken);
         Guid sittingA = await World().OpenSittingAsync(tableA, cancellationToken);
         Guid ada = await World().AddPersonAsync("ada", "Ada", cancellationToken);
@@ -341,7 +307,6 @@ public sealed class OrderReadModelTests : IClassFixture<PostgreSqlFixture>, IAsy
                 OrderEventType.GuestSubmission, ada, OrderActorRole.Guest, [new LineRemovedOperation(removed, null)]),
             cancellationToken);
 
-        // Table B is closed with a pending line still on it — the kitchen must not still be cooking it.
         Guid tableB = await World().AddTableAsync("Table B", cancellationToken);
         Guid sittingB = await World().OpenSittingAsync(tableB, cancellationToken);
         Guid linus = await World().AddPersonAsync("linus", null, cancellationToken);
@@ -382,8 +347,6 @@ public sealed class OrderReadModelTests : IClassFixture<PostgreSqlFixture>, IAsy
         Guid tableIdentifier = await World().AddTableAsync("Table 3", cancellationToken);
         Guid sittingIdentifier = await World().OpenSittingAsync(tableIdentifier, cancellationToken);
 
-        // §11.2 groups the queue by person display name; a freshly created account has none, and a
-        // blank ticket header is worse than a username.
         Guid linus = await World().AddPersonAsync("linus", null, cancellationToken);
         await World().JoinAsync(sittingIdentifier, linus, cancellationToken);
 
@@ -494,9 +457,6 @@ public sealed class OrderReadModelTests : IClassFixture<PostgreSqlFixture>, IAsy
             },
             log.Select(orderEvent => orderEvent.ActorRole).ToArray());
 
-        // The first event owns both adds. They are compared as a set, not a sequence: the schema records
-        // no ordinal within an event, and the surrogate keys that give the read a deterministic order are
-        // UUIDv7s whose random bits decide ties inside one millisecond.
         Dictionary<Guid, LineAddedOperation> adds = log[0].Operations
             .Select(operation => Assert.IsType<LineAddedOperation>(operation))
             .ToDictionary(added => added.OrderLineIdentifier);
@@ -519,12 +479,8 @@ public sealed class OrderReadModelTests : IClassFixture<PostgreSqlFixture>, IAsy
         Assert.IsType<LineFulfilledOperation>(Assert.Single(log[3].Operations));
         Assert.IsType<LineFulfillmentRevertedOperation>(Assert.Single(log[4].Operations));
 
-        // And the log an unknown order has is empty, not an exception: no order yet and no events yet
-        // are the same answer to a reader (§6.1).
         Assert.Empty(await EventLog().ReadEventsAsync(_identifiers.Create(), cancellationToken));
     }
-
-    // --- helpers -----------------------------------------------------------------------------------
 
     private void SkipIfNoContainer()
         => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");

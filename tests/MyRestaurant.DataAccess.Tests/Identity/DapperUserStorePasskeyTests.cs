@@ -8,18 +8,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Identity;
 
-/// <summary>
-/// Integration tests for <see cref="DapperUserStore"/>'s <c>IUserPasskeyStore</c> implementation
-/// (TECHNICAL_SPECIFICATION §3.3, §16.2 — "every Identity store method") against a real PostgreSQL 17
-/// container, exercising the store directly rather than through the WebAuthn ceremony. They pin the two
-/// behaviours that matter for correctness: every field of a <see cref="UserPasskeyInfo"/> the store
-/// persists round-trips (the backup-eligible bit especially — assertion reads it), and an add-or-update
-/// against an already-stored credential rewrites only the mutable fields, never the public key or the
-/// backup-eligible bit captured at registration.
-///
-/// Separate container from <see cref="DapperUserStoreTests"/> (own <c>IClassFixture</c>); unique
-/// usernames keep the cases independent. If no container engine is available, every test skips.
-/// </summary>
 public sealed class DapperUserStorePasskeyTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private readonly PostgreSqlFixture _fixture;
@@ -33,7 +21,6 @@ public sealed class DapperUserStorePasskeyTests : IClassFixture<PostgreSqlFixtur
     {
         if (_fixture.ConnectionString is not null)
         {
-            // Idempotent: brings the schema (including migration 0002) up so the table exists.
             new SchemaMigrationRunner(_fixture.ConnectionString)
             {
                 MaximumAttempts = 3,
@@ -177,8 +164,6 @@ public sealed class DapperUserStorePasskeyTests : IClassFixture<PostgreSqlFixtur
                 name: "Before"),
             cancellationToken);
 
-        // Same credential id, but a later assertion: higher sign count, backup state flipped, renamed —
-        // and (deliberately, to prove they are ignored) a different public key and backup-eligible bit.
         await store.AddOrUpdatePasskeyAsync(
             person,
             MakePasskey(
@@ -192,15 +177,13 @@ public sealed class DapperUserStorePasskeyTests : IClassFixture<PostgreSqlFixtur
             cancellationToken);
 
         IList<UserPasskeyInfo> all = await store.GetPasskeysAsync(person, cancellationToken);
-        UserPasskeyInfo stored = Assert.Single(all);   // updated in place, not duplicated
+        UserPasskeyInfo stored = Assert.Single(all);
 
-        // Mutable fields were written:
         Assert.Equal(12u, stored.SignCount);
         Assert.True(stored.IsBackedUp);
         Assert.True(stored.IsUserVerified);
         Assert.Equal("After", stored.Name);
 
-        // Immutable registration fields were preserved:
         Assert.Equal(originalPublicKey, stored.PublicKey);
         Assert.True(stored.IsBackupEligible);
     }
@@ -222,7 +205,6 @@ public sealed class DapperUserStorePasskeyTests : IClassFixture<PostgreSqlFixtur
         Assert.Null(await store.FindByPasskeyIdAsync(credentialId, cancellationToken));
     }
 
-    // --- helpers -----------------------------------------------------------------------------------
     private void SkipIfNoContainer()
         => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
 
@@ -241,8 +223,6 @@ public sealed class DapperUserStorePasskeyTests : IClassFixture<PostgreSqlFixtur
         return person;
     }
 
-    // Builds a UserPasskeyInfo the way the framework's attestation would. attestationObject /
-    // clientDataJson are set here but the store does not persist them (attestation is 'none', §3.3).
     private UserPasskeyInfo MakePasskey(
         byte[] credentialId,
         byte[]? publicKey = null,

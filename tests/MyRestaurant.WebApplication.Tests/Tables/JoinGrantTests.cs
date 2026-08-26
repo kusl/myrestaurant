@@ -4,14 +4,6 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests;
 
-/// <summary>
-/// Pure tests for the table join grant (TECHNICAL_SPECIFICATION §4.4): the Data-Protection round-trip
-/// carries the table and the issue instant, a tampered or foreign-purpose value is rejected rather than
-/// trusted, the embedded <c>issued_at</c> bounds how long a scan stays good, and a grant for one table
-/// is never usable on another. No server, no container — these always run. An
-/// <see cref="EphemeralDataProtectionProvider"/> gives each test a throwaway key ring, mirroring the
-/// setup-ticket tests.
-/// </summary>
 public sealed class JoinGrantTests
 {
     private static readonly Guid TableIdentifier = Guid.Parse("0192f000-0000-7000-8000-00000000ab01");
@@ -51,8 +43,6 @@ public sealed class JoinGrantTests
         JoinGrantProtector protector = NewProtector();
         string protectedGrant = protector.Protect(new JoinGrant(TableIdentifier, IssuedAt));
 
-        // Change one character of the payload to a different, still-valid Base64Url character, so the
-        // failure is the authentication tag rejecting it rather than a decoding accident.
         char[] characters = protectedGrant.ToCharArray();
         int middle = characters.Length / 2;
         characters[middle] = characters[middle] == 'A' ? 'B' : 'A';
@@ -66,7 +56,6 @@ public sealed class JoinGrantTests
     [Fact]
     public void TryUnprotect_ValueFromADifferentKeyRing_ReturnsFalse()
     {
-        // Two independent ephemeral providers stand in for "a value that is not one of ours".
         string foreign = NewProtector().Protect(new JoinGrant(TableIdentifier, IssuedAt));
 
         Assert.False(NewProtector().TryUnprotect(foreign, out JoinGrant? grant));
@@ -76,8 +65,6 @@ public sealed class JoinGrantTests
     [Fact]
     public void TryUnprotect_ValueProtectedForAnotherPurpose_ReturnsFalse()
     {
-        // Same key ring, different purpose string: purpose isolation must keep the two apart, which is
-        // why the join grant's purpose is distinct from every other protector in the application.
         EphemeralDataProtectionProvider provider = new();
         string otherPurposeValue = provider
             .CreateProtector(MyRestaurant.WebApplication.Identity.SetupTicketProtector.Purpose)
@@ -93,7 +80,7 @@ public sealed class JoinGrantTests
         JoinGrant grant = new(TableIdentifier, IssuedAt);
 
         Assert.False(grant.HasExpired(IssuedAt, Lifetime));
-        Assert.False(grant.HasExpired(IssuedAt + Lifetime, Lifetime));            // exactly at the edge
+        Assert.False(grant.HasExpired(IssuedAt + Lifetime, Lifetime));
         Assert.True(grant.HasExpired(IssuedAt + Lifetime + TimeSpan.FromSeconds(1), Lifetime));
     }
 
@@ -104,19 +91,14 @@ public sealed class JoinGrantTests
 
         Assert.True(grant.IsUsableFor(TableIdentifier, IssuedAt.AddMinutes(9), Lifetime));
 
-        // Scanning table 1 must never let anyone join table 2 (§4.4).
         Assert.False(grant.IsUsableFor(OtherTable, IssuedAt.AddMinutes(9), Lifetime));
 
-        // Right table, but the scan is stale — the friendly re-scan page, not a join.
         Assert.False(grant.IsUsableFor(TableIdentifier, IssuedAt.AddMinutes(11), Lifetime));
     }
 
     [Fact]
     public void CookieAndPurpose_AreDistinctFromTheSetupFlow()
     {
-        // The join grant and the setup ticket are different short-lived flows on the same origin; a
-        // shared cookie name would have one silently clobber the other, and a shared Data-Protection
-        // purpose would let a value from one be unprotected as the other.
         Assert.Equal("myrestaurant.join", JoinGrantCookie.Name);
         Assert.NotEqual(MyRestaurant.WebApplication.Identity.SetupCookie.Name, JoinGrantCookie.Name);
         Assert.NotEqual(

@@ -2,11 +2,6 @@ using MyRestaurant.Domain.Orders;
 
 namespace MyRestaurant.Domain.Tests;
 
-/// <summary>
-/// Terse constructors for order events and operations, so the projection and validator tests read as
-/// scenarios rather than positional-argument noise. Event identifiers are random (identity only);
-/// callers that need to reference the adding event capture the returned <see cref="OrderEvent"/>.
-/// </summary>
 internal static class OrderTestBuilders
 {
     public static readonly DateTimeOffset Origin = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);

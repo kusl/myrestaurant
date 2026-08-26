@@ -4,14 +4,6 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Identity;
 
-/// <summary>
-/// Pure tests for <see cref="PersonPrincipal"/> (TECHNICAL_SPECIFICATION §3.1) — the one place the
-/// surfaces read "who is this?" off the authentication cookie's principal. The interesting cases are all
-/// the ways it must answer <c>null</c> rather than something plausible-looking: an anonymous visitor, an
-/// authenticated identity with no id claim, a malformed value, and the all-zero <see cref="Guid"/>, which
-/// no UUIDv7 primary key can legitimately be. Every caller treats <c>null</c> as "not signed in", so a
-/// wrong answer here would either hide a member's table or scope a query to nobody.
-/// </summary>
 public sealed class PersonPrincipalTests
 {
     private const string AuthenticationType = "TestCookie";
@@ -30,8 +22,6 @@ public sealed class PersonPrincipalTests
     [Fact]
     public void IdentifierFor_IsCaseAndFormatInsensitiveAboutTheClaimValue()
     {
-        // Identity writes the value with UserManager.GetUserIdAsync (Guid.ToString()); accept the
-        // braced/upper spellings too rather than silently dropping a real member.
         Assert.Equal(
             PersonIdentifier,
             PersonPrincipal.IdentifierFor(Authenticated(
@@ -46,7 +36,6 @@ public sealed class PersonPrincipalTests
     [Fact]
     public void IdentifierFor_AnonymousPrincipal_ReturnsNull()
     {
-        // No authentication type → IsAuthenticated is false, even with an id claim attached.
         ClaimsPrincipal anonymous = new(new ClaimsIdentity(
             [new Claim(ClaimTypes.NameIdentifier, PersonIdentifier.ToString("D"))]));
 

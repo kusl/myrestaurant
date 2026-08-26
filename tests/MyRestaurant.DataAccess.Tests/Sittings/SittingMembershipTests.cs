@@ -8,19 +8,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Sittings;
 
-/// <summary>
-/// Integration tests for <see cref="DapperSittingMembership"/> and <see cref="DapperSittingDirectory"/>
-/// (TECHNICAL_SPECIFICATION §4.4, §5.1, §5.2) against a real PostgreSQL 17 container. They pin the
-/// behaviours that make the join slice correct: the first consumed grant opens a sitting and inserts the
-/// first membership in one transaction; later grants add members to that same sitting; a repeat join is
-/// idempotent and writes nothing; an unknown or deactivated table cannot be joined at all (§4.1); a new
-/// sitting opens once the previous one is closed; and the directory answers the two questions the table
-/// surface asks — "is this person a member here?" and "who else is?".
-///
-/// <para>Each test truncates the people, tables, and sitting tables first (xUnit builds a fresh instance
-/// per test and runs them sequentially). Own <c>IClassFixture</c> (own container); if no container engine
-/// is available, every test skips — mirroring <c>TableAdministrationTests</c>.</para>
-/// </summary>
 public sealed class SittingMembershipTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private const string SamplePasswordHash =
@@ -108,7 +95,6 @@ public sealed class SittingMembershipTests : IClassFixture<PostgreSqlFixture>, I
         Assert.True(joined.MembershipInserted);
         Assert.Equal(opened.SittingIdentifier, joined.SittingIdentifier);
 
-        // §5.1: later grants add members — they do not open a second sitting on the same table.
         Assert.Equal(1, await CountSittingsAsync(cancellationToken));
         Assert.Equal(2, await CountMembersAsync(cancellationToken));
     }
@@ -186,7 +172,6 @@ public sealed class SittingMembershipTests : IClassFixture<PostgreSqlFixture>, I
         _clock.UtcNow = _clock.UtcNow.AddHours(1);
         JoinTableResult second = await Membership().JoinTableAsync(tableId, personId, cancellationToken);
 
-        // The partial unique index only forbids two OPEN sittings per table, so a closed one is no bar.
         Assert.Equal(JoinTableOutcome.SittingOpened, second.Outcome);
         Assert.NotEqual(first.SittingIdentifier, second.SittingIdentifier);
         Assert.Equal(2, await CountSittingsAsync(cancellationToken));
@@ -216,7 +201,6 @@ public sealed class SittingMembershipTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(1, forMember.MemberCount);
         Assert.True(forMember.IsOpen);
 
-        // §4.4's bypass is membership-scoped: a signed-in non-member gets nothing and must present a token.
         Assert.Null(forStranger);
     }
 
@@ -253,14 +237,12 @@ public sealed class SittingMembershipTests : IClassFixture<PostgreSqlFixture>, I
         _clock.UtcNow = _clock.UtcNow.AddMinutes(5);
         await Membership().JoinTableAsync(bar, personId, cancellationToken);
 
-        // Someone else's sitting on a third table must not leak into this person's list.
         Guid window = await CreateTableAsync("Window", cancellationToken);
         await Membership().JoinTableAsync(window, other, cancellationToken);
 
         IReadOnlyList<TableSittingSummary> sittings = await Directory()
             .ListOpenSittingsForPersonAsync(personId, cancellationToken);
 
-        // §5.1: a person may hold memberships in several open sittings at once.
         Assert.Equal(new[] { "Patio", "Bar" }, sittings.Select(sitting => sitting.TableLabel).ToArray());
         Assert.All(sittings, sitting => Assert.True(sitting.IsOpen));
     }
@@ -287,12 +269,9 @@ public sealed class SittingMembershipTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal("Ada Lovelace", roster[0].RosterName);
         Assert.Equal(second, roster[1].PersonIdentifier);
 
-        // No display name set → the roster shows the username rather than a blank (§5.2).
         Assert.Null(roster[1].DisplayName);
         Assert.Equal("grace", roster[1].RosterName);
     }
-
-    // --- helpers -----------------------------------------------------------------------------------
 
     private void SkipIfNoContainer()
         => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
@@ -303,7 +282,6 @@ public sealed class SittingMembershipTests : IClassFixture<PostgreSqlFixture>, I
 
     private DapperTableAdministration Administration() => new(_connectionFactory!, _clock);
 
-    /// <summary>Creates a real table through the administration service (so it gets a real join secret).</summary>
     private async Task<Guid> CreateTableAsync(string label, CancellationToken cancellationToken)
     {
         Guid tableId = _identifiers.Create();
@@ -313,7 +291,6 @@ public sealed class SittingMembershipTests : IClassFixture<PostgreSqlFixture>, I
         return tableId;
     }
 
-    /// <summary>Seeds a bare active person (a password, no roles, no obligations) and returns its id.</summary>
     private async Task<Guid> SeedPersonAsync(string username, string? displayName, CancellationToken cancellationToken)
     {
         Guid id = _identifiers.Create();
@@ -342,10 +319,6 @@ public sealed class SittingMembershipTests : IClassFixture<PostgreSqlFixture>, I
         return id;
     }
 
-    /// <summary>
-    /// Closes a sitting directly. Close-and-settle is the counter's §5.3 transaction and lands with M5;
-    /// these tests only need the closed state to exist so the "open" predicates can be exercised.
-    /// </summary>
     private async Task CloseSittingAsync(Guid sittingId, Guid closedBy, CancellationToken cancellationToken)
     {
         await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
@@ -390,8 +363,6 @@ public sealed class SittingMembershipTests : IClassFixture<PostgreSqlFixture>, I
             sql, cancellationToken: cancellationToken));
     }
 
-    // Plain mutable POCO so Dapper's default property mapping applies; the SELECT aliases its
-    // snake_case columns to these PascalCase names.
     private sealed class SittingProbeRow
     {
         public Guid RestaurantTableIdentifier { get; set; }

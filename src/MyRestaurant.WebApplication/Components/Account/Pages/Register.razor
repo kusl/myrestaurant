@@ -16,50 +16,6 @@
 @inject NavigationManager Navigation
 @inject RestaurantTime RestaurantClock
 
-@* Guest self-registration (TECHNICAL_SPECIFICATION §4.3, §4.4, §11.1).
-
-   §4.3: "Guests self-register at the moment of joining a table: username, optional display name, and
-   at least one credential — passkey offered first, password accepted." §11.1 spells out the route in:
-   "Anonymous with valid token → grant → sign-in/registration (passkey-first, password offered) → join."
-   This is the registration half of that sentence; the join grant written before the detour (§4.4) is
-   what survives it, which is the whole reason the grant exists.
-
-   Anonymous and static SSR, like every account surface: it writes cookies on the response — the
-   accumulating registration ticket, and the authentication cookie once the account exists — and a
-   Blazor circuit cannot set either.
-
-   TWO STEPS, driven by a Data-Protection-protected cookie (RegistrationTicket):
-
-     1. Details — username, optional display name, optional password. The password is hashed
-        immediately, so the ticket carries a PHC string and never a plaintext. The person's UUIDv7 is
-        minted here because the WebAuthn ceremony in step 2 needs a user handle before the account
-        exists, and it must equal the eventual person row's id (§3.3).
-
-     2. Passkey — the real attestation ceremony against /register/passkey/creation-options, which is
-        anonymous and gated on that same cookie. Registering commits the account; "Not now" commits it
-        with the password alone, and appears ONLY when a password was set. That asymmetry is §3.3's
-        rule made structural: a passkey is "always offered, never required, never a gate for guests",
-        but an account with neither credential could never be signed into, so declining is offered
-        exactly when there is something to fall back on.
-
-   Nothing is written until whichever branch of step 2 the guest takes; the commit is one transaction
-   (IGuestRegistration) covering the person, the passkey, and the audit rows. The new guest is signed
-   in on the same response and sent to ReturnUrl — for the scan flow, back to /table/{id}, where the
-   grant is waiting and the join button is one click away.
-
-   No TOTP step, unlike /setup. §3.4 pairs the authenticator with the password path for staff and
-   administrators; a guest is never required to hold one and may enroll voluntarily later from
-   /account/enroll-totp. No role is granted either: a guest is the absence of a grant (§3.7).
-
-   RATE LIMITED as of Slice 62 (§11.8, §13, §17, F-115), by the policy named in the attribute above.
-   Read the budget as a volume ceiling, not as a brute-force defence: there is no secret to guess here,
-   and F-37's ruling that the worst outcome of an unlimited /register is ROWS rather than access still
-   stands. What matters for anybody editing this page is the partition — it is the client address, and
-   over the tunnel from a restaurant's own wifi that is ONE address for the entire dining room. So the
-   budget is sized for a full room rather than against an attacker, and it is configurable because the
-   right number is a property of the room. Tightening it is not a free security improvement: it is
-   traded against a seated guest who cannot create the account they need in order to order dinner. *@
-
 <PageTitle>Create an account</PageTitle>
 
 @if (_alreadySignedIn)
@@ -93,7 +49,6 @@ else
 
         @if (_ticket is null)
         {
-            @* Step 1 — who you are, and (optionally) a password. *@
             <h1>Create an account</h1>
             <p class="lede">
                 Your table-mates see your display name next to what you order, so pick something they
@@ -144,7 +99,6 @@ else
         }
         else
         {
-            @* Step 2 — the credential itself. *@
             <h1>How will you sign in?</h1>
             <p class="lede">
                 A passkey signs you in with your fingerprint, face, or device PIN. There is nothing to
@@ -196,13 +150,6 @@ else
 }
 
 @code {
-    /// <summary>
-    /// The §3.2 password floor, mirrored from <c>AddRestaurantIdentity</c>'s
-    /// <c>identity.Password.RequiredLength</c>. Stated here rather than read from
-    /// <c>IdentityOptions</c> for the same reason <c>Setup.razor</c> states it: the number appears in
-    /// prose a guest reads as well as in a rule, and a page that said "at least 12 characters" while
-    /// validating against something else would be worse than one that repeats the literal.
-    /// </summary>
     private const int MinimumPasswordLength = 12;
 
     private RegistrationTicketProtector _protector = default!;
@@ -222,22 +169,18 @@ else
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
 
-    /// <summary>Where the guest goes once the account exists — for the scan flow, back to the table.</summary>
     private string SafeReturnUrl => ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl);
 
-    /// <summary>This page's own URL, carrying the return URL across the step-to-step redirects.</summary>
     private string SelfUrl => string.IsNullOrEmpty(ReturnUrl)
         ? AccountRoutes.Register
         : $"{AccountRoutes.Register}?ReturnUrl={Uri.EscapeDataString(ReturnUrl)}";
 
-    /// <summary>The sign-in page, carrying the same return URL so the two surfaces are interchangeable.</summary>
     private string SignInUrl => string.IsNullOrEmpty(ReturnUrl)
         ? AccountRoutes.SignIn
         : $"{AccountRoutes.SignIn}?ReturnUrl={Uri.EscapeDataString(ReturnUrl)}";
 
     protected override void OnInitialized()
     {
-        // BL0008: a form POST binds these itself and may assign null, so the defaults live here.
         DetailsInput ??= new();
         PasskeyInput ??= new();
         _protector = new RegistrationTicketProtector(DataProtection);
@@ -257,17 +200,11 @@ else
         }
         else if (!string.IsNullOrEmpty(cookie))
         {
-            // Stale, tampered, or from another key ring: drop it and start clean.
             RegistrationCookie.Delete(HttpContext.Response);
             _errorMessage = "That took a while, so we started over. Please fill this in again.";
         }
     }
 
-    /// <summary>
-    /// Step 1's commit: mint the identity, hash any password, and hand the guest to the credential
-    /// step. Writes nothing to the database — the username check here is advisory, and the UNIQUE
-    /// constraint inside the final transaction is what actually decides (§4.3).
-    /// </summary>
     private async Task StartAsync()
     {
         if (_alreadySignedIn)
@@ -288,8 +225,6 @@ else
 
         Guid personIdentifier = IdentifierFactory.Create();
 
-        // Hashed here so the plaintext never enters the ticket — the same discipline /setup uses. The
-        // hasher ignores its user argument (no per-user pepper, §3.2), so a throwaway carrier is fine.
         string? passwordHash = string.IsNullOrEmpty(DetailsInput.Password)
             ? null
             : PasswordHasher.HashPassword(
@@ -304,10 +239,6 @@ else
             passwordHash));
     }
 
-    /// <summary>
-    /// Step 2, passkey branch: verify the attestation the browser produced, then commit the account
-    /// with it (§3.3, §4.3).
-    /// </summary>
     private async Task RegisterPasskeyAsync()
     {
         if (_alreadySignedIn)
@@ -343,10 +274,6 @@ else
 
         UserPasskeyInfo verified = attestation.Passkey;
 
-        // Rebuilt rather than passed through, for the same reason /setup rebuilds it: created_at is
-        // stamped by the data layer so every row in the transaction shares one instant, and the
-        // attestation object and client-data JSON are deliberately not persisted (attestation is
-        // 'none', §3.3).
         UserPasskeyInfo passkey = new(
             verified.CredentialId,
             verified.PublicKey,
@@ -365,11 +292,6 @@ else
         await CommitAsync(_ticket, passkey);
     }
 
-    /// <summary>
-    /// Step 2, declined branch: commit the account on the password alone. Reachable only when a
-    /// password was set — the button is not rendered otherwise, and this re-checks rather than trusting
-    /// the render that drew it, because a POST is a separate request.
-    /// </summary>
     private async Task FinishWithPasswordOnlyAsync()
     {
         if (_alreadySignedIn)
@@ -392,11 +314,6 @@ else
         await CommitAsync(_ticket, passkey: null);
     }
 
-    /// <summary>
-    /// The one write. Creates the account in a single transaction, clears the ticket, signs the new
-    /// guest in on this response, and continues to wherever they were going (§4.4 — for the scan flow
-    /// that is <c>/table/{id}</c>, where the join grant is still waiting).
-    /// </summary>
     private async Task CommitAsync(RegistrationTicket ticket, UserPasskeyInfo? passkey)
     {
         GuestRegistrationStatus status = await Registration.RegisterAsync(
@@ -410,9 +327,6 @@ else
 
         if (status == GuestRegistrationStatus.UsernameTaken)
         {
-            // Somebody took the name while this guest was choosing a credential. The passkey they may
-            // have just created is bound to a user handle no account will ever carry, so the honest
-            // thing is to start over rather than pretend the ticket is still usable.
             RegistrationCookie.Delete(HttpContext.Response);
             _ticket = null;
             _errorMessage = "That username was taken while you were signing up. Please try another.";
@@ -424,9 +338,6 @@ else
         Person? guest = await UserManager.FindByIdAsync(ticket.PersonIdentifier.ToString());
         if (guest is not null)
         {
-            // isPersistent per §3.1: the 24-hour sliding session should survive a phone locking itself
-            // mid-meal. No security_event is written here — RestaurantSignInManager audits the sign-in
-            // *paths*, and account_created is already on the record from the transaction above.
             await SignInManager.SignInAsync(guest, isPersistent: true);
         }
 
@@ -439,8 +350,6 @@ else
         Navigation.NavigateTo(SelfUrl);
     }
 
-    // Writes the protected ticket cookie and follows post/redirect/get so a refresh does not re-post
-    // the step. NavigateTo during static SSR surfaces as an HTTP redirect carrying the fresh cookie.
     private void WriteTicketAndReload(RegistrationTicket ticket)
     {
         RegistrationCookie.Write(HttpContext.Response, _protector.Protect(ticket));
@@ -463,22 +372,11 @@ else
         [StringLength(120, ErrorMessage = "That display name is too long.")]
         public string? DisplayName { get; set; }
 
-        // Deliberately not [Required]: a passkey-only account is the passkey-first default (§4.3).
-        // The length FLOOR is enforced in Validate below rather than by StringLength's MinimumLength,
-        // which would also fire on the empty string and make "no password" impossible to express. The
-        // ceiling is an attribute because it has no such exception — and because Argon2id on an
-        // unbounded input is work an anonymous caller should not be able to ask for (§3.2).
         [StringLength(256, ErrorMessage = "That password is too long.")]
         public string? Password { get; set; }
 
         public string? ConfirmPassword { get; set; }
 
-        /// <summary>
-        /// The password rules that only apply once there is a password: it meets the §3.2 floor, and
-        /// the confirmation matches. <c>[Compare]</c> is not used for the latter because it treats two
-        /// nulls as a match but reports a bare field-level message that reads oddly on an optional
-        /// field.
-        /// </summary>
         public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
         {
             if (string.IsNullOrEmpty(Password))

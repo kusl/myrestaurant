@@ -1,42 +1,17 @@
 #!/usr/bin/env bash
 #
-# Run the CI gates locally (TECHNICAL_SPECIFICATION §16.4). Idempotent, and it changes nothing in
-# the working tree.
+# Run the CI gates locally (TECHNICAL_SPECIFICATION §16.4). Idempotent; changes nothing in the tree.
 #
-#   scripts/ci_local.sh              tree hygiene, governance, shell lint, restore, strict build, full test suite
-#   scripts/ci_local.sh --with-smoke ...and then `bash run.sh --smoke` (boots the app once, checks health)
+#   scripts/ci_local.sh              tree, governance, shell lint, restore, strict build, tests
+#   scripts/ci_local.sh --with-smoke ...and then `bash run.sh --smoke`
 #   scripts/ci_local.sh --with-e2e   ...and then the §16.3 Playwright scenarios (browser required)
 #   scripts/ci_local.sh --with-all   both of the above
 #   scripts/ci_local.sh --help       this text
 #
-# Why this exists: .github/workflows/ci.yml builds with -p:ContinuousIntegrationBuild=true, which
-# flips TreatWarningsAsErrors in Directory.Build.props. A plain `dotnet build` is deliberately more
-# forgiving than that, so "it builds here" and "it builds in CI" are two different questions unless
-# something asks the second one on purpose. This asks it.
+# CI builds with -p:ContinuousIntegrationBuild=true, which flips TreatWarningsAsErrors. A plain
+# `dotnet build` is deliberately more forgiving, so this asks the stricter question on purpose.
+# It cannot reproduce CI's boot-smoke job, which builds the Containerfile.
 #
-# The one gate this cannot reproduce is CI's boot-smoke job, which builds the Containerfile and
-# boots the resulting image against a real PostgreSQL. `--with-smoke` is the closest local
-# equivalent: same migrations, same readiness probe, but the app runs on the host rather than in the
-# image. For the real thing, `bash run.sh --containers-only`.
-#
-# That sentence said "the one gate" for fourteen slices while there were two of them (F-75). CI also
-# runs a vulnerable-package audit, advisory, and nothing here ran it — so the one gate suite anybody
-# executes on purpose was silent about a published high-severity advisory this tree was carrying
-# transitively. It is gate 7 below now, on CI's terms rather than on stricter ones: it reports and it
-# does not block. The claim above is true again, which is the repair worth having; weakening it to
-# match what the script did would have been the repair nobody revisits.
-#
-# Every invocation of run.sh here goes through `bash` rather than `./run.sh`, and that is not a style
-# preference: a checkout whose execute bit did not survive (a zip, a Windows clone, a `git apply` of a
-# patch that carried no mode) fails at `./run.sh` with "Permission denied", and under `set -e` that
-# ends the whole gate run at the last step rather than reporting a fixable detail. `bash run.sh` works
-# either way. `chmod +x run.sh` is still worth doing so the README's own `./run.sh` is true.
-#
-# `--with-e2e` sets MYRESTAURANT_E2E=1, which is the only thing that turns the §16.3 end-to-end
-# scenarios from skips into scenarios. They need a container engine and a Chromium build; the first
-# run downloads roughly 150 MB into ~/.cache/ms-playwright, which is why nothing does this by
-# default. On a minimal host the browser's shared libraries may also be missing — install them once
-# with `playwright install --with-deps chromium` (that step needs root, so the harness never tries).
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -58,8 +33,6 @@ case "${1:-}" in
         WITH_E2E=1
         ;;
     --help | -h)
-        # Print the header comment block and stop at the first line of real code, so the help text
-        # cannot drift out of step with a hard-coded line range.
         awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
         exit 0
         ;;
@@ -69,9 +42,6 @@ case "${1:-}" in
         ;;
 esac
 
-# ---------------------------------------------------------------------------------------------------
-# Reporting helpers. Every gate announces itself, so a failure is attributable at a glance.
-# ---------------------------------------------------------------------------------------------------
 STEP_NUMBER=0
 
 announce() {
@@ -87,33 +57,12 @@ fail() {
     exit 1
 }
 
-# ---------------------------------------------------------------------------------------------------
-# 1. Tree hygiene: the tree must be machine-readable before anything tries to build it.
-#
-# First because it is the cheapest gate here by two orders of magnitude and because the failure it
-# catches disguises itself as a toolchain problem. A malformed Directory.Build.props reports as
-# MSB4024 on `dotnet clean`, on `restore`, on `build` and on the container build alike, and the
-# message it reports — "Data at the root level is invalid" — sends you looking at MSBuild. See
-# scripts/check_tree.sh for what happened and what each gate asserts.
-# ---------------------------------------------------------------------------------------------------
 announce "tree hygiene"
 bash scripts/check_tree.sh
 
-# ---------------------------------------------------------------------------------------------------
-# 2. Repository governance: the one layer no other gate here can see.
-#
-# Second because it is the other gate that needs no SDK and no containers, and because what it asserts
-# is a precondition of publishing rather than of building — which is exactly the kind of thing that
-# gets checked last and therefore never. Its tree half is blocking on git and grep alone. Its platform
-# half reads the GitHub API, is advisory, and reports a skip without a token; see
-# scripts/check_repository.sh for the finding that put it here (F-42).
-# ---------------------------------------------------------------------------------------------------
 announce "repository governance"
 bash scripts/check_repository.sh
 
-# ---------------------------------------------------------------------------------------------------
-# 3. Shell scripts: every tracked *.sh must parse, and pass shellcheck when it is installed.
-# ---------------------------------------------------------------------------------------------------
 announce "shell scripts"
 
 if ! command -v git >/dev/null 2>&1; then
@@ -145,9 +94,6 @@ else
     echo "         CI runs it regardless; install it with 'sudo dnf install ShellCheck'." >&2
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# 4. Restore, build strictly, test. Same flags CI uses, in the same order.
-# ---------------------------------------------------------------------------------------------------
 if ! command -v dotnet >/dev/null 2>&1; then
     fail "the .NET SDK is required for the build and test gates."
 fi
@@ -162,40 +108,14 @@ dotnet build MyRestaurant.slnx \
     -p:ContinuousIntegrationBuild=true
 
 announce "test"
-# The data-access tests need a reachable container engine and skip without one. On rootless Podman
-# that means the user API socket must be active: systemctl --user enable --now podman.socket
-#
-# MICROSOFT.TESTING.PLATFORM MODE, and the command line says so (F-97). `global.json` selects the
-# runner for the whole repository; in that mode a solution is passed with `--solution` rather than as
-# a bare argument, and `dotnet test MyRestaurant.slnx` would be read as a directory name. This is the
-# same string CI runs, minus the report it uploads.
 dotnet test --solution MyRestaurant.slnx \
     --configuration Release \
     --no-build \
     -p:ContinuousIntegrationBuild=true
 
-# ---------------------------------------------------------------------------------------------------
-# 5. The vulnerable-package audit, in the same place and on the same terms as CI (F-75).
-#
-# Advisory, exactly as `.github/workflows/ci.yml` runs it: `continue-on-error: true` there,
-# `|| true` here. A published advisory against a package this tree already depends on is real news,
-# but it arrives on a day nobody touched the repository, and a gate run that turns red without a
-# commit is a gate run people learn to bypass — the reasoning Directory.Build.props records for
-# keeping NU1901-NU1904 out of TreatWarningsAsErrors.
-#
-# `|| true` rather than a trusted exit code: `dotnet list package --vulnerable` has reported findings
-# with a zero status, and this gate must not depend on which. It prints, and a person reads it.
-#
-# After the test gate rather than before it, so that a run which is going to fail on a real assertion
-# fails on that and not on a report. The command is the one string CI runs, and
-# `VulnerabilityAuditParityContractTests` holds the two files to it.
-# ---------------------------------------------------------------------------------------------------
 announce "vulnerable package audit (advisory)"
 dotnet list MyRestaurant.slnx package --vulnerable --include-transitive || true
 
-# ---------------------------------------------------------------------------------------------------
-# 6. Optional: the §16.3 end-to-end scenarios, in a real browser.
-# ---------------------------------------------------------------------------------------------------
 if (( WITH_E2E )); then
     announce "end to end (§16.3 Playwright scenarios)"
     echo "MYRESTAURANT_E2E=1 — each scenario creates its own database and boots the built app."
@@ -206,9 +126,6 @@ if (( WITH_E2E )); then
         -p:ContinuousIntegrationBuild=true
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# 7. Optional: boot once and probe /healthz/ready.
-# ---------------------------------------------------------------------------------------------------
 if (( WITH_SMOKE )); then
     announce "boot smoke (bash run.sh --smoke)"
     bash run.sh --smoke

@@ -1,12 +1,5 @@
 namespace MyRestaurant.Domain.Security;
 
-/// <summary>
-/// RFC 4648 §6 Base32 (uppercase, padding stripped) — the encoding of the TOTP shared secret in the
-/// provisioning URI and in the authenticator-key string ASP.NET Core Identity round-trips through
-/// the user store (TECHNICAL_SPECIFICATION §3.4). A 20-byte secret is exactly 32 characters, so
-/// padding never appears in practice. Implemented explicitly, like <see cref="Base64UrlText"/>, so
-/// the byte-for-byte output is fixed and testable against the RFC vectors.
-/// </summary>
 public static class Base32Text
 {
     private const string Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -42,12 +35,6 @@ public static class Base32Text
         return new string(buffer, 0, cursor);
     }
 
-    /// <summary>
-    /// Decodes Base32 text. Returns <c>false</c> (never throws) on any malformed input. Forgiving of
-    /// lowercase, of the spaces/dashes secrets are displayed with, and of trailing <c>'='</c>
-    /// padding — but impossible lengths and nonzero leftover bits are rejected rather than silently
-    /// dropped, so a truncated or corrupted secret never half-decodes.
-    /// </summary>
     public static bool TryDecode(string text, out byte[] bytes)
     {
         bytes = [];
@@ -56,8 +43,6 @@ public static class Base32Text
             return false;
         }
 
-        // Trailing '=' padding is legal; '=' anywhere else is not (it falls through to the
-        // alphabet check below and is rejected there).
         int end = text.Length;
         while (end > 0 && text[end - 1] == '=')
         {
@@ -73,7 +58,7 @@ public static class Base32Text
             char character = char.ToUpperInvariant(text[index]);
             if (character is ' ' or '-')
             {
-                continue; // grouped-display separators
+                continue;
             }
 
             int value;
@@ -99,8 +84,6 @@ public static class Base32Text
             }
         }
 
-        // Five or more leftover bits means an impossible encoded length (1, 3, or 6 characters
-        // mod 8); fewer leftover bits must all be zero, or the tail was truncated or corrupted.
         if (bitCount >= 5 || (bitBuffer & ((1 << bitCount) - 1)) != 0)
         {
             return false;

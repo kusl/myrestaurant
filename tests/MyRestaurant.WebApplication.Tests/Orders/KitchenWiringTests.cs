@@ -16,18 +16,6 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests;
 
-/// <summary>
-/// Verifies the kitchen half of the wiring composed by
-/// <see cref="OrdersServiceCollectionExtensions.AddRestaurantOrders"/> (TECHNICAL_SPECIFICATION §8.4,
-/// §10, §11.2). <see cref="OrdersWiringTests"/> covers the ordering
-/// services themselves; this covers what the kitchen board and the reminder loop need, and constructing
-/// any of it opens no connection.
-///
-/// <para><see cref="TheReminderServiceIsRegisteredAsAHostedService"/> is the fact with teeth. §10.2's
-/// reminder is the one behaviour in the system whose bug is <em>silence</em> — a missing registration
-/// produces an application that starts cleanly, serves every page, alerts correctly on each send, and
-/// simply never reminds. Nothing else in the test suite would notice.</para>
-/// </summary>
 public sealed class KitchenWiringTests
 {
     [Fact]
@@ -57,13 +45,6 @@ public sealed class KitchenWiringTests
         Assert.IsType<DapperMenuAvailability>(scope.ServiceProvider.GetRequiredService<IMenuAvailability>());
     }
 
-    /// <summary>
-    /// Surfaces take the workflow, never the raw write: an 86 that skipped the §9 broadcast would leave
-    /// the item selectable in every open guest picker until that page happened to reload, and the guest
-    /// would then have a whole send refused for it (§6.5.9). The registered implementation is
-    /// <see cref="MenuWorkflow"/> — renamed from <c>MenuAvailabilityWorkflow</c> when the M5 menu
-    /// administration slice gave it create, rename, and reprice alongside the 86 toggle.
-    /// </summary>
     [Fact]
     public void MenuWorkflow_IsResolvableInAScope_AndIsTheServiceSurfacesShouldTake()
     {
@@ -85,7 +66,6 @@ public sealed class KitchenWiringTests
         Assert.IsType<KitchenReminderService>(hosted[0]);
     }
 
-    /// <summary>§8.4: "The reminder background service (§10.2) runs every ~5 seconds".</summary>
     [Fact]
     public void TheReminderServiceScansOnTheIntervalTheSpecificationNames()
     {
@@ -96,9 +76,6 @@ public sealed class KitchenWiringTests
     {
         ServiceCollection services = new();
 
-        // The prerequisites Program.cs registers before AddRestaurantOrders. RestaurantOptions and
-        // logging are here (and not in OrdersWiringTests) because the hosted service takes both; the
-        // connection factory is never used — resolution constructs, it does not connect.
         services.AddLogging();
         services.AddSingleton(RestaurantOptions.FromConfiguration(new ConfigurationBuilder().Build()));
         services.AddSingleton<IClock, SystemClock>();
@@ -113,17 +90,12 @@ public sealed class KitchenWiringTests
         return services.BuildServiceProvider();
     }
 
-    /// <summary>The wiring tests never open a connection; this makes that explicit.</summary>
     private sealed class UnusedConnectionFactory : IDatabaseConnectionFactory
     {
         public ValueTask<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("Wiring tests must not open a database connection.");
     }
 
-    /// <summary>
-    /// Constructing the reminder service captures the broadcaster; nothing here starts it, so nothing
-    /// publishes. Throwing makes that assumption load-bearing rather than incidental.
-    /// </summary>
     private sealed class UnusedBroadcaster : IDomainEventBroadcaster
     {
         public void Publish(DomainNotification notification)

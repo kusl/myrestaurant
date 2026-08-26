@@ -7,13 +7,6 @@
 @inject NavigationManager Navigation
 @inject RestaurantTime RestaurantClock
 
-@* Manage one table (TECHNICAL_SPECIFICATION §4.1). Administrator only (endpoint authorization).
-   Static SSR: rename, rotate-secret, and deactivate/reactivate are full-page form posts. Successful
-   changes redirect back here (post/redirect/get) carrying a one-word outcome so a refresh does not
-   re-post; a taken label is shown in place. The join secret is never read or shown — rotation replaces
-   it server-side (§4.1). A link to the join-code fallback (§4.5) sits alongside, for when a table's
-   display is down, and a link to this table's display devices (§4.2) for pairing and revoking them. *@
-
 <PageTitle>@(_table is null ? "Manage table" : $"Manage {_table.Label}")</PageTitle>
 
 @if (_table is null)
@@ -163,11 +156,6 @@ else
     </section>
 }
 
-@* This page declares nothing. Its facts grid, its headings, its rules, its small forms, its chips
-   and its back link are all app.css's §11.12 vocabulary — four pages each carried an inline copy of
-   that vocabulary until M6 Slice 34, and the copies had drifted (F-66). A page may still keep a block
-   for rules nobody else reads; this one turns out to have none. *@
-
 @code {
     private RestaurantTableSummary? _table;
     private string? _flashMessage;
@@ -189,7 +177,6 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        // BL0008: a form POST binds RenameInput itself and may assign null, so the default lives here.
         RenameInput ??= new();
 
         _table = await TableDirectory.GetTableAsync(TableId, HttpContext.RequestAborted);
@@ -198,8 +185,6 @@ else
             return;
         }
 
-        // On GET, pre-fill the rename box with the current label and render any post/redirect flash.
-        // On POST the submitted value is already bound, so it must not be overwritten.
         if (HttpContext.Request.Method == HttpMethods.Get)
         {
             if (string.IsNullOrEmpty(RenameInput.Label))

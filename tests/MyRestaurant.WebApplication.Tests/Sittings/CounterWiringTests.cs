@@ -15,25 +15,6 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests;
 
-/// <summary>
-/// The counter half of the wiring composed by
-/// <see cref="TablesServiceCollectionExtensions.AddRestaurantTables"/>, plus the behaviour of
-/// <see cref="SittingWorkflow"/> itself (TECHNICAL_SPECIFICATION §5.3, §9, §11.3, §12).
-/// <see cref="TablesWiringTests"/> covers the join-flow services; this covers what the counter's screens
-/// need, and constructing any of it opens no connection.
-///
-/// <para>The behavioural facts here are the ones that fail <em>quietly</em>. A close that committed but
-/// published nothing leaves a settled table still taking orders on every phone that already had the page
-/// open — §11.1 flips the guest surface to a read-only settled bill <em>on</em>
-/// <see cref="SittingClosed"/>, and no other signal reaches it. And a losing race that broadcast anyway
-/// would tell every subscriber to re-query for a change it did not make, and would double-count one
-/// close in <c>sittings_closed_total</c> (§12). Neither shows up as an error anywhere.</para>
-///
-/// <para>No database and no container: <see cref="ISittingSettlement"/> is a hand-written fake
-/// (§16.1 — hand-written fakes, no Moq) returning whatever outcome the test wants to react to, which is
-/// the point — arranging a genuine already-closed race against a real PostgreSQL would test the lock,
-/// which <c>SittingSettlementTests</c> already does.</para>
-/// </summary>
 public sealed class CounterWiringTests
 {
     private static readonly Guid SittingIdentifier = Guid.Parse("0192f000-0000-7000-8000-00000000c001");
@@ -58,10 +39,6 @@ public sealed class CounterWiringTests
         Assert.IsType<DapperSittingSettlement>(scope.ServiceProvider.GetRequiredService<ISittingSettlement>());
     }
 
-    /// <summary>
-    /// Surfaces take the workflow, never the settlement directly — otherwise §11.1's flip to the settled
-    /// view would never happen on any page that was already open.
-    /// </summary>
     [Fact]
     public void SittingWorkflow_IsResolvableInAScope_AndIsTheServiceSurfacesShouldTake()
     {
@@ -86,8 +63,6 @@ public sealed class CounterWiringTests
         Assert.Equal(SittingIdentifier, settlement.LastSittingIdentifier);
         Assert.Equal(CounterPersonIdentifier, settlement.LastClosedBy);
 
-        // The result is passed through untouched — the caller needs the stamped total and the
-        // still-pending count to say what was actually charged (§5.3).
         Assert.Equal(CloseSittingOutcome.Closed, result.Outcome);
         Assert.Equal(41.50m, result.SettledTotalAmount);
         Assert.Equal(2, result.PendingLineCountAtClose);
@@ -96,10 +71,6 @@ public sealed class CounterWiringTests
         Assert.Equal(SittingIdentifier, published.SittingIdentifier);
     }
 
-    /// <summary>
-    /// The losing side of two counters pressing Close together. Nothing was written, so nothing may be
-    /// announced: the winner already announced it milliseconds earlier.
-    /// </summary>
     [Fact]
     public async Task AnAlreadyClosedSitting_AnnouncesNothing()
     {
@@ -143,10 +114,6 @@ public sealed class CounterWiringTests
         Assert.Empty(broadcaster.Published);
     }
 
-    /// <summary>
-    /// A sitting that settles at nothing still closed, and the table still has to flip. Zero is a total,
-    /// not an absence — this guards against the tempting "only announce when money moved".
-    /// </summary>
     [Fact]
     public async Task ASittingThatSettlesAtZero_IsStillAnnounced()
     {
@@ -174,11 +141,6 @@ public sealed class CounterWiringTests
         ISittingSettlement settlement,
         IDomainEventBroadcaster broadcaster)
     {
-        // A real RestaurantMetrics, not a stub: it is sealed and has no interface, so the only way to be
-        // sure the §12 call site runs at all is to let it run against real instruments. AddMetrics()
-        // supplies the meter factory it takes, exactly as Program.cs does. The provider is deliberately
-        // not disposed — disposing it would dispose the Meter the returned workflow still holds. Same
-        // shape as OrderWorkflowTests.
         ServiceProvider provider = new ServiceCollection()
             .AddMetrics()
             .AddSingleton<RestaurantMetrics>()
@@ -191,11 +153,6 @@ public sealed class CounterWiringTests
     {
         ServiceCollection services = new();
 
-        // The prerequisites Program.cs registers before AddRestaurantTables: a clock, an identifier
-        // factory, a connection factory, the bound options, the metrics (which need an IMeterFactory via
-        // AddMetrics), the broadcaster, and Data Protection. The connection factory is never used —
-        // resolution constructs, it does not connect — and an ephemeral key ring keeps the test off the
-        // file system.
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IIdentifierFactory, UuidV7IdentifierFactory>();
         services.AddSingleton<IDatabaseConnectionFactory, UnusedConnectionFactory>();
@@ -210,7 +167,6 @@ public sealed class CounterWiringTests
         return services.BuildServiceProvider();
     }
 
-    /// <summary>The wiring tests never open a connection; this makes that explicit.</summary>
     private sealed class UnusedConnectionFactory : IDatabaseConnectionFactory
     {
         public ValueTask<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
@@ -250,7 +206,6 @@ public sealed class CounterWiringTests
         {
             public void Dispose()
             {
-                // Nothing subscribes in these tests; the token exists only to satisfy the contract.
             }
         }
     }

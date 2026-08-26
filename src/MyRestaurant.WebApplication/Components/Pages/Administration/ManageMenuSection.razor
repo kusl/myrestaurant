@@ -10,26 +10,6 @@
 @inject NavigationManager Navigation
 @inject RestaurantTime RestaurantClock
 
-@* Manage one menu section (TECHNICAL_SPECIFICATION §7, §11.4). Administrator only (endpoint
-   authorization). Static SSR: rename, describe, reposition and the on/off switch are full-page form
-   posts. Successful changes redirect back here (post/redirect/get) carrying a one-word outcome so a
-   refresh does not re-post; the shape ManageTable established and ManageMenuItem repeated.
-
-   THIS PAGE IS WHAT FOUR WORKFLOW VERBS WERE WAITING FOR. Slice 37 put the section writes outside
-   IMenuWorkflow deliberately, on the rule that a workflow verb with no caller is a code path no test can
-   reach through the interface meant to protect it; Slice 40 brought CreateMenuSectionAsync in because the
-   create page called it. Rename, describe, reorder and set-active arrive together here, because they are
-   four forms on one page and shipping a subset would leave the same hole under a smaller name. Every one
-   of them publishes MenuChanged on a committed row (§9) — which matters most for the last two: §11.1
-   groups the guest menu by heading, and §7 hides an inactive heading from the guest entirely.
-
-   Four forms rather than one Save, for §8.2's reason: `renamed`, `described` and `reordered` are distinct
-   event types with mutually exclusive payload columns, so a combined save would write three events anyway
-   and would then have to decide what to do when two of the three changed nothing.
-
-   The history below is complete and uncapped, oldest first. §11.4: administration renders "the complete
-   stored record everywhere — full event streams … never projected or truncated for the administrator". *@
-
 <PageTitle>@(_section is null ? "Manage menu section" : $"Manage {_section.Name}")</PageTitle>
 
 @if (_section is null)
@@ -71,11 +51,6 @@ else
                 }
                 else
                 {
-                    @* §7's asymmetry, worded as the consequence rather than as the flag. "Inactive" is
-                       what the column says; "hidden from guests" is what it does, and it is the opposite
-                       of what the same word does one table away — an inactive ITEM stays on the guest's
-                       menu marked unavailable. Naming the effect is how somebody reading two pages an
-                       hour apart is stopped from assuming the two flags behave alike. *@
                     <span class="chip chip-warn">Hidden from guests</span>
                 }
             </div>
@@ -130,10 +105,7 @@ else
             heading on the menu at every table, on every phone already looking at it, without anybody
             reloading.
         </p>
-        @* A `.form-field` block rather than `.manage-inline-form`, for the reason ManageMenuItem gives:
-           that class styles `input` and `select` and has never styled a `textarea`, so a two-line box
-           inside it would be an unstyled control. `.form-field textarea` is app.css's own declaration and
-           this page declares nothing. *@
+
         <EditForm Model="DescribeInput" method="post" OnValidSubmit="DescribeAsync" FormName="menu-section-describe">
             <DataAnnotationsValidator />
             <div class="form-field">
@@ -279,9 +251,6 @@ else
                     <tbody>
                         @foreach (MenuSectionEventEntry entry in _history)
                         {
-                            @* @key on the event identifier rather than the loop index: two events on the
-                               same section in the same second are ordered by their UUIDv7 keys (§8.2), and
-                               an index would make the second look like an edit of the first. *@
                             <tr @key="entry.MenuSectionEventIdentifier">
                                 <td data-label="When">@RestaurantClock.DateAndTime(entry.OccurredAt)</td>
                                 <td class="record-primary" data-label="Change">@Describe(entry)</td>
@@ -296,11 +265,6 @@ else
         <p class="manage-back"><a href="/administration/menu">Back to the menu</a></p>
     </section>
 }
-
-@* This page declares nothing. Its facts grid, its chips, its headings, its rules, its three small forms
-   and its two record lists are all app.css's §11.12 vocabulary. A new page is exactly where a fifth
-   inline copy of that vocabulary would appear (F-66), which is why this note is here rather than in a
-   commit message. *@
 
 @code {
     private MenuSectionSummary? _section;
@@ -332,7 +296,6 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        // BL0008: a form POST binds these itself and may assign null, so the defaults live here.
         RenameInput ??= new();
         DescribeInput ??= new();
         ReorderInput ??= new();
@@ -343,18 +306,12 @@ else
             return;
         }
 
-        // Filtered here rather than asked for by section, because IMenuDirectory has no per-section read
-        // and inventing one would be a query with a single caller. The menu is single-digit-to-sixty rows
-        // on the machine this runs on, and its ordering already puts one heading's items contiguously —
-        // so the filter preserves the order guests see without re-deciding it (§7).
         IReadOnlyList<MenuItemSummary> everything = await MenuItems.ListAsync(HttpContext.RequestAborted);
         _items = everything.Where(item => item.MenuSectionIdentifier == MenuSectionId).ToArray();
         _itemCount = _items.Count;
 
         _history = await MenuSectionEvents.ListForSectionAsync(MenuSectionId, HttpContext.RequestAborted);
 
-        // On GET, pre-fill each editor with what is stored and render any post/redirect flash. On POST the
-        // submitted values are already bound, so they must not be overwritten.
         if (HttpMethods.IsGet(HttpContext.Request.Method))
         {
             if (string.IsNullOrEmpty(RenameInput.Name))
@@ -362,9 +319,6 @@ else
                 RenameInput.Name = _section.Name;
             }
 
-            // Unlike the name, an empty description is a legitimate stored value, so `IsNullOrEmpty`
-            // cannot tell "nothing bound yet" from "this heading has none" — and it does not need to: on
-            // a GET nothing has bound, so assigning unconditionally is both correct and simpler.
             DescribeInput.Description = _section.Description;
             ReorderInput.DisplayOrder = _section.DisplayOrder;
 
@@ -391,9 +345,7 @@ else
                 RedirectWithOutcome("rename-no-change");
                 break;
             case RenameMenuSectionOutcome.NameTaken:
-                // Reported in place rather than redirected, because the person needs to see what they
-                // typed beside the message. The check is citext, so the collision may be with a heading
-                // spelled differently — which is exactly the case a bare "taken" would leave baffling.
+
                 _errorMessage =
                     "Another section already uses that name. Section names ignore capitalisation, so"
                     + " check the menu for one spelled differently.";
@@ -470,8 +422,7 @@ else
                 RedirectWithOutcome(target ? "shown" : "hidden");
                 break;
             case MenuSectionActivationOutcome.NoChange:
-                // Somebody else got there first between this page rendering and the button being pressed.
-                // Nothing changed and nothing is wrong; re-render on the truth.
+
                 Navigation.NavigateTo(ManagePath);
                 break;
             case MenuSectionActivationOutcome.MenuSectionNotFound:
@@ -480,13 +431,6 @@ else
         }
     }
 
-    /// <summary>
-    /// The two things every write on this page needs first: the section must still exist, and the acting
-    /// administrator must be identifiable — <c>menu_section_event.actor_person_identifier</c> is NOT NULL
-    /// and §7 requires every change to name somebody. Endpoint authorization already guarantees the
-    /// second; this is the belt to that brace. The same helper <c>ManageMenuItem</c> carries, one table
-    /// over.
-    /// </summary>
     private bool TryBegin(out Guid administrator)
     {
         administrator = Guid.Empty;
@@ -525,25 +469,6 @@ else
         _ => null,
     };
 
-    /// <summary>
-    /// A friendly label for each event type §8.2's <c>menu_section_event</c> CHECK admits, falling back to
-    /// the stored string for anything else — §11.4 renders the record, so an unrecognised type must show
-    /// as itself rather than be swallowed.
-    ///
-    /// <para><b>No count of the vocabulary is stated</b>, on F-77's ruling: the arms below are the only
-    /// census that cannot go stale, and a number in this sentence is one fact recorded where nothing in
-    /// the tree can check it.</para>
-    ///
-    /// <para><c>activated</c> and <c>deactivated</c> are worded as what a guest sees rather than as what
-    /// the column says, matching the chip at the top of the page. §7's two <c>is_active</c> flags do
-    /// opposite things one table apart, and a history that said "Deactivated" would read identically to an
-    /// item's — which is precisely the confusion this page exists to prevent.</para>
-    ///
-    /// <para><c>described</c> reads differently when the description was cleared, because <c>""</c> is a
-    /// stored value rather than an absence. The arm tests the payload's length rather than for null: the
-    /// paired CHECK guarantees this type carries one, and the <c>?? string.Empty</c> is there so a row
-    /// written by something that got past the constraint still renders.</para>
-    /// </summary>
     private static string Describe(MenuSectionEventEntry entry) => entry.EventType switch
     {
         "created" => $"Created as “{entry.NewName}” at position {entry.NewDisplayOrder}",
@@ -559,9 +484,6 @@ else
 
     private sealed class RenameInputModel
     {
-        // The 80 is the column's own ceiling: menu_section.name is CHECK (char_length BETWEEN 1 AND 80),
-        // so a longer name would be PostgreSQL error 23514 well after the form that caused it. The same
-        // limit CreateMenuSection states, for the same reason.
         [Required(ErrorMessage = "Give the section a name.")]
         [StringLength(80, MinimumLength = 1, ErrorMessage = "The name must be 1–80 characters.")]
         public string Name { get; set; } = string.Empty;
@@ -569,16 +491,12 @@ else
 
     private sealed class DescribeInputModel
     {
-        // No [Required]: clearing the description is a supported change. The 2,000 is this form's own
-        // limit rather than the column's — menu_section.description is `text` and has none — and it
-        // matches CreateMenuSection's.
         [StringLength(2000, ErrorMessage = "The description must be 2,000 characters or fewer.")]
         public string Description { get; set; } = string.Empty;
     }
 
     private sealed class ReorderInputModel
     {
-        // The upper bound is `integer`'s, stated so the form refuses what the column would.
         [Range(0, 2147483647, ErrorMessage = "The position must be 0 or greater.")]
         public int DisplayOrder { get; set; }
     }

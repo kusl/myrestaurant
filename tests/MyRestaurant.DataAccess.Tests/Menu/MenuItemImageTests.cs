@@ -7,48 +7,8 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Menu;
 
-/// <summary>
-/// Integration tests for <see cref="DapperMenuItemImageAdministration"/> and
-/// <see cref="DapperMenuItemImageDirectory"/> against a real PostgreSQL 17 container — §7's one picture per
-/// menu item, which is Stage 4a of <c>docs/MENU_AND_HANDHELD_PLAN.md</c>.
-///
-/// <para><b>Its own class rather than facts on <see cref="MenuAdministrationTests"/>, and the reason is
-/// what these tests are about.</b> Every verb over there writes one row and one event on <c>menu_item</c>
-/// and <c>menu_item_event</c>, and every helper it has is built on that. These two verbs <em>delete</em> a
-/// row — a replace mints a new identifier and drops the old one, a removal drops it outright — so the facts
-/// worth pinning are about what survives the deletion, which is a different question about a different
-/// table.</para>
-///
-/// <para><b>Three of these are about what is NOT stored, and they are the point.</b> A picture that is not
-/// the format it claims to be would be served from this application's own origin under the header the
-/// column says (§7); a replace that reused the identifier would make <c>Cache-Control: immutable</c> a
-/// false statement and leave last week's photograph on every phone that has the menu open; and a removal
-/// that took the history with the bytes would leave §11.4 unable to say a picture had ever been there.
-/// Each of those fails silently and leaves an artefact that reads plausibly, which is the worse of the two
-/// failures in an append-only system (ADR-0002).</para>
-///
-/// <para><see cref="EveryContentTypeTheDomainRecognisesIsOneTheSchemaAdmits"/> is the one worth reading.
-/// §8.2 declares the media-type vocabulary in a CHECK and <see cref="ImageFormat"/> holds a second copy of
-/// it in C#, which is <b>F-80's shape exactly</b> — and the repair there was a gate that read the SQL text.
-/// This is stronger: it attaches a real file of every format the domain can identify and requires the
-/// database to take it, so the two agreeing on paper while nothing can actually be stored is also a
-/// failure. The reverse direction needs no assertion and is safe by construction — a type the CHECK admits
-/// and the domain cannot identify is a type no caller can produce bytes for, because the write refuses the
-/// pair before it opens a transaction.</para>
-///
-/// <para><b>The size cap is never written down in this file.</b> §8.2 declares it in a named CHECK and
-/// <see cref="AttachMenuItemImageOutcome.BytesOverCap"/> is reported by reading that constraint's name off
-/// the PostgreSQL error, so <see cref="BytesOverTheSchemasCapAreRefusedWithNothingWritten"/> finds the
-/// bound by <em>asking the database for its own constraint definition</em> rather than by restating a
-/// number this file would then own a second copy of (F-101). A migration that moves the cap moves this
-/// test with it instead of turning it red.</para>
-///
-/// <para>Each test truncates first (xUnit builds a fresh instance per test and runs them sequentially).
-/// Own <c>IClassFixture</c>, own container; if no container engine is available, every test skips.</para>
-/// </summary>
 public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
-    /// <summary>Stored spellings of <c>menu_item_image_event.event_type</c> (§8.2's CHECK).</summary>
     private const string AttachedEvent = "attached";
 
     private const string ReplacedEvent = "replaced";
@@ -65,12 +25,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         SELECT count(*)::int FROM menu_item_image_event;
         """;
 
-    /// <summary>
-    /// The whole log for one item, oldest first, with both payload columns. There is deliberately no
-    /// <c>IMenuItemImageEventLog</c> to read it through yet — §11.4 has no panel for it, and a read with no
-    /// caller is the defect this project keeps recording about workflow verbs — so the facts that need the
-    /// history read the table, which is also the arrangement that proves the rows are written at all.
-    /// </summary>
     private const string ReadEventsSql = """
         SELECT event_type       AS EventType,
                new_content_type AS NewContentType,
@@ -81,11 +35,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         ORDER BY occurred_at, menu_item_image_event_identifier;
         """;
 
-    /// <summary>
-    /// §8.2's cap, asked for rather than restated. <c>pg_get_constraintdef</c> renders the CHECK as
-    /// PostgreSQL stores it — <c>CHECK ((octet_length(bytes) &lt;= 524288))</c> — and the only run of digits
-    /// in it is the bound, so the number in the migration is the number this file uses.
-    /// </summary>
     private const string ReadByteCapSql = """
         SELECT (regexp_match(pg_get_constraintdef(pg_constraint.oid), '([0-9]+)'))[1]::int
         FROM pg_constraint
@@ -133,8 +82,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
 
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
 
-        // TRUNCATE … CASCADE on menu_item reaches both of 0006's tables, since both reference it. Nothing
-        // in OrderTestWorld needed an edit for this migration, which is the property the stage was cut for.
         await _world.TruncateAsync(cancellationToken);
 
         _administratorIdentifier = await _world.AddPersonAsync("adam", "Adam", cancellationToken);
@@ -148,9 +95,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         }
     }
 
-    /// <summary>
-    /// The row and its event, written together, and the metadata read back with a length nobody stored.
-    /// </summary>
     [Fact]
     public async Task AttachingStoresThePictureAndWritesAnAttachedEvent()
     {
@@ -174,8 +118,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(PngBytes.Length, stored.ByteLength);
         Assert.Equal(_clock.UtcNow, stored.UploadedAt);
 
-        // A first attach has no caption, and "" is how §7 spells that — not null, so a surface tests
-        // Length. 0007's DEFAULT '' is what makes this true without the write naming the column.
         Assert.Equal(string.Empty, stored.AltText);
 
         ImageEvent[] expected = [new(AttachedEvent, ImageFormat.PngContentType, PngBytes.Length, null)];
@@ -183,12 +125,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(expected, await ReadHistoryAsync(item, cancellationToken));
     }
 
-    /// <summary>
-    /// <b>The identifier must change</b>, because §7's route is keyed on it and
-    /// <c>Cache-Control: immutable</c> is a true statement only while a URL names one set of bytes forever.
-    /// An implementation that updated the bytes under the stored identifier passes every other fact in this
-    /// file.
-    /// </summary>
     [Fact]
     public async Task ReplacingMintsANewIdentifierAndLeavesExactlyOnePicture()
     {
@@ -220,8 +156,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(second, stored!.MenuItemImageIdentifier);
         Assert.Equal(ImageFormat.JpegContentType, stored.ContentType);
 
-        // One picture per item, and the superseded row is gone rather than orphaned — so the URL that
-        // named it answers with nothing, which is §7's 404 for a stale image link.
         Assert.Equal(1, await World().CountAsync(CountImagesSql, cancellationToken));
         Assert.Null(await Directory().ReadContentAsync(first, cancellationToken));
 
@@ -234,11 +168,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(expected, await ReadHistoryAsync(item, cancellationToken));
     }
 
-    /// <summary>
-    /// The row goes and the history stays, which is the whole argument for §6.8's hide-never-delete rule
-    /// having a stated exception here: what a reader wants is that a picture was there, what it was, and
-    /// who removed it — none of which is in the bytes.
-    /// </summary>
     [Fact]
     public async Task RemovingDeletesTheRowAndLeavesEveryEventBehind()
     {
@@ -260,8 +189,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Null(await Directory().FindForItemAsync(item, cancellationToken));
         Assert.Null(await Directory().ReadContentAsync(image, cancellationToken));
 
-        // The attach's payload survives the bytes it describes, and the removal carries neither column,
-        // which is what §8.2's two biconditionals require of that type.
         ImageEvent[] expected =
         [
             new(AttachedEvent, ImageFormat.PngContentType, PngBytes.Length, null),
@@ -271,11 +198,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(expected, await ReadHistoryAsync(item, cancellationToken));
     }
 
-    /// <summary>
-    /// The no-op rule every menu verb follows, one register over: an item with no picture is not an error
-    /// and is not an event either, because §11.4's history is meant to be read by a person and an
-    /// append-only log of "somebody pressed Remove" is noise.
-    /// </summary>
     [Fact]
     public async Task RemovingWhenNothingIsAttachedWritesNothing()
     {
@@ -292,11 +214,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(0, await World().CountAsync(CountEventsSql, cancellationToken));
     }
 
-    /// <summary>
-    /// Both verbs against an item this menu does not hold. The existence check is a locking read inside the
-    /// transaction rather than a prior query, so this also pins that neither verb can be talked into
-    /// referencing a row it never confirmed.
-    /// </summary>
     [Fact]
     public async Task AnUnknownItemIsRefusedByBothVerbsWithNothingWritten()
     {
@@ -325,12 +242,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(0, await World().CountAsync(CountEventsSql, cancellationToken));
     }
 
-    /// <summary>
-    /// The finding <see cref="ImageFormat"/> exists for, at the layer that stores the claim: a real JPEG
-    /// declared as a PNG is refused, because §7's route sets the response's <c>Content-Type</c> from the
-    /// stored column and a column that disagrees with its own bytes makes this application mislabel its own
-    /// responses on its own origin.
-    /// </summary>
     [Fact]
     public async Task BytesThatContradictTheDeclaredTypeAreRefused()
     {
@@ -352,12 +263,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(0, await World().CountAsync(CountEventsSql, cancellationToken));
     }
 
-    /// <summary>
-    /// A media type outside §8.2's vocabulary, and an empty upload, are separate answers — and the empty one
-    /// is refused <em>first</em>, so an operator who picked a zero-byte file is told that rather than being
-    /// told their PNG is not a PNG. GIF is the interesting refusal: it is a perfectly good picture, excluded
-    /// by the vocabulary rather than by being unrecognisable.
-    /// </summary>
     [Fact]
     public async Task AnUnsupportedTypeAndAnEmptyUploadGetDifferentAnswers()
     {
@@ -390,10 +295,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(0, await World().CountAsync(CountEventsSql, cancellationToken));
     }
 
-    /// <summary>
-    /// <b>The cap is the database's and this fact asks for it.</b> One byte over is refused with nothing
-    /// written; the cap exactly is accepted, because a bound nobody can reach is a bound stated one off.
-    /// </summary>
     [Fact]
     public async Task BytesOverTheSchemasCapAreRefusedWithNothingWritten()
     {
@@ -434,11 +335,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(AttachMenuItemImageOutcome.Attached, exactly.Outcome);
     }
 
-    /// <summary>
-    /// The route's read, and the only fact in this file that touches the bytes. Byte-identical, because §7
-    /// stores what it is given: nothing in this stack decodes, resizes or re-encodes an upload, so a
-    /// difference of one byte here means something is rewriting a file it was told to keep.
-    /// </summary>
     [Fact]
     public async Task TheContentReadBackIsByteIdenticalToWhatWasStored()
     {
@@ -459,15 +355,9 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(ImageFormat.PngContentType, content.ContentType);
         Assert.Equal(uploaded, content.Bytes);
 
-        // An identifier this table does not hold is a null rather than an error.
         Assert.Null(await Directory().ReadContentAsync(_identifiers.Create(), cancellationToken));
     }
 
-    /// <summary>
-    /// The read §11.1's guest menu and §11.4's index will use, which is a list of what is decorated rather
-    /// than a left join over the whole menu: an item with no picture is absent, and an item that had one and
-    /// lost it is absent again.
-    /// </summary>
     [Fact]
     public async Task TheDirectoryListsOnlyTheItemsThatHaveAPicture()
     {
@@ -503,12 +393,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.DoesNotContain(bare, listed.Select(metadata => metadata.MenuItemIdentifier));
     }
 
-    /// <summary>
-    /// F-80's shape, gated behaviourally. The sample bytes are held in a dictionary keyed by the type they
-    /// produce, and the dictionary's key set is asserted equal to
-    /// <see cref="ImageFormat.RecognisedContentTypes"/> <em>first</em>, because a fact that walked a set it
-    /// had no sample for would silently walk a shorter one (F-41).
-    /// </summary>
     [Fact]
     public async Task EveryContentTypeTheDomainRecognisesIsOneTheSchemaAdmits()
     {
@@ -546,12 +430,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
             await World().CountAsync(CountImagesSql, cancellationToken));
     }
 
-    /// <summary>
-    /// The caption is written, the event carries it, and <b>the picture's identifier does not move</b> —
-    /// which is the reason this is a verb rather than a re-upload. An implementation that minted a new
-    /// identifier would pass a naive reading of "the caption changed" and would invalidate every cached
-    /// copy of an unchanged photograph across the building.
-    /// </summary>
     [Fact]
     public async Task ACaptionIsStoredAndItsEventCarriesItWithoutMovingTheIdentifier()
     {
@@ -576,12 +454,9 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.NotNull(stored);
         Assert.Equal(Caption, stored!.AltText);
 
-        // The address a browser may cache for a year is unchanged, and the bytes behind it still answer.
         Assert.Equal(image, stored.MenuItemImageIdentifier);
         Assert.NotNull(await Directory().ReadContentAsync(image, cancellationToken));
 
-        // §8.2's third biconditional in both directions: 'alt_text_changed' carries the caption and
-        // neither of the file's two facts, and the attach before it carries the file's two and no caption.
         ImageEvent[] expected =
         [
             new(AttachedEvent, ImageFormat.PngContentType, PngBytes.Length, null),
@@ -591,19 +466,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(expected, await ReadHistoryAsync(item, cancellationToken));
     }
 
-    /// <summary>
-    /// Saving the caption that is already stored writes nothing, and <c>""</c> clears it.
-    ///
-    /// <para><b>The no-op arm is the ordinary case rather than an edge case</b>, which is why it is asserted
-    /// rather than assumed: §11.4's form is pre-filled with what is stored, so every operator who opens the
-    /// picture panel, changes a price and presses the caption's own button submits an unchanged caption. A
-    /// verb that wrote an event for that would fill the history a person reads with rows recording that
-    /// somebody pressed a button.</para>
-    ///
-    /// <para>The clearing half is asserted in the same fact because it is the same rule read the other way:
-    /// <c>""</c> is a value rather than an absence (§7), so clearing a caption is a change and writes an
-    /// event, where clearing an <em>already empty</em> one is not.</para>
-    /// </summary>
     [Fact]
     public async Task ACaptionThatDidNotMoveWritesNothingAndAnEmptyOneClearsIt()
     {
@@ -620,7 +482,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
             _administratorIdentifier,
             cancellationToken);
 
-        // A fresh picture is captioned "", so writing "" is the no-op before anything else happens.
         Assert.Equal(
             SetMenuItemImageAltTextOutcome.NoChange,
             await Administration().SetMenuItemImageAltTextAsync(
@@ -644,7 +505,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.NotNull(stored);
         Assert.Equal(string.Empty, stored!.AltText);
 
-        // Four calls, two of which committed: the attach, the caption, the clearing. Three events.
         ImageEvent[] expected =
         [
             new(AttachedEvent, ImageFormat.PngContentType, PngBytes.Length, null),
@@ -655,16 +515,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(expected, await ReadHistoryAsync(item, cancellationToken));
     }
 
-    /// <summary>
-    /// <b>A replace carries the caption forward onto the new row and writes no event for the carry</b>,
-    /// which is the one line of behaviour <c>0007</c> exists to permit.
-    ///
-    /// <para>Both halves have a plausible wrong implementation that leaves a plausible artefact. Resetting
-    /// to <c>""</c> would silently strip alternative text off a guest's menu as a side effect of somebody
-    /// improving a photograph, and nothing else in this file would notice. Writing an
-    /// <c>alt_text_changed</c> event for the carry would put a row in §11.4's history claiming a caption
-    /// moved when it did not — the same species of noise the no-op rule exists to keep out.</para>
-    /// </summary>
     [Fact]
     public async Task ACaptionSurvivesAReplaceAndTheCarryWritesNoEvent()
     {
@@ -708,20 +558,12 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
 
         Assert.Equal(expected, await ReadHistoryAsync(item, cancellationToken));
 
-        // And the caption goes with the bytes when they go: it is a fact about the photograph, not about
-        // the dish, which is 0007's reason for putting the column where it is.
         await Administration().RemoveMenuItemImageAsync(
             item, _administratorIdentifier, cancellationToken);
 
         Assert.Null(await Directory().FindForItemAsync(item, cancellationToken));
     }
 
-    /// <summary>
-    /// A caption for a picture that is not there and a caption for an item that is not there are two
-    /// answers, both silent. The first is reachable by two administrators seconds apart — one removes the
-    /// photograph while the other is typing about it — and §11.4 reports it in place rather than
-    /// redirecting, which is only possible because it is distinguishable from the second.
-    /// </summary>
     [Fact]
     public async Task ACaptionIsRefusedWithNoPictureAndWithNoItem()
     {
@@ -743,11 +585,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
         Assert.Equal(0, await World().CountAsync(CountEventsSql, cancellationToken));
     }
 
-    /// <summary>
-    /// A PNG whose signature is real and whose remainder is padding, at an exact total length. The write
-    /// reads the first eight bytes and no more (§7), so padding is the honest way to reach a size without
-    /// committing a large binary to this repository.
-    /// </summary>
     private static byte[] PaddedPng(int totalByteLength)
     {
         byte[] bytes = new byte[totalByteLength];
@@ -775,12 +612,6 @@ public sealed class MenuItemImageTests : IClassFixture<PostgreSqlFixture>, IAsyn
 
     private OrderTestWorld World() => _world!;
 
-    /// <summary>
-    /// One row of <c>menu_item_image_event</c>, as a record so that <c>Assert.Equal</c> compares whole
-    /// events by value rather than one column at a time. A positional record is safe here where it would
-    /// not be for a stored timestamp: no member is a <see cref="DateTimeOffset"/>, so Npgsql's
-    /// <c>timestamptz</c> materialisation is not in play.
-    /// </summary>
     private sealed record ImageEvent(
         string EventType,
         string? NewContentType,

@@ -3,54 +3,6 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Documentation;
 
-/// <summary>
-/// What <c>export.sh</c> holds out of the context dump agrees with the tree and with the two shell gates
-/// that care about the difference (TECHNICAL_SPECIFICATION §16.4, §18).
-///
-/// <para><b>Why this exists (F-96).</b> The dump had reached 6.08 MiB, 13% of it a build log whose
-/// earliest slices closed months ago, so the log was split and its older half withheld from the dump by
-/// path — the way <c>docs/llm/</c> already was. That trade is worth making and it creates a hazard that
-/// nothing in the tree could previously see: <b>a session working from <c>dump.txt</c> cannot observe a
-/// withheld file at all.</b> It is tracked, it is authored, it is edited by hand, and it is invisible. A
-/// document in that state is one careless slice away from being regenerated without it, or from being
-/// reconstructed by a session that did not know it was reading half of something.</para>
-///
-/// <para><b>The rule that makes the trade survivable is fact two, and it is the reason this class is not
-/// just bookkeeping.</b> Every withheld document must be linked <em>by path</em> from a document the dump
-/// does contain. History that leaves the dump leaves a pointer behind, or it is gone in the only sense
-/// that matters — and a pointer is checkable where a habit is not.</para>
-///
-/// <para><b>Facts three and four are one fact written twice, which is the shape this project has now met
-/// eight times.</b> F-48 was a version header against its own changelog; F-50 a variable four documents
-/// agreed about and the deployment transport dropped; F-56 a port three helpers dialled and one named
-/// correctly; F-65 a touch target stated as a property and rewritten eight pixels short. Here the fact is
-/// <em>which held-out directories are generated</em>. <c>scripts/check_tree.sh</c> skips generated trees
-/// because a dump's own structure is the separator it forbids (F-40) — and it carried a comment claiming
-/// its list was kept in step with the exporter's by hand. After the split that claim is not merely stale
-/// but <b>dangerous in one direction</b>: hygiene-exempting the archive because it happens to be excluded
-/// from the dump would stop checking 749 KiB of tracked text for exactly the defect F-40 was about. So the
-/// generated lists are compared for <em>equality</em> and the archived ones for <em>non-membership</em>,
-/// which is the asymmetry the two kinds of exclusion actually have.</para>
-///
-/// <para><b>Fact four is here because the archive would have failed a gate on arrival.</b>
-/// <c>scripts/check_repository.sh</c> forbids a document from asserting platform state (F-42), exempting
-/// the files whose job is to <em>quote</em> such a claim. The withheld half of the build log quotes
-/// F-42's own sentence. Moving history out of an exempt file into a new file carries the exemption with
-/// it or lands red — which was found by running that gate's patterns by hand, and is asserted here so the
-/// next archive does not have to rediscover it.</para>
-///
-/// <para><b>Why the subject is read from the scripts rather than listed here.</b> F-58's lesson, and the
-/// same choice <see cref="TestingSectionContractTests"/> makes: a gate that pins the thing it is about in
-/// its own <c>const</c> is a gate that keeps passing while its subject moves. Nothing below names a
-/// directory. The three arrays are parsed out of <c>export.sh</c>, and if a fourth kind of exclusion is
-/// added tomorrow, fact one covers it without an edit here.</para>
-///
-/// <para><b>What it deliberately does not assert.</b> That the dump is small, or that any particular file
-/// is in it. Size is not a property of the tree and a threshold would be a number written twice — the
-/// exact defect F-77 rules against. It also does not assert that a session <em>obeyed</em> the pointer,
-/// because no artefact this repository produces can see that; the honest residual is that fact two proves
-/// the link exists and proves nothing about whether anybody followed it.</para>
-/// </summary>
 public sealed class ContextDumpExclusionContractTests
 {
     private const string SolutionFileName = "MyRestaurant.slnx";
@@ -58,25 +10,11 @@ public sealed class ContextDumpExclusionContractTests
     private const string TreeGateRelativePath = "scripts/check_tree.sh";
     private const string RepositoryGateRelativePath = "scripts/check_repository.sh";
 
-    /// <summary>
-    /// A Bash array assignment on one line: <c>NAME=("a" "b")</c>. One line rather than a multi-line
-    /// form on purpose — the three arrays this reads are declared on one line each precisely so that a
-    /// gate can read them without a shell parser, and a future entry that needs wrapping should move the
-    /// array into a form both this and a reader can still follow.
-    /// </summary>
     private static readonly Regex ArrayAssignment =
         new(@"^(?<name>[A-Z_]+)=\((?<body>[^)]*)\)\s*$", RegexOptions.Multiline);
 
-    /// <summary>A double-quoted element inside such an array.</summary>
     private static readonly Regex QuotedElement = new("\"(?<value>[^\"]*)\"");
 
-    /// <summary>
-    /// Every path <c>export.sh</c> holds out of the dump is a real, tracked, non-empty thing.
-    ///
-    /// <para>Non-vacuity is the point of the count assertion at the end, and it is not decoration (F-41):
-    /// a gate that computes its own subject reports nothing at all when the parse silently returns
-    /// empty, which is indistinguishable from a tree with nothing wrong.</para>
-    /// </summary>
     [Fact]
     public void EveryHeldOutPathExistsAndHoldsSomething()
     {
@@ -130,15 +68,6 @@ public sealed class ContextDumpExclusionContractTests
                 + " passed by having nothing to look at (F-41).");
     }
 
-    /// <summary>
-    /// Every document in a withheld directory is linked by path from a document the dump contains.
-    ///
-    /// <para>This is the fact that makes withholding history survivable rather than merely cheap. The
-    /// link is searched for as a <em>path substring</em> rather than as Markdown, because what matters is
-    /// that a reader of the dump can find the file — a bare path in prose does that as well as a link
-    /// does, and a gate that demanded link syntax would be a gate about typography (F-70's lesson about
-    /// asserting the rule rather than its spelling).</para>
-    /// </summary>
     [Fact]
     public void EveryWithheldDocumentIsLinkedFromADumpedDocument()
     {
@@ -152,9 +81,6 @@ public sealed class ContextDumpExclusionContractTests
                 + " genuinely been retired, delete this test with it; while the array exists this parse"
                 + " returning nothing means the check below is vacuous.");
 
-        // Documents the dump DOES contain: every tracked Markdown file outside every held-out tree.
-        // Read as one blob because the question is only whether the path appears anywhere in prose a
-        // reader of the dump can reach.
         string[] withheldPrefixes = [.. archived, .. generated];
 
         string dumped = string.Concat(
@@ -188,11 +114,6 @@ public sealed class ContextDumpExclusionContractTests
                 + " of without them. History that leaves the dump leaves a pointer behind.");
     }
 
-    /// <summary>
-    /// <c>scripts/check_tree.sh</c> exempts exactly the generated directories from hygiene, and exempts no
-    /// archived one. The asymmetry is the whole assertion: tool output cannot be held to a rule about
-    /// separators it exists to emit, and authored history can and must be.
-    /// </summary>
     [Fact]
     public void TreeHygieneSkipsGeneratedTreesAndChecksArchivedOnes()
     {
@@ -230,11 +151,6 @@ public sealed class ContextDumpExclusionContractTests
                 + " separator line lived undetected across twenty-one files (F-40).");
     }
 
-    /// <summary>
-    /// <c>scripts/check_repository.sh</c> exempts every archived directory from the platform-state rule,
-    /// because an archived build log's job is to quote what this tree used to say — including the claim
-    /// that made F-42 possible.
-    /// </summary>
     [Fact]
     public void ThePlatformStateRuleExemptsArchivedHistory()
     {
@@ -308,10 +224,6 @@ public sealed class ContextDumpExclusionContractTests
         return path;
     }
 
-    /// <summary>
-    /// The same walk up to <c>MyRestaurant.slnx</c> the other documentation gates use, failing rather
-    /// than skipping for the same reason: a check that quietly declines to run is worse than none.
-    /// </summary>
     private static string RepositoryRoot()
     {
         for (DirectoryInfo? candidate = new(AppContext.BaseDirectory);

@@ -8,18 +8,8 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Identity;
 
-/// <summary>
-/// Pure tests for the web-layer half of the §3.5 obligations pipeline
-/// (<see cref="ObligationsEnforcement"/>): the claim → obligation mapping (delegating to the
-/// exhaustively-tested Domain <see cref="ObligationsPipeline"/>), the exemption list ("no
-/// authenticated endpoint except sign-out and the pipeline pages themselves"), the redirect targets
-/// that preserve the requested URL, and the open-redirect guard the account pages share. No server,
-/// no container — these always run.
-/// </summary>
 public sealed class ObligationsEnforcementTests
 {
-    // --- claims → obligation -------------------------------------------------------------------
-
     [Fact]
     public void NextObligationFor_NoObligationClaims_IsNone()
     {
@@ -31,7 +21,6 @@ public sealed class ObligationsEnforcementTests
     [Fact]
     public void NextObligationFor_MustChangePassword_WinsOverTotp()
     {
-        // The pipeline order is deliberate (§3.5): password first, then TOTP re-enrollment.
         ClaimsPrincipal principal = BuildPrincipal(mustChangePassword: true, mustEnrollTotp: true);
 
         Assert.Equal(
@@ -59,8 +48,6 @@ public sealed class ObligationsEnforcementTests
         Assert.Equal(PostAuthenticationObligation.None, ObligationsEnforcement.NextObligationFor(principal));
     }
 
-    // --- exemption list --------------------------------------------------------------------------
-
     [Theory]
     [InlineData(AccountRoutes.ForcedPasswordChange)]
     [InlineData(AccountRoutes.ForcedTotpEnrollment)]
@@ -69,14 +56,9 @@ public sealed class ObligationsEnforcementTests
     [InlineData("/healthz/live")]
     [InlineData("/healthz/ready")]
     [InlineData("/_framework/blazor.web.js")]
-    // The footer wall clock's anchor (§11.7): the obligation pages render the footer too, and a
-    // redirect to HTML would leave the one page a locked-out user is allowed to see with a dead clock.
+
     [InlineData(RestaurantClockRoutes.Snapshot)]
-    // The source offer (§11.9). The pipeline exists to stop a flagged principal ACTING until they
-    // have changed a password or enrolled an authenticator; it is not a reason to withhold the
-    // licence under which they are being shown the page. AGPL §13 offers the corresponding source to
-    // all users interacting with the program over a network, and somebody mid-pipeline is one — and
-    // the footer they are looking at links here, so the alternative is a visible dead link.
+
     [InlineData(SourceRoutes.Source)]
     public void IsExemptPath_PipelinePagesSignOutHealthAndFrameworkAssets_AreExempt(string path)
     {
@@ -88,19 +70,14 @@ public sealed class ObligationsEnforcementTests
     [InlineData("/table")]
     [InlineData("/sign-in")]
     [InlineData("/sign-in/two-factor")]
-    [InlineData("/_blazor")] // circuits are deliberately blocked while an obligation is outstanding
+    [InlineData("/_blazor")]
     [InlineData("/administration")]
-    // The voluntary authenticator page is a normal authenticated destination, NOT a pipeline page:
-    // a user with an outstanding obligation must be routed to the pipeline, never here. Its route is
-    // also a distinct segment from the forced page (…/enroll-totp vs …/enroll-totp-required), so the
-    // forced exemption does not accidentally cover it.
+
     [InlineData("/account/enroll-totp")]
     public void IsExemptPath_EverythingElse_IsBlocked(string path)
     {
         Assert.False(ObligationsEnforcement.IsExemptPath(new PathString(path)));
     }
-
-    // --- redirect targets ------------------------------------------------------------------------
 
     [Fact]
     public void RedirectTargetFor_CarriesTheRequestedUrlIncludingQuery()
@@ -138,8 +115,6 @@ public sealed class ObligationsEnforcementTests
             () => ObligationsEnforcement.PageFor(PostAuthenticationObligation.None));
     }
 
-    // --- open-redirect guard ---------------------------------------------------------------------
-
     [Theory]
     [InlineData("/table", "/table")]
     [InlineData("/table?x=1", "/table?x=1")]
@@ -153,8 +128,6 @@ public sealed class ObligationsEnforcementTests
     {
         Assert.Equal(expected, ObligationsEnforcement.SafeLocalReturnUrl(input));
     }
-
-    // --- helpers -----------------------------------------------------------------------------------
 
     private static ClaimsPrincipal BuildPrincipal(bool mustChangePassword = false, bool mustEnrollTotp = false)
     {

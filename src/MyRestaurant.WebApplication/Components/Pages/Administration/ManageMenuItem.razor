@@ -17,31 +17,6 @@
 @inject NavigationManager Navigation
 @inject RestaurantTime RestaurantClock
 
-@* Manage one menu item (TECHNICAL_SPECIFICATION §7, §11.4). Administrator only (endpoint
-   authorization). Static SSR: rename, reprice, and the availability toggle are full-page form posts.
-   Successful changes redirect back here (post/redirect/get) carrying a one-word outcome so a refresh does
-   not re-post; the shape ManageTable established.
-
-   Rename, reprice, describe, refile and reposition are separate forms rather than one "save", because §7's
-   event vocabulary has `name_changed`, `price_changed`, `description_changed`, `section_changed` and
-   `reordered` as separate types with mutually exclusive payload columns — a combined save would write
-   an event each anyway and would then have to decide what to do when most of them changed nothing. No
-   count of the forms is stated here, on F-77's ruling: this note used to say five and there were six.
-
-   THE PICTURE FORM IS THE ONE EXCEPTION TO THIS PAGE'S BINDING, AND IT IS THE STAGE 4b DECISION.
-   `[SupplyParameterFromForm]` does not bind a file and `InputFile` needs an interactive render mode, so
-   the plan named two ways out: a multipart form posting to a minimal API endpoint beside
-   `AccountEndpoints`, or making this page interactive. Neither was taken. A plain
-   `enctype="multipart/form-data"` form posts to THIS page under an ordinary `@@formname`, and the handler
-   reads the part back out of `HttpContext.Request.Form.Files` — which costs nothing, because Blazor's
-   static form handling has already read the body in order to find `_handler` and dispatch. The page stays
-   static SSR, antiforgery stays the framework's job, post/redirect/get is unchanged, and no second
-   endpoint acquires an authorization rule that has to agree with this page's. What is given up is model
-   binding for exactly one field, and that field is the one the model binder refuses anyway.
-   The history below is complete and uncapped, oldest first. §11.4: administration renders "the complete
-   stored record everywhere — full event streams … never projected or truncated for the administrator". A
-   price argument is settled by reading forward from `created`, so that is the direction it renders.
-*@
 <PageTitle>@(_item is null ? "Manage menu item" : $"Manage {_item.Name}")</PageTitle>
 
 @if (_item is null)
@@ -90,17 +65,10 @@ else
             </div>
             <div>
                 <span class="manage-label">Section</span>
-                @* A link to the heading, and — since `MoveMenuItemToSectionAsync` acquired a caller — the
-                   fact the form further down changes. It stays a link rather than becoming part of that
-                   form: this grid is what the item IS, and every editor on this page sits below the rule
-                   under it. *@
+
                 <a class="record-link" href="@($"/administration/menu/sections/{_item.MenuSectionIdentifier}")">@_item.MenuSectionName</a>
                 @if (!_item.MenuSectionIsActive)
                 {
-                    @* §7: an inactive SECTION is hidden from the guest entirely, where an inactive ITEM
-                       stays visible and marked. This item may say "Available" one box to the left and
-                       still be unreachable on a phone, and that is the one fact this page could not
-                       otherwise explain. *@
                     <span class="chip chip-warn">Hidden from guests</span>
                 }
             </div>
@@ -164,10 +132,7 @@ else
             change with an ordinary entry in the history below, not a deletion. Saving the same text again
             records nothing.
         </p>
-        @* A `.form-field` block rather than `.manage-inline-form`, deliberately: that class styles
-           `input` and `select` and has never styled a `textarea`, so a three-line box inside it would be
-           an unstyled control on the one page that has one. `.form-field textarea` is app.css's own
-           declaration and this page declares nothing, which is what F-66 was about. *@
+
         <EditForm Model="DescribeInput" method="post" OnValidSubmit="DescribeAsync" FormName="menu-item-describe">
             <DataAnnotationsValidator />
             <div class="form-field">
@@ -200,13 +165,7 @@ else
         @if (_picture is not null)
         {
             <figure class="manage-picture">
-                @* alt="" deliberately, and it stays "" now that the column exists, which is the part worth
-                   reading twice. This picture sits under the item's own name — this page's <h1> — so
-                   alternative text HERE would make a screen reader read the dish twice and add nothing the
-                   page has not said. The caption the form below writes is for the GUEST'S menu, where the
-                   picture sits on a card among sixty others; the two surfaces want different things from
-                   the same column, and this one wants nothing. The caption is rendered below as visible
-                   text instead, because an operator who cannot see what they wrote cannot correct it. *@
+
                 <img class="manage-picture-image"
                      src="@MenuImageRoutes.ForImage(_picture.MenuItemImageIdentifier)"
                      alt="" />
@@ -221,41 +180,15 @@ else
             <p class="lede muted">No picture. Guests see the name, the price and the description only.</p>
         }
 
-        @* `.manage-inline-form` rather than a `.form-field` block, so the submit control is measured by
-           §16.3 scenario 16: the 375px barrier reaches `.manage-inline-form button` and does not reach
-           `.form-actions button`, and F-93's rule is that a surface acquiring a control acquires the
-           selector in the same slice. Here the selector was already right and the class is what puts the
-           control under it. *@
         <form method="post" enctype="multipart/form-data" @formname="menu-item-image-attach" @onsubmit="AttachPictureAsync" class="manage-inline-form">
             <AntiforgeryToken />
             <label class="visually-hidden" for="picture-file">Picture file</label>
-            @* Both attributes are read from one place rather than written here. The name is what the
-               handler looks the part up BY, and a rename applied to one side produces no compiler error
-               and no exception — just an upload that reports itself empty forever. The accept list is the
-               media-type vocabulary's third declaration (F-80) and is computed from the domain's own
-               census, never spelled out. *@
-            @* The two data attributes are Stage 4e's whole interface to the browser, and the first is
-               also its off switch: `wwwroot/js/menu-picture.js` ignores any file input that does not
-               carry a byte budget, so a database this page could not interrogate renders no budget and
-               gets exactly the behaviour this form had before the downscaler existed. THE NUMBER IS NOT
-               WRITTEN HERE, in C#, or in JavaScript — it is read out of §8.2's own constraint at render
-               time, which is what keeps `0006` the only place in this repository that says how large a
-               picture may be. *@
+
             <input type="file" id="picture-file" name="@MenuItemImageUpload.FileFieldName" accept="@MenuItemImageUpload.AcceptAttribute"
                    aria-describedby="@MenuItemImageUpload.StatusElementId" @attributes="PictureBudgetAttributes" />
             <button type="submit" class="button-primary">@(_picture is null ? "Attach picture" : "Replace picture")</button>
         </form>
 
-        @* Written by the script, hidden until it has something to say. It is not decoration: without it
-           an operator who chose a four-megabyte photograph watches a file input do nothing for a second
-           and a half and then sees a form that behaves normally, with no account of the fact that what
-           will be attached is not the file they picked. The sentence it writes always says that.
-
-           FOUND THROUGH `aria-describedby` RATHER THAN THROUGH A MARKER CLASS OF ITS OWN, which is one
-           mechanism doing two jobs rather than two doing one each: the script resolves it from the
-           input's own description, and a screen reader announces the same sentence as the file control's
-           description without anybody writing a second association. `role="status"` is what makes a
-           change to it announced rather than merely present. *@
         <p id="@MenuItemImageUpload.StatusElementId" class="lede muted" role="status" hidden></p>
 
         @if (_picture is not null)
@@ -274,16 +207,6 @@ else
                 not change its address, and replacing the photograph later keeps whatever is written here.
             </p>
 
-            @* Its own form rather than a field on the upload above, and the reason is the one the write
-               service's own summary gives: the upload form requires a file, so a caption settable only
-               there would make fixing a typo cost a re-upload — a new image identifier, every cached copy
-               invalidated, and a "replaced" event recording a replacement that replaced nothing.
-
-               `.manage-inline-form` for F-93's reason, the same as the two forms above: the 375px barrier
-               in §16.3 scenario 16 reaches `.manage-inline-form button` and does not reach
-               `.form-actions button`, so a control that wants measuring wants this class. That class has
-               styled `input` and `select` since Slice 34 and has never styled a `textarea`, which is why
-               this is a one-line text input — a caption is a sentence, not a paragraph. *@
             <EditForm method="post" Model="AltTextInput" OnValidSubmit="SetPictureAltTextAsync"
                       FormName="menu-item-image-alt-text" class="manage-inline-form">
                 <DataAnnotationsValidator />
@@ -292,34 +215,11 @@ else
                            maxlength="500" autocomplete="off"
                            placeholder="Leave empty unless it says more than the name" />
                 <button type="submit" class="button-primary">Save caption</button>
-                @* INSIDE the form, and the position is the whole of F-106. A ValidationMessage takes its
-                   EditContext from a cascading value an EditForm supplies to its CHILDREN, so one placed
-                   beside the form is not a message that renders empty — it is an InvalidOperationException
-                   thrown during render, which is a 500 on the page rather than a missing sentence. It sat
-                   one line below `</EditForm>` from Slice 53, inside `@if (_picture is not null)`, so the
-                   POST that attached a picture rendered while `_picture` was still null, succeeded,
-                   committed and redirected — and the GET it redirected to was the first render in which
-                   the block existed. Every menu item WITH a picture answered 500 from then on, including
-                   the page carrying the Remove button, so the state was not reversible from any surface.
-                   The other five editors on this page have always had theirs inside. *@
+
                 <ValidationMessage For="@(() => AltTextInput.AltText)" />
             </EditForm>
         }
 
-        @* OUTSIDE the `_picture is not null` block above, and that placement is the point of this panel
-           rather than an accident of where it was pasted. A removal deletes the row and keeps the log — §7's
-           stated exception to §6.8 — so the state this surface could not describe before Stage 4d is
-           exactly *no picture now, three of them previously*. Rendering the history only when a picture is
-           attached would hide it in the one case somebody opens this page to ask about.
-
-           The heading is an <h3> under the Picture <h2> rather than a fourth <h2> beside it: this is a
-           subsection of the picture panel, not a peer of Section and Position. The item's own History
-           below is an <h2> because it is about the item.
-
-           `.record-list` and `data-label` on every cell, which is §11.12's vocabulary and this page's
-           existing shape — the item history at the bottom of this page is the same three columns. No new
-           CSS: a fourth column would have been a new rule and there is no fourth fact worth a column, so
-           what a picture WAS goes in the sentence rather than in cells of its own. *@
         <h3 class="manage-subheading">Picture history</h3>
         @if (_pictureHistory is null || _pictureHistory.Count == 0)
         {
@@ -371,23 +271,10 @@ else
         </p>
         @if (_sections.Count > 0)
         {
-            @* Guarded rather than dereferenced, though the list cannot be empty here: the item exists, so
-               the heading it is under exists, so at least one section does. The guard is against the
-               intermediate render instead — `StateHasChanged` fires the moment `OnInitializedAsync`
-               suspends, and this field is filled after `_item` is. An empty list renders no form rather
-               than a picker over nothing, which is the same call CreateMenuItem makes for a case that
-               genuinely happens. *@
             <EditForm Model="MoveInput" method="post" OnValidSubmit="MoveAsync" FormName="menu-item-move-section" class="manage-inline-form">
                 <DataAnnotationsValidator />
                 <label class="visually-hidden" for="move-section">New section</label>
-                @* Inactive headings are offered and marked, on §7's asymmetry: an inactive section is
-                   hidden from the GUEST, not from §11.4's administrator, whose job here may be moving
-                   next week's breakfast dishes under a heading that is not switched on yet. The suffix is
-                   text inside the option because an <option> renders text and nothing else — the same
-                   limitation, and the same acceptable trade, as the create form's picker.
 
-                   The loop variable is not called `section`: `@@section` is Razor's MVC section directive
-                   and the parser never reaches C# with it (F-81). *@
                 <InputSelect id="move-section" @bind-Value="MoveInput.MenuSectionIdentifier">
                     @foreach (MenuSectionSummary heading in _sections)
                     {
@@ -463,11 +350,7 @@ else
                 Everything that has ever happened to this item, oldest first — @_history.Count
                 @(_history.Count == 1 ? "entry" : "entries"), complete and untruncated.
             </p>
-            @* A shared record list rather than the page's own table inside `overflow-x: auto`. The
-               wrapper contained the sideways scroll, so the document never scrolled and §16.3
-               scenario 16 would have passed it — but three unlabelled cells in a card is a column of
-               bare values, which is the half of F-59 that is about the reader rather than the
-               affordance. *@
+
             <div class="record-list">
                 <table>
                     <thead>
@@ -495,58 +378,14 @@ else
     </section>
 }
 
-@* This page declares nothing. Its facts grid, its chips, its headings, its rules, its inline forms, its
-   currency unit and — as of M6 Slice 34 — its history list are all app.css's §11.12 vocabulary. This was
-   one of four pages carrying an inline copy of that vocabulary, and the copies had drifted (F-66); the
-   history table was also the page's own eighty-line table rules under a different name.
-
-   The section picker needed no new rule either: `.manage-inline-form` has styled `select` since Slice 34,
-   which is why the comment beside the description form says that class has never styled a `textarea` —
-   the two statements are the same sentence read from opposite ends. No count of the forms on this page is
-   written here, on F-77's ruling; the previous version of this note said TWO and there were four.
-
-   THE PICTURE PANEL IS THE ONE THING ON THIS PAGE THAT NEEDED A NEW RULE, and it needed one for a reason
-   that has nothing to do with taste. An img tag with no width constraint renders at the intrinsic size of
-   whatever somebody uploaded, so a 3000px photograph would make this document wider than a 375px viewport
-   and §16.3 scenario 16 would fail — on a page whose own controls are all correct. `.manage-picture*` is
-   three rules in app.css under the `.manage-` prefix the shared-vocabulary gate already protects, rather
-   than a new prefix or a component-local block. *@
-
 @code {
     private MenuItemSummary? _item;
     private IReadOnlyList<MenuSectionSummary> _sections = [];
     private IReadOnlyList<MenuItemEventEntry>? _history;
     private MenuItemImageMetadata? _picture;
 
-    /// <summary>
-    /// Everything that has ever happened to this item's picture, oldest first — <c>null</c> until the
-    /// page has read it, which is the same three-state field <see cref="_history"/> is and for the same
-    /// reason: an empty list means <em>no picture has ever been attached</em> and must not be rendered
-    /// while the answer is still <em>not read yet</em>.
-    ///
-    /// <para><b>It is a separate list rather than merged into <see cref="_history"/>.</b> The two logs
-    /// share no event type, carry different payload columns, and answer different questions — one is what
-    /// the menu says about a dish, the other is what a guest looks at — so a merged table would need a
-    /// column saying which log each row came from, which is a table about this application's schema
-    /// rather than about the restaurant.</para>
-    /// </summary>
     private IReadOnlyList<MenuItemImageEventEntry>? _pictureHistory;
 
-    /// <summary>
-    /// §8.2's cap on a stored picture, in bytes, as the database itself reports it — or <c>null</c> when
-    /// the constraint could not be read (Stage 4e).
-    ///
-    /// <para><b>Read rather than written, and that is the point of the whole arrangement.</b> The number
-    /// is declared once, in <c>0006</c>, and the write service reports a violation of it by reading the
-    /// constraint's NAME so that no C# file has an opinion about it. The browser needs the number itself
-    /// — a downscaler with no budget cannot decide when to stop — so this page asks the constraint that
-    /// owns it. A constant here, in the markup or in the script would each be F-65's mechanism, and this
-    /// feature spent four slices carefully not introducing one.</para>
-    ///
-    /// <para><c>null</c> renders no budget attribute at all, which switches the downscaler off. That is
-    /// the correct degradation rather than a fallback number: the server refuses an oversized upload
-    /// either way, with the sentence it has always had.</para>
-    /// </summary>
     private int? _pictureByteCap;
 
     private string? _flashMessage;
@@ -581,20 +420,6 @@ else
 
     private string ManagePath => $"/administration/menu/{MenuItemId}";
 
-    /// <summary>
-    /// The two attributes that switch the browser-side downscaler on, or <b>nothing at all</b> when the
-    /// cap could not be read.
-    ///
-    /// <para>Splatted rather than written as two conditional attributes, because the alternative renders
-    /// an attribute that is PRESENT and empty when the cap is unknown — and present-and-empty is exactly
-    /// the state the script would read as <em>there is a budget here</em>. An absent key in this
-    /// dictionary is an absent attribute on the rendered element, which is the distinction the whole
-    /// degradation rests on.</para>
-    ///
-    /// <para>The longest edge is invariant and the budget is not, so they could have been rendered
-    /// separately; they are handed over together because a longest edge with no budget describes a
-    /// resizing nothing will perform.</para>
-    /// </summary>
     private IReadOnlyDictionary<string, object> PictureBudgetAttributes
         => _pictureByteCap is { } cap
             ? new Dictionary<string, object>(StringComparer.Ordinal)
@@ -606,7 +431,6 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        // BL0008: a form POST binds these itself and may assign null, so the defaults live here.
         RenameInput ??= new();
         RepriceInput ??= new();
         DescribeInput ??= new();
@@ -620,35 +444,17 @@ else
             return;
         }
 
-        // Every heading, active and inactive, in display order — §11.4's administrator sees the ones no
-        // guest can reach, which is precisely where next week's menu gets stocked.
         _sections = await MenuSections.ListAsync(HttpContext.RequestAborted);
 
         _history = await MenuEvents.ListForItemAsync(MenuItemId, HttpContext.RequestAborted);
 
-        // Metadata rather than the bytes. The panel renders a URL and three facts; the bytes are read
-        // once, by §7's route, when the browser follows that URL — which is the whole reason
-        // IMenuItemImageDirectory has two reads instead of one.
         _picture = await MenuItemPictures.FindForItemAsync(MenuItemId, HttpContext.RequestAborted);
 
-        // Read unconditionally rather than behind `_picture is not null`, and the asymmetry with the line
-        // above is the whole reason this read exists. An item with no picture NOW may have had three: a
-        // removal deletes the row and keeps the log (§7's stated exception to §6.8), so the case where the
-        // metadata is null and the history is not is precisely the case §11.4 could not answer before —
-        // "there used to be a photograph here, who took it down, and when".
         _pictureHistory = await MenuItemPictureEvents.ListForItemAsync(
             MenuItemId, HttpContext.RequestAborted);
 
-        // Asked of the database on every render of this page rather than cached in a singleton, and the
-        // cost is one index lookup on a catalogue table beside the five reads above it. Caching it would
-        // buy nothing measurable and would make the number a thing this process remembers across a
-        // migration that changed it — which is the shape of staleness §17 exists to prevent one register
-        // up. It is read unconditionally, like the history and unlike the metadata: the upload form
-        // renders whether or not a picture is attached, so the budget is wanted in both states.
         _pictureByteCap = await MenuItemPictures.ReadDeclaredByteCapAsync(HttpContext.RequestAborted);
 
-        // On GET, pre-fill both editors with what is stored and render any post/redirect flash. On POST
-        // the submitted values are already bound, so they must not be overwritten.
         if (HttpMethods.IsGet(HttpContext.Request.Method))
         {
             if (string.IsNullOrEmpty(RenameInput.Name))
@@ -658,23 +464,11 @@ else
 
             RepriceInput.PriceAmount = _item.PriceAmount;
 
-            // Unlike the name, an empty description is a legitimate stored value, so `IsNullOrEmpty`
-            // cannot tell "nothing bound yet" from "the item has none" — and it does not need to: on a
-            // GET nothing has bound, so assigning unconditionally is both correct and simpler.
             DescribeInput.Description = _item.Description;
             ReorderInput.DisplayOrder = _item.DisplayOrder;
 
-            // Pre-selected on the heading the item is already under, so the form opens showing the truth
-            // and submitting it unchanged is the no-op the write service reports rather than a move to
-            // whichever heading happened to sort first. CreateMenuItem pre-selects for the mirror-image
-            // reason: a <select> with nothing selected shows and posts its first option either way.
             MoveInput.MenuSectionIdentifier = _item.MenuSectionIdentifier;
 
-            // Pre-filled with what is stored, including "" — the same reasoning the description editor
-            // above uses: on a GET nothing has bound, so assigning unconditionally is both correct and
-            // simpler, and `IsNullOrEmpty` could not tell "nothing bound" from "no caption" anyway. The
-            // consequence is that saving an untouched form is the no-op the write service reports, which
-            // is why that outcome is the ordinary one rather than an edge case.
             AltTextInput.AltText = _picture?.AltText ?? string.Empty;
 
             _flashMessage = FlashFor(Done);
@@ -773,9 +567,7 @@ else
                 RedirectWithOutcome("refile-no-change");
                 break;
             case MoveMenuItemToSectionOutcome.MenuSectionNotFound:
-                // A heading deleted or a page left open. Reported in place rather than redirected, for
-                // the reason CreateMenuItem reports the same outcome in place: the person needs to see
-                // the picker beside the message, not a fresh page with no account of what happened.
+
                 _errorMessage =
                     "That section no longer exists. It may have been changed while this page was open —"
                     + " reload the page and choose again.";
@@ -827,8 +619,7 @@ else
                 RedirectWithOutcome(target ? "made-available" : "made-unavailable");
                 break;
             case SetMenuItemAvailabilityOutcome.AlreadyInThatState:
-                // Somebody in the kitchen got there first between this page rendering and the button
-                // being pressed. Nothing changed and nothing is wrong; re-render on the truth.
+
                 Navigation.NavigateTo(ManagePath);
                 break;
             case SetMenuItemAvailabilityOutcome.MenuItemNotFound:
@@ -837,46 +628,6 @@ else
         }
     }
 
-    /// <summary>
-    /// Attaches or replaces the picture (§7, §11.4).
-    ///
-    /// <para><b>This is the one handler on the page that reaches past the model binder</b>, and the note
-    /// at the top of the file says why. The file arrives as a multipart part and is looked up by name;
-    /// <c>Request.Form</c> is a cached collection by the time this runs, because the framework read the
-    /// body already in order to dispatch here.</para>
-    ///
-    /// <para><b>No size is checked here and that is deliberate.</b> §8.2 declares the cap in a named
-    /// CHECK, the write service reports a violation of it by constraint name, and a second copy in this
-    /// file would be F-65's mechanism — worse, it would be the belt that hides the buckle. The bound on
-    /// what this process will buffer is the one every other POST in this application already has:
-    /// Kestrel's request-body limit, which no form here raises. So the picture form introduces no new
-    /// number anywhere.</para>
-    ///
-    /// <para><b>THE BYTES DECIDE THE MEDIA TYPE, AND THE BROWSER'S <c>Content-Type</c> IS NOT READ AT
-    /// ALL (F-109, Stage 4f).</b> An <c>IFormFile.ContentType</c> on a multipart upload is whatever the
-    /// operating system's extension map produced for the chosen filename — so a Linux desktop without
-    /// <c>shared-mime-info</c>, an Android browser handed a file from a document provider, and any file
-    /// saved without an extension all send <c>application/octet-stream</c> for a perfectly good PNG, and
-    /// this form refused every one of them with a sentence blaming the format. It was carried as an open
-    /// item for six slices. This page now asks <c>ImageFormat.IdentifyContentType</c> what the bytes are
-    /// and passes <em>that</em>.</para>
-    ///
-    /// <para><b>This is not a second authority on what may be stored, and the distinction is the whole
-    /// of the ruling.</b> The objection recorded when the fix was first written down was that a surface
-    /// which pre-judged would leave two of the write's outcomes unreachable from the only form that can
-    /// produce them. What is passed here is the answer of <em>the very function the write service
-    /// consults</em>, so there is one decision procedure called twice rather than two procedures that
-    /// can disagree: the write still checks the census and still checks the signature, and both checks
-    /// are now true by construction rather than by luck. Both outcomes remain reachable at the write's
-    /// own boundary, where <c>MenuItemImageTests</c> reaches them directly — the write is a library and
-    /// its contract is for any caller, not only for this one.</para>
-    ///
-    /// <para><b>Unidentifiable bytes are handed on as <c>string.Empty</c> rather than refused here</b>,
-    /// which keeps every refusal the write service's exactly as it was: the empty string is in no
-    /// census, so the write answers <c>UnsupportedContentType</c> and this page renders the sentence for
-    /// it. A local refusal would have been shorter code and would have made this form the first place in
-    /// the application able to reject an upload the write service never saw.</para>
-    /// </summary>
     private async Task AttachPictureAsync()
     {
         if (!TryBegin(out Guid administrator))
@@ -895,14 +646,8 @@ else
             bytes = buffer.ToArray();
         }
 
-        // What the bytes ARE, not what the browser guessed from the filename (F-109). Null — nothing
-        // this application serves, or too few bytes to carry a signature — becomes the empty string,
-        // which is in no census, so the write refuses it as it always did and this page keeps exactly
-        // one place where an upload can be turned away.
         string identified = ImageFormat.IdentifyContentType(bytes) ?? string.Empty;
 
-        // A NEW identifier every time, including on a replace: §7's route is keyed on the image so that
-        // the URL changes when the bytes do, which is what makes the immutable cache header true.
         AttachMenuItemImageResult result = await MenuChanges.AttachMenuItemImageAsync(
             IdentifierFactory.Create(),
             MenuItemId,
@@ -920,20 +665,11 @@ else
                 RedirectWithOutcome("picture-replaced");
                 break;
             case AttachMenuItemImageOutcome.BytesEmpty:
-                // Reported in place rather than redirected, like the refile's stale-heading arm: the
-                // person needs the message beside the control they were using. Worded to cover both
-                // ways of getting here, because a form submitted with nothing chosen sends an empty
-                // part rather than no part at all, and the two are one mistake to the person making it.
+
                 _errorMessage = "No file was chosen, or the file was empty. Nothing changed.";
                 break;
             case AttachMenuItemImageOutcome.UnsupportedContentType:
-                // Reworded with Stage 4f, because the old sentence quoted what the browser had sent and
-                // nothing sends it any more. It also spelled the vocabulary out in English, which was
-                // its fourth declaration in this repository (F-110); the list now comes from the same
-                // census the file picker's own `accept` hint is built from, so the two cannot disagree
-                // about what may be chosen. The second sentence is the useful half: an operator whose
-                // file was refused for its NAME would try renaming it, and this refusal is not about
-                // the name.
+
                 _errorMessage =
                     "That file is not a picture in any format this menu stores ("
                     + MenuItemImageUpload.RecognisedTypesForOperators
@@ -941,12 +677,7 @@ else
                     + " it will not help. Nothing changed.";
                 break;
             case AttachMenuItemImageOutcome.ContentTypeContradictedByBytes:
-                // UNREACHABLE FROM THIS PAGE SINCE STAGE 4f, AND KEPT DELIBERATELY. The type handed to
-                // the write is the one the write's own identifier derived from these same bytes, so the
-                // comparison that produces this outcome cannot fail here. It stays because the write is
-                // a library whose contract is for any caller, and because the failure mode of deleting
-                // the arm is the worst one available: an operator would get a redirect and silence. It
-                // is a surface's defence in depth rather than a second opinion about what may be stored.
+
                 _errorMessage =
                     "That file was refused because its contents and its declared format disagree."
                     + " Nothing changed.";
@@ -963,11 +694,6 @@ else
         }
     }
 
-    /// <summary>
-    /// Takes the picture off the item (§7). The row is deleted rather than flagged, which is a stated
-    /// exception to §6.8 rather than an oversight: the history is in <c>menu_item_image_event</c>, and
-    /// the event that attached the picture records what it was.
-    /// </summary>
     private async Task RemovePictureAsync()
     {
         if (!TryBegin(out Guid administrator))
@@ -984,8 +710,7 @@ else
                 RedirectWithOutcome("picture-removed");
                 break;
             case RemoveMenuItemImageOutcome.NoImage:
-                // Two administrators pressing Remove seconds apart. Nothing changed and nothing is
-                // wrong; re-render on the truth, exactly as the availability toggle does.
+
                 Navigation.NavigateTo(ManagePath);
                 break;
             case RemoveMenuItemImageOutcome.MenuItemNotFound:
@@ -994,20 +719,6 @@ else
         }
     }
 
-    /// <summary>
-    /// Writes the caption a screen reader reads instead of the picture (§7, §11.1).
-    ///
-    /// <para><b>Trimmed here rather than in the write service</b>, on the division this page already draws
-    /// for a rename: whitespace somebody's keyboard added is a property of a form submission, and the write
-    /// service stores what it is given. It matters more here than for a name, because a caption trimmed to
-    /// nothing is the same thing as no caption — <c>""</c> means <em>none</em> (§7) — so a form submitted
-    /// with a single space clears it rather than storing a space a screen reader would read as a pause.</para>
-    ///
-    /// <para><b><c>NoImage</c> is reachable and is reported in place.</b> The form only renders when a
-    /// picture exists, so getting here needs two administrators and a few seconds — one removes the
-    /// photograph while the other is typing about it. Redirecting on that would throw away what they wrote
-    /// with no explanation, which is the same reasoning the refile's stale-heading arm follows.</para>
-    /// </summary>
     private async Task SetPictureAltTextAsync()
     {
         if (!TryBegin(out Guid administrator))
@@ -1041,12 +752,6 @@ else
         }
     }
 
-    /// <summary>
-    /// The two things every write on this page needs first: the item must still exist, and the acting
-    /// administrator must be identifiable — <c>menu_item_event.actor_person_identifier</c> is NOT NULL and
-    /// §7 requires every change to name somebody. Endpoint authorization already guarantees the second;
-    /// this is the belt to that brace.
-    /// </summary>
     private bool TryBegin(out Guid administrator)
     {
         administrator = Guid.Empty;
@@ -1089,10 +794,7 @@ else
         "picture-attached" => "Picture attached.",
         "picture-replaced" => "Picture replaced. The old one is deleted and its address no longer works,"
             + " which is why a browser may safely keep the new one for a year.",
-        // "the history below" was this sentence's claim from Slice 52 and there was no such record: a
-        // removal writes to menu_item_image_event and the history below this is menu_item_event's, which
-        // has never carried a picture type. Stage 4d makes the sentence true rather than deleting it, and
-        // names which panel — the picture history is directly under the forms, not at the foot of the page.
+
         "picture-removed" => "Picture removed. The record of it stays in the picture history above.",
         "caption-saved" => "Caption saved. Guests using a screen reader hear it instead of the picture,"
             + " and every open menu has already picked it up.",
@@ -1104,21 +806,6 @@ else
 
     private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
 
-    /// <summary>
-    /// A friendly label for each event type §8.2's vocabulary CHECK admits, falling back to the stored
-    /// string for anything else — §11.4 renders the record, so an unrecognised type must show as itself
-    /// rather than be swallowed.
-    ///
-    /// <para><b>No count of the vocabulary is stated.</b> It was stated as <em>five</em> in three files
-    /// and <c>0004</c> made it seven; a number here is one fact recorded where nothing can check it, and
-    /// the arms below are the only honest census (F-77).</para>
-    ///
-    /// <para><c>description_changed</c> reads differently when the description was cleared, because
-    /// <c>""</c> is a stored value rather than an absence and "Description set to nothing" is not what
-    /// somebody reading a history wants. The arm tests the payload's length rather than for null: the
-    /// paired CHECK guarantees this type carries one, and the <c>?? string.Empty</c> is there so a row
-    /// written by something that got past the constraint still renders.</para>
-    /// </summary>
     private string Describe(MenuItemEventEntry entry) => entry.EventType switch
     {
         "created" => $"Created as “{entry.NewName}” at {Money(entry.NewPriceAmount ?? 0m)}",
@@ -1134,38 +821,6 @@ else
         _ => entry.EventType,
     };
 
-    /// <summary>
-    /// A friendly label for each picture event type §8.2's vocabulary CHECK admits, falling back to the
-    /// stored string for anything else — the same rule <see cref="Describe"/> follows one method up, and
-    /// for §11.4's reason: this surface renders the record, so an unrecognised type must show as itself
-    /// rather than be swallowed.
-    ///
-    /// <para><b>No count of the vocabulary is stated here</b>, on F-77's ruling and on the precedent
-    /// directly above: the arms are the census. <c>0007</c> made this vocabulary four words a slice after
-    /// <c>0006</c> made it three, which is the same rate that made the item log's prose count wrong twice.
-    /// What checks the arms against the migration is not a number — it is that
-    /// <c>MenuItemImageEventLogTests</c> writes every type through the write service and reads it back
-    /// through this reader.</para>
-    ///
-    /// <para><b>What the picture WAS goes in the sentence rather than in columns of its own.</b> The format
-    /// and the size are on <c>attached</c> and <c>replaced</c> only, and after a removal the event is the
-    /// only record of them (F-101) — so they are worth rendering, and they are worth rendering for exactly
-    /// two of four types. Two columns that are empty half the time would be two columns whose
-    /// <c>data-label</c> says <em>Format</em> beside nothing on the row somebody opened this page to read.
-    /// The bytes are rendered as they are stored, without a unit conversion: §11.4 renders the record, and
-    /// the panel above already reports this picture's size the same way.</para>
-    ///
-    /// <para><c>alt_text_changed</c> reads differently when the caption was cleared, on the item log's
-    /// <c>description_changed</c> reasoning exactly: <c>""</c> is a stored value rather than an absence, so
-    /// the arm tests the payload's length rather than for null, and the <c>?? string.Empty</c> is there so
-    /// that a row written by something which got past the paired CHECK still renders.</para>
-    ///
-    /// <para><b>No identifier is rendered</b>, although every row carries one. A guest-facing URL for a
-    /// picture that has been replaced answers 404 by design (§7), so a link would be a link that mostly
-    /// does not work, and a bare UUIDv7 in a cell is a fact about this schema rather than about the
-    /// restaurant. The identifier's job is to make it legible that a replacement produced a <em>new</em>
-    /// address, and the words <em>Replaced with</em> say that without it.</para>
-    /// </summary>
     private string DescribePicture(MenuItemImageEventEntry entry) => entry.EventType switch
     {
         "attached" => $"Picture attached — {entry.NewContentType}, {entry.NewByteLength} bytes",
@@ -1192,34 +847,23 @@ else
 
     private sealed class DescribeInputModel
     {
-        // No [Required]: clearing the description is a supported change. The 2,000 matches
-        // CreateMenuItem's, and is this form's opinion rather than the column's — `text` has no ceiling.
         [StringLength(2000, ErrorMessage = "The description must be 2,000 characters or fewer.")]
         public string Description { get; set; } = string.Empty;
     }
 
     private sealed class MoveInputModel
     {
-        // No [Required], for CreateMenuItem's reason rather than as an omission: Guid is a value type, so
-        // [Required] passes on Guid.Empty and would assert nothing. The select is pre-selected on the
-        // item's own heading, has no empty option, and the write service reports an identifier that names
-        // nothing — three defences, none of which is a validation attribute that does not work.
         public Guid MenuSectionIdentifier { get; set; }
     }
 
     private sealed class ReorderInputModel
     {
-        // The upper bound is `integer`'s, and it is stated so the form refuses what the column would.
         [Range(0, 2147483647, ErrorMessage = "The position must be 0 or greater.")]
         public int DisplayOrder { get; set; }
     }
 
     private sealed class AltTextInputModel
     {
-        // No [Required]: clearing the caption is a supported change and "" means none (§7), exactly as it
-        // does for the description above. The 500 is THIS FORM'S opinion and not the column's — `text` has
-        // no ceiling — and it is lower than the description's 2,000 on purpose: alternative text a screen
-        // reader has to get through before the name and the price is alternative text nobody finishes.
         [StringLength(500, ErrorMessage = "The caption must be 500 characters or fewer.")]
         public string AltText { get; set; } = string.Empty;
     }

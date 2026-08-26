@@ -2,12 +2,6 @@ using System.Security.Cryptography;
 
 namespace MyRestaurant.Domain.Security;
 
-/// <summary>
-/// TOTP recovery codes (TECHNICAL_SPECIFICATION §3.4): ten single-use codes generated at
-/// enrollment and on regeneration, stored hashed (SHA-256), usable only on the password
-/// sign-in path in place of a TOTP code. Rendered as two dash-separated groups from the
-/// same unambiguous alphabet as pairing codes.
-/// </summary>
 public static class RecoveryCode
 {
     public const int CodesPerSet = 10;
@@ -33,7 +27,6 @@ public static class RecoveryCode
         return new string(buffer);
     }
 
-    /// <summary>A fresh, de-duplicated set of <see cref="CodesPerSet"/> recovery codes.</summary>
     public static IReadOnlyList<string> GenerateSet()
     {
         HashSet<string> codes = new(StringComparer.Ordinal);

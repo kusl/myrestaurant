@@ -2,132 +2,49 @@ using System.Globalization;
 
 namespace MyRestaurant.WebApplication.Configuration;
 
-/// <summary>
-/// The complete environment-only configuration (TECHNICAL_SPECIFICATION §13; REQUIREMENTS §8:
-/// "environment variables only"). Bound once at startup from the flat, long-named,
-/// prefixed variables, then <see cref="Validate"/> is run before HTTP is bound so the process
-/// fails fast on invalid security-relevant configuration (§13, §3.2 floor guard).
-/// </summary>
 public sealed class RestaurantOptions
 {
-    // Argon2 floor guard (TECHNICAL_SPECIFICATION §3.2). Below any of these the process must not start.
     public const int MinimumArgon2MemoryKibibytes = 19456;
     public const int MinimumArgon2Iterations = 2;
     public const int MinimumArgon2Parallelism = 1;
 
-    // Token/grant/pairing lower bounds (§13: "rotation/grant/pairing values ≥ 10 s / ≥ 1 min / ≥ 1 min").
     public const int MinimumTableJoinTokenRotationSeconds = 10;
     public const int MinimumTableJoinGrantMinutes = 1;
     public const int MinimumTableDisplayPairingCodeMinutes = 1;
 
-    /// <summary>
-    /// The floor under §11.8's registration budget (§13, §17, F-115).
-    ///
-    /// <para><b>This floor protects guests rather than the server, which is the opposite of every other
-    /// bound on this type.</b> The Argon2 floor exists so an operator cannot configure the hashing into
-    /// uselessness; this one exists so an operator cannot configure the *front door* into uselessness.
-    /// `/register` is partitioned on the client address, and over the tunnel from a venue's own wifi that
-    /// is one address for the whole dining room — so a small number here does not mean "strict", it means
-    /// a party of eight cannot all create accounts. Ten is the smallest value at which one table is
-    /// plausible; the default is far above it.</para>
-    /// </summary>
     public const int MinimumGuestRegistrationAttemptsPerWindow = 10;
 
-    /// <summary>The floor under the window that budget is counted over (§13). One minute, as §4.2's.</summary>
     public const int MinimumGuestRegistrationWindowMinutes = 1;
 
-    /// <summary>
-    /// The documented default permit count for §11.8 (§13, §17). Sixty per ten minutes is six a minute
-    /// sustained with the whole ten-minute budget available as a burst, which covers a full room turning
-    /// over with retries and leaves an anonymous caller a bounded row ceiling rather than none.
-    ///
-    /// <para><b>Named rather than spelled into the binding call</b> so the test asserting the default and
-    /// the binding read one constant. The window's default is not named the same way — see
-    /// <see cref="DefaultGuestRegistrationWindowMinutes"/> — because both are needed to state the
-    /// budget and a pair stated half in a constant and half in a literal is the shape F-56 is about.</para>
-    /// </summary>
     public const int DefaultGuestRegistrationAttemptsPerWindow = 60;
 
-    /// <summary>The documented default window for §11.8's budget, in minutes (§13, §17).</summary>
     public const int DefaultGuestRegistrationWindowMinutes = 10;
 
-    /// <summary>
-    /// The default trusted WebAuthn origin patterns (TECHNICAL_SPECIFICATION §3.3, ADR-0005). Cloudflare
-    /// Quick Tunnels hand out a random <c>*.trycloudflare.com</c> hostname per run, so trusting that
-    /// wildcard lets passkeys work in a quick-tunnel demo without knowing the URL at startup. This gates
-    /// only WebAuthn relying-party derivation; it is deliberately not a general CORS allowance.
-    /// </summary>
     public static readonly IReadOnlyList<string> DefaultTrustedOriginPatterns = ["https://*.trycloudflare.com"];
 
-    /// <summary>
-    /// Where the unmodified program's source lives — the default for <c>RESTAURANT_SOURCE_URL</c>
-    /// (§11.9). A deployment that has not modified the program is accurate with this value; one that
-    /// has must point it at the modified source instead.
-    ///
-    /// <para><b>This constant is the only place the fallback is written down, and that is load-bearing
-    /// (F-50).</b> <c>compose.yaml</c> passes the variable through with an <em>empty</em> default
-    /// rather than repeating this string, unlike the settings around it. The asymmetry is deliberate:
-    /// changing this constant is the natural first edit a fork makes, and a compose file that spelled
-    /// the upstream URL as its own default would quietly override that edit — reinstating, one layer
-    /// up, exactly the AGPL §13 failure F-50 is about. An empty value reads as unset, so the fallback
-    /// is decided here and nowhere else.</para>
-    /// </summary>
     public const string DefaultSourceUrl = "https://github.com/kusl/myrestaurant";
 
-    /// <summary>Canonical value of <c>RESTAURANT_CLOCK_FORMAT</c> for <c>3:04 PM</c>.</summary>
     public const string TwelveHourClockFormat = "12-hour";
 
-    /// <summary>Canonical value of <c>RESTAURANT_CLOCK_FORMAT</c> for <c>15:04</c>.</summary>
     public const string TwentyFourHourClockFormat = "24-hour";
 
-    /// <summary>
-    /// The default clock format (§13). Twelve-hour, matching the other US-shaped defaults on this
-    /// type (<c>America/New_York</c>, <c>USD</c>) — and, unlike them, a choice that had to be made
-    /// explicitly rather than inherited: before this it came from whatever culture the container image
-    /// happened to carry, which is to say from nobody (F-36).
-    /// </summary>
     public const string DefaultClockFormat = TwelveHourClockFormat;
 
-    /// <summary>Everything accepted as "twelve-hour", lower-cased. Spelling should not be a trap.</summary>
     private static readonly HashSet<string> TwelveHourSpellings =
         new(StringComparer.OrdinalIgnoreCase) { "12", "12h", "12-hour", "12 hour", "12hour" };
 
-    /// <summary>Everything accepted as "twenty-four-hour", lower-cased.</summary>
     private static readonly HashSet<string> TwentyFourHourSpellings =
         new(StringComparer.OrdinalIgnoreCase) { "24", "24h", "24-hour", "24 hour", "24hour" };
 
     public required string RestaurantName { get; init; }
     public required string PublicOrigin { get; init; }
 
-    /// <summary>
-    /// Where this instance's corresponding source is published (<c>RESTAURANT_SOURCE_URL</c>; §11.9,
-    /// F-39). Rendered on <c>/source</c>, which the colophon in every page's footer links to, so that
-    /// an operator who has modified the program discharges AGPL-3.0-only §13 by setting one variable
-    /// rather than by writing a page.
-    ///
-    /// <para>Not <c>required</c>, and defaulted to the upstream repository: an unmodified deployment
-    /// is telling the truth with that value, and a fork that forgets to change it is at least
-    /// pointing somewhere real while it is wrong. There is deliberately no way to switch the offer
-    /// off — see §11.9.</para>
-    /// </summary>
     public string SourceUrl { get; init; } = DefaultSourceUrl;
 
-    /// <summary>
-    /// Additional browser origins that may act as the WebAuthn relying party, as wildcard patterns
-    /// (<c>RESTAURANT_TRUSTED_ORIGIN_PATTERNS</c>; §3.3, ADR-0005). The configured <see cref="PublicOrigin"/>
-    /// and loopback (in development) are always trusted; these extend that set so a Cloudflare quick
-    /// tunnel's per-run <c>*.trycloudflare.com</c> host works without being known at startup. Defaults to
-    /// <see cref="DefaultTrustedOriginPatterns"/>; not required so existing constructions keep the default.
-    /// </summary>
     public IReadOnlyList<string> TrustedOriginPatterns { get; init; } = DefaultTrustedOriginPatterns;
 
     public required string TimeZoneId { get; init; }
 
-    /// <summary>
-    /// Whether times render as <c>3:04 PM</c> or <c>15:04</c> (<c>RESTAURANT_CLOCK_FORMAT</c>, §13).
-    /// Not <c>required</c>, so a construction that predates it keeps the documented default; the whole
-    /// point of the setting is that this decision belongs to the restaurant rather than to the image.
-    /// </summary>
     public string ClockFormat { get; init; } = DefaultClockFormat;
 
     public required string CurrencyCode { get; init; }
@@ -138,14 +55,8 @@ public sealed class RestaurantOptions
     public required int TableJoinGrantMinutes { get; init; }
     public required int TableDisplayPairingCodeMinutes { get; init; }
 
-    /// <summary>
-    /// How many `/register` attempts one client address may make per
-    /// <see cref="GuestRegistrationWindowMinutes"/> (§11.8, §13, §17, F-115). Read per request by
-    /// <see cref="Security.RateLimitedSurfaces"/>'s registration partitioner.
-    /// </summary>
     public required int GuestRegistrationAttemptsPerWindow { get; init; }
 
-    /// <summary>The window <see cref="GuestRegistrationAttemptsPerWindow"/> is counted over (§13).</summary>
     public required int GuestRegistrationWindowMinutes { get; init; }
 
     public required int Argon2MemoryKibibytes { get; init; }
@@ -190,7 +101,6 @@ public sealed class RestaurantOptions
         };
     }
 
-    /// <summary>Returns a human-readable reason for every invalid setting; empty means valid.</summary>
     public IReadOnlyList<string> Validate()
     {
         List<string> errors = [];
@@ -222,12 +132,6 @@ public sealed class RestaurantOptions
             errors.Add($"RESTAURANT_CURRENCY_CODE must be a 3-letter ISO 4217 code (was '{CurrencyCode}').");
         }
 
-        // http is accepted here and nowhere else in this type, deliberately. RESTAURANT_PUBLIC_ORIGIN
-        // is https-only because WebAuthn requires a secure context and the authentication cookie is
-        // Secure; neither applies to an outbound link at which somebody else serves a repository. A
-        // fork operator running Gitea on a LAN over plain http is discharging §13 perfectly well, and
-        // refusing to start over it would be this application enforcing a taste as though it were a
-        // security property.
         if (!Uri.TryCreate(SourceUrl, UriKind.Absolute, out Uri? sourceUrl)
             || (!string.Equals(sourceUrl.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
                 && !string.Equals(sourceUrl.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)))
@@ -296,25 +200,10 @@ public sealed class RestaurantOptions
         return errors;
     }
 
-    /// <summary>
-    /// The host of the configured public origin (§3.3). As of ADR-0005 the WebAuthn relying-party ID
-    /// is derived <em>per request</em> from the request host (so a quick tunnel's per-run hostname
-    /// works), not pinned to this value; this remains the canonical configured host — used for QR join
-    /// URLs (ADR-0009) and as the fallback host presented by <see cref="Identity.PublicOriginMiddleware"/>.
-    /// </summary>
     public string ResolveWebAuthnRelyingPartyId() => new Uri(PublicOrigin).Host;
 
-    /// <summary>
-    /// The configured display time zone (validated at startup). Every instant the application renders
-    /// goes through this zone — see <see cref="Time.RestaurantTime"/>, which is the only caller and the
-    /// only place allowed to turn a stored UTC instant into text (§8.1).
-    /// </summary>
     public TimeZoneInfo ResolveTimeZone() => TimeZoneInfo.FindSystemTimeZoneById(TimeZoneId);
 
-    /// <summary>
-    /// The <see cref="ClockFormat"/> decision as a boolean. An unrecognized value reads as twelve-hour
-    /// (the default), but never silently: <see cref="Validate"/> has already refused to start.
-    /// </summary>
     public bool UsesTwelveHourClock => !TwentyFourHourSpellings.Contains(ClockFormat.Trim());
 
     private static bool IsKnownClockFormat(string clockFormat)
@@ -347,10 +236,6 @@ public sealed class RestaurantOptions
             ? value
             : fallback;
 
-    /// <summary>
-    /// Reads a comma/space/newline-separated list of origin patterns, trimming empties; returns the
-    /// supplied default when the variable is unset or contains no non-empty entries.
-    /// </summary>
     private static IReadOnlyList<string> ReadOriginPatterns(
         IConfiguration configuration,
         string key,
@@ -367,11 +252,6 @@ public sealed class RestaurantOptions
         return parts.Length == 0 ? fallback : parts;
     }
 
-    /// <summary>
-    /// A trusted-origin pattern is <c>scheme://host</c> with an https scheme, a non-empty host that
-    /// may begin with a single <c>*.</c> wildcard label, and no path, query, fragment, userinfo, or
-    /// port. This matches the runtime matcher in <see cref="Identity.WebAuthnOriginPolicy"/>.
-    /// </summary>
     private static bool IsValidOriginPattern(string pattern)
     {
         if (string.IsNullOrWhiteSpace(pattern))

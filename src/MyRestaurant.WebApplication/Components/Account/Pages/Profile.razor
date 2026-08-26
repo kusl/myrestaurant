@@ -5,28 +5,8 @@
 @inject SignInManager<Person> SignInManager
 @inject NavigationManager Navigation
 
-@* The person's own profile (TECHNICAL_SPECIFICATION §4.6, §11.6). Everyone who can sign in has one —
-   guest, counter, kitchen, administrator — because the three fields it edits are the person's own and
-   §3.7's administrative powers deliberately do not include editing somebody else's identity.
-
-   Static SSR, like every account surface: saving a display name re-issues the authentication cookie
-   (the name travels as a claim, RestaurantClaimsPrincipalFactory), and a Blazor circuit cannot write
-   cookies. Not in the obligations-exempt list — this is an ordinary authenticated destination, so a
-   person with an outstanding §3.5 flag is routed to the pipeline page instead of here.
-
-   Nothing here writes a security_event: §8.2's vocabulary is closed and contains no profile-edit type,
-   which is correct — none of these three fields is a credential, and none of them affects sign-in. The
-   password, authenticator, and passkey surfaces this page links to each record their own events.
-
-   Post/redirect/get on save, carrying a one-word outcome, so a refresh does not re-post. *@
-
 <PageTitle>Your account</PageTitle>
 
-@* Guard every branch on _person. ComponentBase issues an intermediate render the moment the await in
-   OnInitializedAsync suspends, with every field still at its default; a bare else would dereference
-   null there and the resulting NullReferenceException aborts the whole static-SSR response (this is
-   the enroll-totp 500 all over again). Rendering just the eyebrow on that transient pass is fine —
-   static SSR flushes only the final, quiescent HTML. *@
 @if (_person is not null)
 {
     <section class="panel account-panel">
@@ -188,8 +168,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // BL0008: the form POST binds Input itself and may assign null, so the default lives here
-        // rather than in a property initializer the binder would silently discard.
         Input ??= new();
 
         Person? user = await UserManager.GetUserAsync(HttpContext.User);
@@ -203,8 +181,6 @@
         _roles = await UserManager.GetRolesAsync(user);
         _passkeyCount = (await UserManager.GetPasskeysAsync(user)).Count;
 
-        // Prefill only on GET: on a POST the binder has already filled Input from the submitted form,
-        // and overwriting it here would throw away what the person just typed.
         if (HttpContext.Request.Method == HttpMethods.Get)
         {
             Input.DisplayName = user.DisplayName;
@@ -239,18 +215,12 @@
             return;
         }
 
-        // The display name is a claim (RestaurantClaimsPrincipalFactory), so note whether it moved
-        // before the entity is mutated — that decides whether the cookie has to be re-issued.
         bool displayNameChanged = !string.Equals(user.DisplayName, details.DisplayName, StringComparison.Ordinal);
 
         user.DisplayName = details.DisplayName;
         user.EmailAddress = details.EmailAddress;
         user.PhoneNumber = details.PhoneNumber;
 
-        // One store update writes all three columns (DapperUserStore.UpdateAsync persists the whole
-        // row). UserManager.UpdateAsync validates and normalizes first; it does NOT rotate the
-        // security stamp, which is right — none of these three fields is a credential, so live
-        // sessions have no reason to be invalidated.
         IdentityResult result = await UserManager.UpdateAsync(user);
         if (!result.Succeeded)
         {
@@ -261,8 +231,6 @@
 
         if (displayNameChanged)
         {
-            // Re-issue the cookie so the new name shows immediately rather than at the next
-            // five-minute security-stamp revalidation (§3.1).
             await SignInManager.RefreshSignInAsync(user);
         }
 

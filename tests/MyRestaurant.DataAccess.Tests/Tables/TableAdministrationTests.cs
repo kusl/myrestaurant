@@ -7,19 +7,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Tables;
 
-/// <summary>
-/// Integration tests for <see cref="DapperTableAdministration"/> and <see cref="DapperTableDirectory"/>
-/// (table management, TECHNICAL_SPECIFICATION §4.1) against a real PostgreSQL 17 container. They pin the
-/// behaviours that make the slice correct: creating a table writes a row with a 32-byte join secret and
-/// an unset <c>join_secret_rotated_at</c>; labels are unique; rename detects no-change and collisions;
-/// rotating the secret changes the stored bytes and stamps <c>join_secret_rotated_at</c>;
-/// deactivate/reactivate flips <c>is_active</c>; and the directory reads tables back oldest-first
-/// without ever exposing the secret.
-///
-/// <para>Each test truncates <c>restaurant_table CASCADE</c> first (xUnit builds a fresh instance per
-/// test and runs them sequentially). Own <c>IClassFixture</c> (own container); if no container engine
-/// is available, every test skips — mirroring <see cref="AccountAdministrationTests"/>.</para>
-/// </summary>
 public sealed class TableAdministrationTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private readonly PostgreSqlFixture _fixture;
@@ -72,7 +59,7 @@ public sealed class TableAdministrationTests : IClassFixture<PostgreSqlFixture>,
         Assert.Equal(CreateTableOutcome.Created, outcome);
 
         TableProbeRow row = await ReadTableAsync(tableId, cancellationToken);
-        Assert.Equal("Table 5", row.Label); // trimmed
+        Assert.Equal("Table 5", row.Label);
         Assert.True(row.IsActive);
         Assert.Equal(32, row.JoinSecret.Length);
         Assert.Null(row.JoinSecretRotatedAt);
@@ -127,7 +114,6 @@ public sealed class TableAdministrationTests : IClassFixture<PostgreSqlFixture>,
             RenameTableOutcome.LabelTaken,
             await administration.RenameTableAsync(first, "Table 2", cancellationToken));
 
-        // The failed collision left the label untouched.
         Assert.Equal("Patio", (await ReadTableAsync(first, cancellationToken)).Label);
     }
 
@@ -159,11 +145,10 @@ public sealed class TableAdministrationTests : IClassFixture<PostgreSqlFixture>,
 
         TableProbeRow afterFirst = await ReadTableAsync(tableId, cancellationToken);
         Assert.Equal(32, afterFirst.JoinSecret.Length);
-        Assert.NotEqual(original, afterFirst.JoinSecret); // secret changed (element-wise byte comparison)
+        Assert.NotEqual(original, afterFirst.JoinSecret);
         Assert.NotNull(afterFirst.JoinSecretRotatedAt);
-        Assert.Equal(_clock.UtcNow, afterFirst.JoinSecretRotatedAt.Value); // stamped at the operation instant
+        Assert.Equal(_clock.UtcNow, afterFirst.JoinSecretRotatedAt.Value);
 
-        // A second rotation changes it again.
         await administration.RotateJoinSecretAsync(tableId, cancellationToken);
         byte[] afterSecond = (await ReadTableAsync(tableId, cancellationToken)).JoinSecret;
         Assert.NotEqual(afterFirst.JoinSecret, afterSecond);
@@ -223,8 +208,6 @@ public sealed class TableAdministrationTests : IClassFixture<PostgreSqlFixture>,
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         DapperTableAdministration administration = Build();
 
-        // Advance the clock between creations so created_at differs and the oldest-first ordering is
-        // exercised independently of the label. Labels are deliberately out of alphabetical order.
         await administration.CreateTableAsync(_identifiers.Create(), "Zeta", cancellationToken);
         _clock.UtcNow = _clock.UtcNow.AddMinutes(1);
         await administration.CreateTableAsync(_identifiers.Create(), "Alpha", cancellationToken);
@@ -244,8 +227,6 @@ public sealed class TableAdministrationTests : IClassFixture<PostgreSqlFixture>,
 
         Assert.Null(await Directory().GetTableAsync(_identifiers.Create(), cancellationToken));
     }
-
-    // --- helpers -----------------------------------------------------------------------------------
 
     private void SkipIfNoContainer()
         => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
@@ -273,8 +254,6 @@ public sealed class TableAdministrationTests : IClassFixture<PostgreSqlFixture>,
             "SELECT count(*)::int FROM restaurant_table;", cancellationToken: cancellationToken));
     }
 
-    // Plain mutable POCO so Dapper's default property mapping applies; the SELECT aliases its
-    // snake_case columns to these PascalCase names. join_secret (bytea) maps to byte[].
     private sealed class TableProbeRow
     {
         public string Label { get; set; } = string.Empty;

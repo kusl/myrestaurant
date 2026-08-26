@@ -14,18 +14,6 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests;
 
-/// <summary>
-/// Verifies the table and sitting wiring composed by
-/// <see cref="TablesServiceCollectionExtensions.AddRestaurantTables"/> (TECHNICAL_SPECIFICATION §4, §5):
-/// the read-only <see cref="ITableDirectory"/> and transactional <see cref="ITableAdministration"/>
-/// management services (§4.1); the join-token services (§4.3–§4.5) — the server-only
-/// <see cref="ITableJoinSecretReader"/> and the <see cref="ITableJoinTokens"/> that depends on it; the
-/// sitting services (§5.1) — <see cref="ISittingDirectory"/> and <see cref="ISittingMembership"/>; and the
-/// singleton <see cref="JoinGrantProtector"/> behind the §4.4 join-grant cookie — all resolve to their
-/// concrete implementations. Constructing them opens no connection (they only capture the connection
-/// factory, clock, identifier factory, options, metrics, and data protector), so this resolves without a
-/// database — mirroring the resolvability facts in <see cref="Identity.IdentityWiringTests"/>.
-/// </summary>
 public sealed class TablesWiringTests
 {
     [Fact]
@@ -102,10 +90,8 @@ public sealed class TablesWiringTests
         JoinGrantProtector first = provider.GetRequiredService<JoinGrantProtector>();
         JoinGrantProtector second = provider.GetRequiredService<JoinGrantProtector>();
 
-        // One instance for the process: it wraps a protector derived once from the singleton provider.
         Assert.Same(first, second);
 
-        // And the registration is wired to a real data-protection provider, not a stub that no-ops.
         JoinGrant grant = new(Guid.Parse("0192f000-0000-7000-8000-00000000ab01"), DateTimeOffset.UtcNow);
         Assert.True(first.TryUnprotect(first.Protect(grant), out JoinGrant? roundTripped));
         Assert.Equal(grant.TableIdentifier, roundTripped!.TableIdentifier);
@@ -115,10 +101,6 @@ public sealed class TablesWiringTests
     {
         ServiceCollection services = new();
 
-        // The prerequisites Program.cs registers before AddRestaurantTables: a clock, an identifier
-        // factory, a connection factory, the bound options, the metrics (which need an IMeterFactory via
-        // AddMetrics), and Data Protection. The connection factory is never used here — resolution
-        // constructs, it does not connect — and an ephemeral key ring keeps the test off the file system.
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IIdentifierFactory, UuidV7IdentifierFactory>();
         services.AddSingleton<IDatabaseConnectionFactory, UnusedConnectionFactory>();
@@ -132,7 +114,6 @@ public sealed class TablesWiringTests
         return services.BuildServiceProvider();
     }
 
-    /// <summary>The wiring tests never open a connection; this makes that explicit.</summary>
     private sealed class UnusedConnectionFactory : IDatabaseConnectionFactory
     {
         public ValueTask<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)

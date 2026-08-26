@@ -4,21 +4,6 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests;
 
-/// <summary>
-/// Unit tests for <see cref="KitchenQueue"/> (TECHNICAL_SPECIFICATION §11.2): "Queue of
-/// <c>kitchen_pending_line</c> grouped by (table label → person display name → order), ordered by the
-/// group's oldest <c>added_at</c>; each group shows the send timestamp(s)".
-///
-/// <para>No container and no component. The ordering rule <em>is</em> the behaviour of the kitchen
-/// screen — a queue in the wrong order is a restaurant that serves the wrong table first — and this
-/// repository has no bUnit (§16.1), so the rule lives in a pure function precisely so it can be
-/// asserted here.</para>
-///
-/// <para>The fact worth reading twice is
-/// <see cref="ATableIsOrderedByItsOldestLine_NotItsNewest"/>. Sorting a board by the most recent send is
-/// the obvious mistake and it looks fine in a demo; what it does in service is push a forgotten order
-/// further down the screen every time somebody at that table asks for another drink.</para>
-/// </summary>
 public sealed class KitchenQueueTests
 {
     private static readonly DateTimeOffset Noon = new(2026, 5, 14, 12, 0, 0, TimeSpan.Zero);
@@ -71,11 +56,6 @@ public sealed class KitchenQueueTests
         Assert.Equal(["Table 1", "Table 2"], board.Select(table => table.TableLabel));
     }
 
-    /// <summary>
-    /// §11.2 orders by "the group's oldest <c>added_at</c>" — the oldest, not the newest. Table 1 has
-    /// been waiting twenty minutes for a soup and also just asked for a coffee; that coffee must not
-    /// demote the soup below a table that ordered ten minutes ago.
-    /// </summary>
     [Fact]
     public void ATableIsOrderedByItsOldestLine_NotItsNewest()
     {
@@ -120,10 +100,6 @@ public sealed class KitchenQueueTests
         Assert.Equal(["Soup", "Salad", "Coffee"], ticket.Lines.Select(line => line.MenuItemName));
     }
 
-    /// <summary>
-    /// Every line of one send shares an <c>occurred_at</c> to the microsecond, so a ticket built from
-    /// two sends of three items each shows two times, not six.
-    /// </summary>
     [Fact]
     public void SendTimesAreDistinctAndAscending()
     {
@@ -190,10 +166,6 @@ public sealed class KitchenQueueTests
         Assert.True(ticket.HasNotes);
     }
 
-    /// <summary>
-    /// Two tables sent to in the same instant must not swap places between re-reads: a board whose rows
-    /// shuffle under a cook's hand on every live update is worse than one in a slightly wrong order.
-    /// </summary>
     [Fact]
     public void TiesOnAgeBreakDeterministically()
     {
@@ -211,7 +183,6 @@ public sealed class KitchenQueueTests
         Assert.Equal(firstPass, reversedInput);
     }
 
-    /// <summary>The caller's SQL ordering is not relied on — this file owns the rule.</summary>
     [Fact]
     public void InputOrderDoesNotMatter()
     {

@@ -15,28 +15,6 @@
 @inject RestaurantTime RestaurantClock
 @inject NavigationManager Navigation
 
-@* The hidden-records view (TECHNICAL_SPECIFICATION §6.8, §11.4).
-
-   §6.8's second half, verbatim: "Administrators locate hidden orders in the **hidden-records view**
-   (§11.4): every currently-hidden order system-wide, filterable by username, date range, and table, each
-   row expandable to the complete stored record — full event log, visibility log, sitting context,
-   unprojected — with a per-record Unhide (appends `unhidden_by_administrator`)."
-
-   This is the only unhide path in the system. §6.8 gives the hide to the owner and says plainly that
-   there is no user-facing undo, so a guest who hides the wrong meal has exactly one recourse: ask a
-   manager, who arrives here.
-
-   Static SSR, like every administration surface. The filter is a plain GET form — a filter is a
-   bookmarkable question, not a mutation, so it belongs in the URL rather than in component state, and a
-   GET form needs no antiforgery token and no handler. The Unhide is a POST that redirects back to the
-   same filtered URL (post/redirect/get), so a refresh cannot re-append.
-
-   **Expansion is one row at a time, by URL.** §11.4 requires the complete record — "never projected or
-   truncated" — and a complete record is three queries per order. Rendering fifty of them to draw a list
-   would be two hundred round trips for a page somebody is skimming. ?record={order} is the "expandable"
-   in §6.8: the list is always complete, and the record of the row an administrator actually opened is
-   fetched in full. That is narrowing on explicit request in the direction §11.4 asks for. *@
-
 <PageTitle>Administration — hidden records</PageTitle>
 
 <section id="hidden-records-surface" class="panel panel-wide">
@@ -64,7 +42,6 @@
         <p class="status-error" role="alert">@_errorMessage</p>
     }
 
-    @* ---- the filter (§6.8: username, date range, table) ------------------------------------------- *@
     <form class="filter-form" method="get" action="/administration/hidden-records">
         <div class="form-field">
             <label for="filter-username">Username</label>
@@ -109,15 +86,12 @@
         <p class="status-error" role="alert">@_dateProblem</p>
     }
 
-    @* ---- the list ---------------------------------------------------------------------------------- *@
     @if (_hidden is null)
     {
         <p class="record-empty">Loading…</p>
     }
     else if (_hidden.Count == 0)
     {
-        @* `hidden-none` is kept: HiddenRecordJourneys reads this element to prove the list is empty
-           after an unhide, and the class is that assertion's handle rather than a style. *@
         <p class="record-empty hidden-none">
             @(_filter.IsNarrowed
                 ? "Nothing hidden matches that. Widen the filter, or show everything."
@@ -144,9 +118,6 @@
                             }
                             else
                             {
-                                @* §6.8 refuses a hide on an open sitting, so this cannot arise from the
-                                   application. If it ever does, this is the screen that must say so
-                                   rather than quietly tidy it away (§11.4). *@
                                 <text> · </text><strong>this sitting is still open</strong>
                             }
                         </p>
@@ -181,7 +152,6 @@
 
                 @if (IsExpanded(summary))
                 {
-                    @* ---- sitting context (§6.8) ------------------------------------------------- *@
                     <h3 class="hidden-heading">The sitting</h3>
 
                     @if (_sitting is null)
@@ -234,8 +204,6 @@
                                     @Money(_sitting.SettledTotalAmount ?? _sitting.CurrentTotalAmount)
                                     @if (_sitting.HasPostCloseCorrections)
                                     {
-                                        @* §5.3: the stamped total is never rewritten, so when §6.7
-                                           corrections exist both numbers are shown. *@
                                         <span class="hidden-corrected">
                                             corrected to @Money(_sitting.CurrentTotalAmount)
                                         </span>
@@ -245,7 +213,6 @@
                         </dl>
                     }
 
-                    @* ---- visibility log (§6.8) -------------------------------------------------- *@
                     <h3 class="hidden-heading">Visibility log</h3>
 
                     @if (_visibilityLog.Count == 0)
@@ -273,7 +240,6 @@
                         </ol>
                     }
 
-                    @* ---- the complete stored record (§11.4) ------------------------------------- *@
                     <h3 class="hidden-heading">The record</h3>
 
                     @if (_record is null)
@@ -336,7 +302,6 @@
                         </ol>
                     }
 
-                    @* ---- unhide (§6.8) --------------------------------------------------------- *@
                     <div class="hidden-unhide">
                         <p>
                             <strong>Put this back on @summary.OwnerName's history?</strong>
@@ -363,19 +328,6 @@
     <p><a href="/administration">Back to people</a></p>
 </section>
 
-@* What is left after Stage 1b: one expandable record and the three logs inside it, read by this page
-   and nothing else. The page head, the filter, the count line and the empty state are the shared §11.12
-   vocabulary in app.css now, and the twelve lines of `.hidden-filter` that used to be here were the
-   first of two inline copies of one shape.
-
-   App.razor links the static wwwroot/app.css rather than the component-scoped bundle, so component CSS
-   isolation is not active here; a rule exactly one page reads may stay inline, and a width media query
-   may not, in any component, ever (§11.12, F-63).
-
-   Every `var()` below names a property `:root` actually declares. Nine rules in this file used to name
-   `--muted-foreground` or `--surface-sunken`, which nothing has ever declared, so nine rules rendered
-   their literal fallback instead and this page's greys were a different grey from every other page's
-   (F-64). *@
 <style>
     .hidden-record {
         margin: 0.75rem 0 0;
@@ -411,11 +363,6 @@
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     }
 
-    /*
-     * Money, and §11.12's right-hand-column rule deliberately does not reach it: that rule is about the
-     * affordance an operator presses, and this is a number. The header wraps, so on a handset this block
-     * is its own line with the amount at the card's right edge, which is where a total belongs.
-     */
     .hidden-record-money {
         text-align: right;
     }
@@ -535,25 +482,16 @@
 </style>
 
 @code {
-    /// <summary>
-    /// How many hidden orders the list will draw. §11.4's rule is that administration sees everything and
-    /// narrows "only on explicit request", so this is a rendering bound rather than a filter: when it is
-    /// reached the page says so and points at the filter, instead of silently answering a smaller
-    /// question.
-    /// </summary>
     private const int ListCap = 100;
 
-    /// <summary>What an <c>&lt;input type="date"&gt;</c> submits, and the only format read back.</summary>
     private const string DatePattern = "yyyy-MM-dd";
 
-    /// <summary>The one field the POST handler reads; the order travels in a hidden input.</summary>
     private const string OrderField = "order";
 
     private IReadOnlyList<RestaurantTableSummary> _tables = [];
     private IReadOnlyList<HiddenOrderSummary>? _hidden;
     private HiddenOrderFilter _filter = HiddenOrderFilter.Everything;
 
-    // Only populated for the one row ?record= names.
     private SittingOrderRecord? _record;
     private CounterSittingSummary? _sitting;
     private IReadOnlyList<OrderVisibilityEntry> _visibilityLog = [];
@@ -610,9 +548,6 @@
             return;
         }
 
-        // Only expand a row that is actually in the list. A ?record= naming an order that is not hidden —
-        // or not there at all — would otherwise render a full record with an Unhide button under a list
-        // that does not contain it, which reads as though the list were wrong.
         HiddenOrderSummary? summary = _hidden
             .FirstOrDefault(candidate => candidate.GuestOrderIdentifier == guestOrderIdentifier);
 
@@ -629,12 +564,6 @@
         _sitting = await CounterReads.GetSittingAsync(summary.SittingIdentifier, cancellationToken);
     }
 
-    /// <summary>
-    /// §6.8's three filters, from the query string. The dates are read in the restaurant's own zone
-    /// through <see cref="RestaurantTime"/> (§8.1): an administrator typing 26 July means the
-    /// restaurant's 26 July, and the range is half-open — the start of that day to the start of the day
-    /// after the upper bound — so the last microsecond of an evening cannot fall outside it.
-    /// </summary>
     private HiddenOrderFilter BuildFilter()
     {
         DateOnly? from = ParseDate(From, "the earlier date");
@@ -670,24 +599,14 @@
             return parsed;
         }
 
-        // Only reachable from a hand-edited URL: the date input submits yyyy-MM-dd or nothing at all.
         _dateProblem = $"Could not read {which}, so it was ignored. Dates are year-month-day.";
         return null;
     }
 
-    /// <summary>
-    /// §6.8's per-record Unhide, through the workflow so the change is announced (§9) and the owner's
-    /// history page stops omitting it. The service re-checks under its own lock that the order is still
-    /// hidden, so two administrators pressing this at once produce one <c>unhidden</c> row and one honest
-    /// "somebody got there first".
-    /// </summary>
     private async Task UnhideAsync()
     {
         if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } administrator)
         {
-            // Endpoint authorization already guarantees an administrator; this is the belt to that brace,
-            // because order_visibility_event.actor_person_identifier is NOT NULL and has no anonymous
-            // option.
             _errorMessage = "Your session could not be identified. Sign in again and retry.";
             await LoadAsync();
             return;
@@ -695,8 +614,6 @@
 
         IFormCollection form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
 
-        // Not a second read of the body: the Blazor endpoint has already parsed the form to find this
-        // handler, and HttpRequest caches the parsed collection. Same shape as AdministrationSittings.
         string? postedOrder = form[OrderField];
 
         if (!Guid.TryParse(postedOrder, out Guid guestOrderIdentifier))
@@ -711,10 +628,6 @@
 
         if (result.Outcome is UnhideOrderOutcome.Unhidden or UnhideOrderOutcome.NotHidden)
         {
-            // Post/redirect/get, back to the same filtered list minus the expanded row — the record is no
-            // longer hidden, so it is no longer on this page, and leaving ?record= on the URL would only
-            // produce the "not in the list" message. NotHidden redirects too: another administrator got
-            // there first, which is the system working.
             Navigation.NavigateTo(ListPath(
                 result.Outcome is UnhideOrderOutcome.Unhidden ? "unhidden" : "already-visible"));
             return;
@@ -726,15 +639,9 @@
         await LoadAsync();
     }
 
-    /// <summary>Whether this row is the one <c>?record=</c> named and the record was actually loaded for.</summary>
     private bool IsExpanded(HiddenOrderSummary summary)
         => Record == summary.GuestOrderIdentifier;
 
-    /// <summary>
-    /// The line above the list. It says whether the count is the whole truth: at <see cref="ListCap"/>
-    /// there may be more, and §11.4 means the page has to admit that rather than let a round number look
-    /// like an answer.
-    /// </summary>
     private string CountSentence(int count)
     {
         string noun = count == 1 ? "hidden order" : "hidden orders";
@@ -745,15 +652,6 @@
             : $"{count} {noun} {scope}.";
     }
 
-    /// <summary>
-    /// The list URL with the current filter preserved and, optionally, an outcome word. Rebuilt rather
-    /// than reusing the incoming query string so <c>?record=</c> is dropped and nothing else is.
-    ///
-    /// <para>This paragraph sat above <see cref="IsExpanded"/> until F-114, as a second
-    /// <c>&lt;summary&gt;</c> element in that method's documentation comment — so the method it describes
-    /// carried none and the method it was attached to carried two. The C# compiler accepts that in
-    /// silence.</para>
-    /// </summary>
     private string ListPath(string? done = null)
     {
         List<string> parts = [];
@@ -810,12 +708,6 @@
         _ => null,
     };
 
-    /// <summary>
-    /// The two <c>order_visibility_event.event_type</c> values §8.2's CHECK admits, falling back to the
-    /// stored string. §6.8's prose calls the administrator's row "unhidden_by_administrator"; the stored
-    /// word is <c>unhidden</c>, and there is no guest unhide to distinguish it from, so who did it is the
-    /// actor beside it rather than a second word.
-    /// </summary>
     private static string DescribeVisibilityEvent(string eventType) => eventType switch
     {
         "hidden" => "Hidden by the owner",
@@ -823,13 +715,6 @@
         _ => eventType,
     };
 
-    /// <summary>
-    /// A friendly label for the five <c>order_event.event_type</c> values §8.2's CHECK admits, falling
-    /// back to the stored string for anything else. The words are spelled out here rather than taken from
-    /// <c>OrderEventVocabulary</c>, which is internal to the data-access assembly on purpose — a display
-    /// label is not the writer's business, and a reader that threw on an unrecognised word would blank the
-    /// one page whose job is to show what is actually stored. Same shape as ManageSitting's.
-    /// </summary>
     private static string DescribeEventType(string eventType) => eventType switch
     {
         "guest_submission" => "Guest send",
@@ -840,11 +725,6 @@
         _ => eventType,
     };
 
-    /// <summary>
-    /// The four <c>order_event.actor_role</c> values, on the same terms. <c>guest</c> is a capacity rather
-    /// than a stored role (§0, §3.7) — an administrator eating lunch appears here as a guest, and that is
-    /// correct.
-    /// </summary>
     private static string DescribeActorRole(string actorRole) => actorRole switch
     {
         "guest" => "a guest",
@@ -854,10 +734,6 @@
         _ => actorRole,
     };
 
-    /// <summary>
-    /// One stored operation in a sentence. The five kinds are the discriminators the reader's UNION
-    /// projects; an unknown one renders as itself beside the line it names, so nothing is ever swallowed.
-    /// </summary>
     private string DescribeOperation(StoredOrderOperation operation) => operation.OperationKind switch
     {
         "line_added" =>

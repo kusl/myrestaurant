@@ -6,36 +6,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Menu;
 
-/// <summary>
-/// Integration tests for <see cref="DapperMenuAdministration.ResequenceMenuItemsAsync"/> against a real
-/// PostgreSQL 17 container — §7's whole-list reordering for the items under one heading, which is the write
-/// behind the Up and Down controls on each item row of <c>/administration/menu</c>.
-///
-/// <para><b>Its own class rather than more facts on <see cref="MenuAdministrationTests"/>, on the reasoning
-/// <see cref="MenuSectionResequenceTests"/> records one register up.</b> Every other verb in that file
-/// writes one row and one event, so <em>the newest event for this item</em> is unambiguous and every helper
-/// it owns is built on that. This verb writes several rows and several events in one transaction at one
-/// instant, so the facts worth pinning are about <em>sets</em> and <em>sequences</em>.</para>
-///
-/// <para><b>Two of these facts have no counterpart one register up, and they are the reason this is a
-/// separate slice rather than a widening of Slice 47.</b> The section verb's set is the whole table; this
-/// verb's set is <em>one heading's</em> items, so it must be shown that a resequence under one heading
-/// leaves every other heading's positions and events completely untouched
-/// (<see cref="ResequencingOneHeadingLeavesTheOtherHeadingAlone"/>), and that an unknown heading is refused
-/// through the ordinary permutation comparison rather than through a fourth outcome
-/// (<see cref="AnUnknownHeadingIsRefusedAsASetThatChanged"/>). The first is the one to read: an off-by-one
-/// in the WHERE clause would renumber the puddings because somebody moved a drink, and every assertion
-/// about the drinks would still pass.</para>
-///
-/// <para><b>Three facts are about what is NOT written.</b> A resequence that moves one item in four writes
-/// two rows, not four; a resequence into the order already stored writes nothing at all; and a list that is
-/// not a permutation of that heading's items is refused whole rather than partially obeyed. Each of those
-/// fails silently and leaves an order nobody chose, which is the worse of the two failures in an append-only
-/// system (ADR-0002).</para>
-///
-/// <para>Each test truncates first (xUnit builds a fresh instance per test and runs them sequentially).
-/// Own <c>IClassFixture</c>, own container; if no container engine is available, every test skips.</para>
-/// </summary>
 public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private const string CountReorderedEventsSql = """
@@ -82,9 +52,6 @@ public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, 
         }
     }
 
-    /// <summary>
-    /// The ordering is stored as the list's indices, and the read returns the list.
-    /// </summary>
     [Fact]
     public async Task ResequencingAssignsPositionsFromThePlaceInTheList()
     {
@@ -105,11 +72,6 @@ public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal([0, 1, 2], stored.Select(summary => summary.DisplayOrder));
     }
 
-    /// <summary>
-    /// One event per item that actually moved. Reversing three items leaves the middle one where it was, so
-    /// this writes two <c>reordered</c> events and not three — the no-op rule applied per row rather than
-    /// per call.
-    /// </summary>
     [Fact]
     public async Task OnlyTheItemsThatMovedGetAnEvent()
     {
@@ -131,9 +93,6 @@ public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal([0], await ReorderedPositionsAsync(cola, cancellationToken));
     }
 
-    /// <summary>
-    /// A resequence into the order already stored writes nothing at all and says so.
-    /// </summary>
     [Fact]
     public async Task ResequencingIntoTheStoredOrderWritesNothing()
     {
@@ -151,12 +110,6 @@ public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal(0, await World().CountAsync(CountReorderedEventsSql, cancellationToken));
     }
 
-    /// <summary>
-    /// The three shapes a list can be wrong in, and one answer to all of them: short, repeating an
-    /// identifier, and naming an item filed under another heading. The repeated-identifier case is the one a
-    /// length check and a membership check each admit on their own, which is why the permutation test
-    /// de-duplicates before it resolves.
-    /// </summary>
     [Fact]
     public async Task AListThatIsNotAPermutationIsRefusedWhole()
     {
@@ -189,13 +142,6 @@ public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal(0, await World().CountAsync(CountReorderedEventsSql, cancellationToken));
     }
 
-    /// <summary>
-    /// <b>A heading this menu does not hold is refused through the same comparison as everything else</b>,
-    /// which is why there is no fourth outcome for it: an unknown heading has no items under it, so any
-    /// non-empty list against it fails the permutation test. Recorded as a fact rather than left implicit,
-    /// because "no rows came back" is also what an empty heading looks like, and the two agreeing is a
-    /// decision rather than an accident.
-    /// </summary>
     [Fact]
     public async Task AnUnknownHeadingIsRefusedAsASetThatChanged()
     {
@@ -213,24 +159,6 @@ public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal(0, await World().CountAsync(CountReorderedEventsSql, cancellationToken));
     }
 
-    /// <summary>
-    /// <b>The fact this verb has and the section verb cannot have.</b> A position is a position within a
-    /// heading, so resequencing one heading must leave every other heading's rows and events exactly as they
-    /// were — a WHERE clause that reached one row too far would renumber a list nobody touched, and every
-    /// assertion about the heading that <em>was</em> touched would still pass.
-    ///
-    /// <para><b>The list rotates, so the count is three and not two, and the arithmetic is written down
-    /// because getting it wrong is what <b>F-99</b> was.</b> <c>[cola, tea, coffee]</c> against a stored
-    /// <c>tea, coffee, cola</c> moves every one of the three; a <em>reversal</em> would leave the middle one
-    /// where it is and write two. The rotation is deliberate rather than incidental: this fact is about a
-    /// write not reaching past its heading, and the write that has the most chances to reach past it is the
-    /// one that touches every row under it.</para>
-    ///
-    /// <para>What that costs is stated rather than left to be discovered. Three moved of three listed means
-    /// this total cannot also witness the per-row no-op rule — an implementation writing one event per
-    /// <em>listed</em> item would satisfy it. That rule is <see cref="OnlyTheItemsThatMovedGetAnEvent"/>'s
-    /// fact and is asserted there against a reversal, which is the shape that can see it.</para>
-    /// </summary>
     [Fact]
     public async Task ResequencingOneHeadingLeavesTheOtherHeadingAlone()
     {
@@ -257,19 +185,11 @@ public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal([trifle, sorbet], untouched.Select(summary => summary.MenuItemIdentifier));
         Assert.Equal([0, 1], untouched.Select(summary => summary.DisplayOrder));
 
-        // Three events, all three under Drinks, because a rotation of three moves all three: the puddings
-        // wrote none at all. The total is the whole of that claim — five items exist and only the three
-        // named in the list may account for an event.
         Assert.Equal(3, await World().CountAsync(CountReorderedEventsSql, cancellationToken));
         Assert.Empty(await ReorderedPositionsAsync(trifle, cancellationToken));
         Assert.Empty(await ReorderedPositionsAsync(sorbet, cancellationToken));
     }
 
-    /// <summary>
-    /// Positions are permitted to be equal and are not required to be contiguous, which is the whole reason
-    /// this verb exists rather than an absolute write per item. Two dishes sharing position 0 have an order
-    /// nobody assigned — the name tie-break decides it — and a resequence gives them one.
-    /// </summary>
     [Fact]
     public async Task ResequencingSeparatesTwoItemsThatSharedAPosition()
     {
@@ -297,12 +217,6 @@ public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal([0, 1], ordered.Select(summary => summary.DisplayOrder));
     }
 
-    /// <summary>
-    /// Every event of one call carries the same instant and the acting administrator, and they read back in
-    /// the order the rows were written rather than in an order the random bits chose (<b>F-95</b>). Asserted
-    /// through the log reader rather than against raw identifiers, because what matters is what §11.4
-    /// renders.
-    /// </summary>
     [Fact]
     public async Task TheEventsOfOneResequenceReadInTheOrderTheRowsWereWritten()
     {
@@ -315,7 +229,6 @@ public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, 
         DateTimeOffset moment = _clock.UtcNow.AddMinutes(5);
         _clock.UtcNow = moment;
 
-        // Rotates all three, so all three move and the write order is cola, tea, coffee.
         Assert.Equal(
             ResequenceMenuItemsOutcome.Resequenced,
             await Administration().ResequenceMenuItemsAsync(
@@ -336,9 +249,6 @@ public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal([cola, tea, coffee], written);
     }
 
-    /// <summary>
-    /// Three items under one heading at 0, 1, 2 in the order they are named.
-    /// </summary>
     private async Task<(Guid Tea, Guid Coffee, Guid Cola)> ThreeItemsAsync(
         Guid menuSectionIdentifier,
         CancellationToken cancellationToken)
@@ -349,11 +259,6 @@ public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, 
             await World().AddMenuItemAsync(
                 "Cola", 2.75m, cancellationToken, displayOrder: 2, menuSectionIdentifier: menuSectionIdentifier));
 
-    /// <summary>
-    /// One heading's items in the order §7's six-key read returns them — filtered from the directory rather
-    /// than queried per heading, which is exactly what <c>AdministrationMenu.razor</c> does and therefore
-    /// the order the surface's Up and Down exchange entries in.
-    /// </summary>
     private async Task<IReadOnlyList<MenuItemSummary>> ItemsUnderAsync(
         Guid menuSectionIdentifier,
         CancellationToken cancellationToken)
@@ -363,10 +268,6 @@ public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, 
         return [.. all.Where(summary => summary.MenuSectionIdentifier == menuSectionIdentifier)];
     }
 
-    /// <summary>
-    /// The positions one item's <c>reordered</c> events recorded, oldest first — read through the log reader
-    /// so the assertion is about what §11.4 renders.
-    /// </summary>
     private async Task<IReadOnlyList<int>> ReorderedPositionsAsync(
         Guid menuItemIdentifier,
         CancellationToken cancellationToken)
@@ -382,10 +283,6 @@ public sealed class MenuItemResequenceTests : IClassFixture<PostgreSqlFixture>, 
         ];
     }
 
-    /// <summary>
-    /// Which items were reordered at one instant, in the order <c>(occurred_at,
-    /// menu_item_event_identifier)</c> puts them — the ordering every §11.4 history reads under.
-    /// </summary>
     private async Task<IReadOnlyList<Guid>> ReorderedItemsInReadOrderAsync(
         DateTimeOffset moment,
         CancellationToken cancellationToken)

@@ -3,11 +3,6 @@
 @inject SignInManager<Person> SignInManager
 @inject NavigationManager Navigation
 
-@* The TOTP challenge on the password path (TECHNICAL_SPECIFICATION §3.4, §4.2, ADR-0010). Reachable
-   only mid-sign-in: the password step parked the pending user in the two-factor cookie; without it
-   this page bounces back to /sign-in. There is deliberately no "remember this device" — TOTP is
-   challenged on every password sign-in of an enrolled account. The passkey path never lands here. *@
-
 <PageTitle>Two-factor code</PageTitle>
 
 <section class="panel account-panel">
@@ -58,11 +53,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // BL0008: a form POST binds Input itself and may assign null, so the default lives here
-        // rather than in a property initializer the binder would silently discard.
         Input ??= new();
 
-        // No pending two-factor user means this page was reached out of order — start over.
         if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
         {
             Navigation.NavigateTo(AccountRoutes.SignIn);
@@ -77,7 +69,6 @@
             return;
         }
 
-        // Authenticator apps display codes in groups; be forgiving about spaces and dashes.
         string code = Input.Code.Replace(" ", string.Empty).Replace("-", string.Empty);
 
         SignInResult result = await SignInManager.TwoFactorAuthenticatorSignInAsync(

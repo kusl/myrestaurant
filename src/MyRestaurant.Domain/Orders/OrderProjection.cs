@@ -1,11 +1,5 @@
 namespace MyRestaurant.Domain.Orders;
 
-/// <summary>
-/// A current, non-removed line as seen by the read side — the domain equivalent of the
-/// <c>order_current_line</c> view (TECHNICAL_SPECIFICATION §8.3, §8.5). The menu item name
-/// (a read-time join in the view) is intentionally omitted; it is not part of the fold's
-/// equivalence contract, which covers the line set, prices, and fulfillment flags.
-/// </summary>
 public sealed record ProjectedOrderLine(
     Guid GuestOrderIdentifier,
     Guid OrderLineIdentifier,
@@ -17,15 +11,9 @@ public sealed record ProjectedOrderLine(
     DateTimeOffset AddedAt,
     Guid AddedByOrderEventIdentifier)
 {
-    /// <summary>Extended line price at the current unit price (quantity × current unit price).</summary>
     public decimal LineTotalAmount => Quantity * CurrentUnitPriceAmount;
 }
 
-/// <summary>
-/// The folded state of one living order — the domain equivalent of <c>order_current_state</c>
-/// plus its current lines (TECHNICAL_SPECIFICATION §8.3, §8.5). The total <em>includes</em>
-/// still-pending lines, matching <c>sitting_bill</c>/<c>order_current_state</c> (§8.3).
-/// </summary>
 public sealed record ProjectedOrder(
     Guid GuestOrderIdentifier,
     IReadOnlyList<ProjectedOrderLine> Lines,
@@ -35,12 +23,6 @@ public sealed record ProjectedOrder(
     DateTimeOffset? FirstSubmittedAt,
     DateTimeOffset? LastEventAt);
 
-/// <summary>
-/// The pure fold from an order's event log to its current projection (TECHNICAL_SPECIFICATION
-/// §8.5): <c>FromEvents</c> yields the same line set, prices, and fulfillment flags as the SQL
-/// projection views, and integration tests assert view output ≡ fold output on randomized
-/// sequences. Neither the fold nor the views are the source of truth — the event tables are.
-/// </summary>
 public static class OrderProjection
 {
     public static ProjectedOrder FromEvents(IReadOnlyList<OrderEvent> events)
@@ -88,12 +70,6 @@ public static class OrderProjection
             lastEventAt);
     }
 
-    /// <summary>
-    /// Folds the full per-line lifecycle, <em>including removed lines</em> — the richer view the
-    /// mutation validator needs (adding-event metadata, removal, fulfillment). Events are folded
-    /// in ascending sequence order, so "latest by sequence wins" for prices and fulfillment
-    /// flips, matching the LATERAL sub-selects of <c>order_current_line</c> (§8.3).
-    /// </summary>
     internal static IReadOnlyDictionary<Guid, LineState> BuildLineStates(IReadOnlyList<OrderEvent> events)
     {
         Dictionary<Guid, LineState> states = [];
@@ -145,7 +121,6 @@ public static class OrderProjection
     }
 }
 
-/// <summary>Mutable per-line accumulator used only inside the fold and the validator.</summary>
 internal sealed class LineState
 {
     public required Guid OrderLineIdentifier { get; init; }

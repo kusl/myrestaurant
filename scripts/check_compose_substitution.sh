@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Does this host's compose engine apply the DEFAULT VALUES in compose.yaml?
-# (TECHNICAL_SPECIFICATION §14.1, §16.4, F-57.) Reads the tree and the engine; changes nothing.
+# (TECHNICAL_SPECIFICATION §14.1, §16.4.) Reads the tree and the engine; changes nothing.
 #
 #   scripts/check_compose_substitution.sh          check, and explain a failure
 #   scripts/check_compose_substitution.sh --quiet  say nothing unless it fails
@@ -13,48 +13,6 @@
 #   2  could not be determined here (no compose, or no usable `config` subcommand)
 #   1  usage error, or this is not a checkout of the repository
 #
-# WHY THIS EXISTS
-#
-# `compose.yaml` sets twenty-three values with the `${NAME:-default}` form. On 2026-08-10, on Debian
-# trixie's podman-compose — which ADR-0004 calls the canonical engine — every one of those whose
-# variable was not already set in the environment reached the container AS THE PLACEHOLDER TEXT:
-#
-#   Configuration error: RESTAURANT_TIME_ZONE '${RESTAURANT_TIME_ZONE:-America/New_York}' is not a
-#   resolvable time zone on this host.
-#
-# Five of those the application validates, so it printed five errors and exited 1. The rest arrived
-# just as wrong and silently: `RESTAURANT_NAME` would have rendered the placeholder text as the
-# restaurant's name on every page, the four Argon2 parameters fell back to compiled-in defaults
-# because an unparseable integer is indistinguishable from an absent one, and
-# `OTEL_EXPORTER_OTLP_ENDPOINT` — whose default is EMPTY, and whose emptiness is what switches the
-# exporter off — arrived non-empty, which switches it on and points it at a hostname made of braces.
-#
-# And the database did not come up at all. `POSTGRES_USER` reached initdb as literal text, so the
-# bootstrap statement failed on the punctuation in it:
-#
-#   FATAL:  invalid character in extension owner: must not contain any of ""$'\"
-#   STATEMENT:  CREATE EXTENSION plpgsql;
-#   initdb: removing contents of data directory "/var/lib/postgresql/data"
-#
-# — after which the container exited, the engine restarted it, and initdb wiped and retried, forever.
-# One engine behaviour, two containers, and no message anywhere naming the cause.
-#
-# WHAT IS AND IS NOT KNOWN ABOUT THE BEHAVIOUR
-#
-# Known, because it was observed in the same run: substitution WORKS when the variable is set in the
-# process environment. `RESTAURANT_PUBLIC_ORIGIN` is exported by scripts/dev_instance.sh and it was
-# the one variable that arrived correct. So it is specifically the DEFAULT branch — the part after
-# `:-` — that is not applied.
-#
-# Not known from a transcript, and the reason this script asks the engine rather than assuming: which
-# releases behave this way, and whether assigning a variable EMPTY in `.env` counts as supplying it.
-# So nothing here predicts. It renders the file through the engine and reads the answer.
-#
-# WHAT A FAILURE MEANS FOR AN OPERATOR
-#
-# It is not a formatting problem, and it is not confined to the five variables that produce an error.
-# Everything the stack is configured with is affected, and most of it fails silently. Do not run an
-# instance you care about on an engine that fails this check.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -83,10 +41,6 @@ tell() { printf '[compose-substitution] %s\n' "$*" >&2; }
     exit 1
 }
 
-# ---------------------------------------------------------------------------------------------------
-# 1. The engine's compose command, chosen the way scripts/dev_instance.sh chooses it (F-43): the
-#    engine first, then a compose that matches it.
-# ---------------------------------------------------------------------------------------------------
 if [[ -n "${CONTAINER_ENGINE:-}" ]] && command -v "$CONTAINER_ENGINE" >/dev/null 2>&1; then
     ENGINE="$CONTAINER_ENGINE"
 elif command -v podman >/dev/null 2>&1; then
@@ -114,14 +68,6 @@ else
     exit 2
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# 2. Which variables actually depend on the engine's defaults right now
-#
-# A placeholder whose variable is set in the environment, or assigned in `.env`, does not need the
-# default branch — and the set branch is the half that was observed working. So the question is only
-# about the remainder. When the remainder is empty there is nothing to check and this exits 0, which
-# is the case on any host where `.env` has been copied and every key filled in.
-# ---------------------------------------------------------------------------------------------------
 placeholders="$(grep --only-matching --extended-regexp '\$\{[A-Za-z_][A-Za-z0-9_]*' compose.yaml \
     | cut -c3- | sort --unique || true)"
 
@@ -139,13 +85,9 @@ fi
 depends_on_defaults=""
 while IFS= read -r name; do
     [[ -n "$name" ]] || continue
-    # Set and non-empty in this process's environment?
     if [[ -n "${!name:-}" ]]; then
         continue
     fi
-    # Assigned in .env, even to an empty value? Whether an empty assignment is enough is exactly what
-    # is not known from outside the engine, so it counts as supplied here and the render below is what
-    # settles it.
     if [[ -n "$env_assigned" ]] && printf '%s\n' "$env_assigned" | grep --quiet --line-regexp --fixed-strings "$name"; then
         continue
     fi

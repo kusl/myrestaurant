@@ -3,54 +3,15 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Deployment;
 
-/// <summary>
-/// No service in the canonical stack waits on another service's <em>health</em>
-/// (TECHNICAL_SPECIFICATION §14.1, §16.4, <b>F-53</b>).
-///
-/// <para><b>Why this exists.</b> podman-compose 1.3.0 — the version Debian trixie ships, and
-/// podman-compose is the canonical engine (ADR-0004) — implements <c>up -d</c> as <c>podman run
-/// -d</c> for every container <em>followed by</em> a wait on each dependency's <c>depends_on</c>
-/// condition, in an unbounded retry loop that logs at debug level and prints nothing. A condition
-/// that is never satisfied therefore does not fail: the whole stack starts, the container ids are
-/// printed, and the command never returns, with no output naming a cause. That is what
-/// <c>scripts/dev_instance.sh</c> hit on its first run — the instance was serving the public
-/// internet while the command that started it sat in that loop.</para>
-///
-/// <para><b>Why the rule is a prohibition rather than a fix.</b> A health status only advances if
-/// something runs the healthcheck, and under rootless Podman that is a systemd timer in the user's
-/// session — so whether <c>service_healthy</c> is ever satisfied is a property of the host, not of
-/// this repository. There is no flag that avoids the wait either: <c>--no-deps</c> is accepted by
-/// <c>up</c> in that version and consulted only by <c>run</c>. The only reliable answer is not to
-/// ask for the condition, which costs nothing here because
-/// <c>SchemaMigrationRunner</c> already retries a connection failure thirty times at two-second
-/// intervals (ADR-0012). <c>web</c> losing the race to <c>postgres</c> is a race the application
-/// was written to lose safely; the health gate was a convenience it never needed.</para>
-///
-/// <para><b>Scope, stated so the gaps are deliberate.</b> This asserts one property of one file.
-/// It says nothing about whether the images resolve, whether the ports are free, or whether the
-/// stack starts — those are behavioural questions about a container engine and belong to a CI job
-/// on a Podman host rather than to a string scan (F-41, and the open item F-51's row records). What
-/// it does assert is decidable from the text with certainty: which conditions this file asks for.
-/// The condition is the thing that hangs, so the condition is the thing gated.</para>
-///
-/// <para>Pure: reads one file off the disk it was built from. No server, no container, no engine.</para>
-/// </summary>
 public sealed class ComposeDependencyContractTests
 {
     private const string SolutionFileName = "MyRestaurant.slnx";
     private const string ComposeRelativePath = "compose.yaml";
 
-    /// <summary>The mapping every service is a child of.</summary>
     private const string ServicesMarker = "services:";
 
-    /// <summary>The only condition this file may ask for.</summary>
     private const string PermittedCondition = "service_started";
 
-    /// <summary>
-    /// The scan read the file and found the dependency graph. Asserted first and on its own, because
-    /// the assertion below it is satisfied by an empty edge set (F-41) — and a compose file that had
-    /// been re-indented, or a marker that stopped matching, would produce exactly that in silence.
-    /// </summary>
     [Fact]
     public void TheScanFindsTheDependencyGraph()
     {
@@ -75,11 +36,6 @@ public sealed class ComposeDependencyContractTests
                 + $" on an empty set, so this one runs first."));
     }
 
-    /// <summary>
-    /// <b>This is F-53.</b> Every dependency is ordered against the dependency having
-    /// <em>started</em>, never against it being <em>healthy</em>, because the canonical engine waits
-    /// on the latter forever and silently.
-    /// </summary>
     [Fact]
     public void NoDependencyWaitsOnAnotherServicesHealth()
     {
@@ -101,11 +57,6 @@ public sealed class ComposeDependencyContractTests
             + " intervals, which predates this rule by four milestones.");
     }
 
-    /// <summary>
-    /// Every dependency names a service this file declares. A typo here is not a compose error on
-    /// every engine — some resolve what they can and order what is left arbitrarily — so it is worth
-    /// one assertion while the graph is already parsed.
-    /// </summary>
     [Fact]
     public void EveryDependencyNamesADeclaredService()
     {
@@ -126,25 +77,6 @@ public sealed class ComposeDependencyContractTests
             ", ",
             dependencies.Select(dependency =>
                 $"'{dependency.Service}' -> '{dependency.DependsOn}' (condition: {dependency.Condition})"));
-
-    // ---------------------------------------------------------------------------------------------
-    // Reading the file. Plain string work, no parser and no regular expressions — the same choice
-    // ConfigurationSurfaceTests makes about this same file, and for the same reason: a YAML package
-    // in the unit test project would be a dependency taken on to read indentation, and the question
-    // here is answerable without one.
-    //
-    // The shape being read, which is the whole of compose's schema that matters to this test:
-    //
-    //   services:                  <- column 0
-    //     web:                     <- column 2, a service name
-    //       depends_on:            <- column 4
-    //         postgres:            <- column 8, a dependency (mapping form)
-    //           condition: ...     <- column 10
-    //         - postgres           <- column 8, a dependency (list form; condition is implicit)
-    //
-    // List form is accepted and recorded as 'service_started', because that is exactly what both
-    // engines normalize it to. Failing it would be reporting a finding on a correct file (F-41).
-    // ---------------------------------------------------------------------------------------------
 
     private sealed record ServiceDependency(string Service, string DependsOn, string Condition);
 
@@ -186,7 +118,6 @@ public sealed class ComposeDependencyContractTests
 
             if (indent == 2)
             {
-                // A service name: 'web:' with nothing after the colon.
                 insideDependsOn = false;
                 pendingDependency = "";
                 currentService = NameBeforeColon(content);
@@ -200,7 +131,6 @@ public sealed class ComposeDependencyContractTests
 
             if (indent == 4)
             {
-                // A key of the current service. Anything but depends_on closes the block.
                 insideDependsOn = string.Equals(content, "depends_on:", StringComparison.Ordinal);
                 pendingDependency = "";
                 continue;
@@ -213,7 +143,6 @@ public sealed class ComposeDependencyContractTests
 
             if (indent == 6 && content.StartsWith("- ", StringComparison.Ordinal))
             {
-                // List form. Both engines normalize this to service_started.
                 string named = content[2..].Trim();
                 if (named.Length > 0)
                 {
@@ -225,7 +154,6 @@ public sealed class ComposeDependencyContractTests
 
             if (indent == 6)
             {
-                // Mapping form: the dependency's name. Its condition, if any, is the line below.
                 pendingDependency = NameBeforeColon(content);
                 if (pendingDependency.Length > 0)
                 {
@@ -269,7 +197,6 @@ public sealed class ComposeDependencyContractTests
         return indent;
     }
 
-    /// <summary>The text before the first colon, or empty when the line is not 'name:'.</summary>
     private static string NameBeforeColon(string content)
     {
         int colon = content.IndexOf(':', StringComparison.Ordinal);
@@ -281,7 +208,6 @@ public sealed class ComposeDependencyContractTests
         return content[..colon].Trim();
     }
 
-    /// <summary>The first line equal to <paramref name="value"/> at or after <paramref name="from"/>.</summary>
     private static int IndexOfLine(string[] lines, string value, int from)
     {
         for (int index = from; index < lines.Length; index++)
@@ -295,12 +221,6 @@ public sealed class ComposeDependencyContractTests
         return -1;
     }
 
-    /// <summary>
-    /// The first line at or after <paramref name="from"/> whose indentation is exactly
-    /// <paramref name="indent"/> spaces and which carries content — i.e. where the enclosing block
-    /// ends. Returns the line count when the block runs to the end of the file. The same walk
-    /// <c>ConfigurationSurfaceTests</c> uses on this file, deliberately.
-    /// </summary>
     private static int IndexOfIndent(string[] lines, int from, int indent)
     {
         for (int index = from; index < lines.Length; index++)
@@ -341,10 +261,6 @@ public sealed class ComposeDependencyContractTests
         return File.ReadAllText(path);
     }
 
-    /// <summary>
-    /// The same walk up to <c>MyRestaurant.slnx</c> the other contract tests use, and it fails
-    /// rather than skips for the same reason: a check that quietly declines to run is worse than none.
-    /// </summary>
     private static DirectoryInfo FindRepositoryRoot()
     {
         for (DirectoryInfo? candidate = new(AppContext.BaseDirectory);

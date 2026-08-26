@@ -3,72 +3,22 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Deployment;
 
-/// <summary>
-/// One test runner, selected once, and every invocation of <c>dotnet test</c> in the tree spelled for it
-/// (TECHNICAL_SPECIFICATION §16, §16.4, <b>F-97</b>).
-///
-/// <para><b>Why this exists.</b> <c>xunit.v3</c> 4.0.0 installs <c>xunit.v3.mtp-v2</c>, which pins
-/// Microsoft.Testing.Platform 2, and MTP 2 removed the VSTest target for the .NET 10 SDK. So a tree that
-/// bumps the package and keeps <c>Microsoft.NET.Test.Sdk</c> and <c>xunit.runner.visualstudio</c> does not
-/// build at all — it reports <em>Testing with VSTest target is no longer supported…</em> from an MSBuild
-/// targets file inside the NuGet cache, four times, with the project names and nothing about the packages
-/// that caused it. That failure is loud, which is the good case. <b>The quiet one is what this gate is
-/// for:</b> the two mechanisms are selected in four different places — a stanza in <c>global.json</c>, a
-/// package reference per test project, a version pin in <c>Directory.Packages.props</c>, and the command
-/// line in every script and workflow — and each of those can be moved on its own. A tree half-migrated
-/// between runners is a tree where <c>dotnet test</c> means something different depending on which file
-/// somebody last edited.</para>
-///
-/// <para><b>The subject is computed rather than listed</b> (F-47's habit, F-58's lesson). Nothing here
-/// names a test project: every <c>*.Tests.csproj</c> under the tree is found and required to be an
-/// xUnit.net v3 application, so a fifth test project cannot arrive on a different runner while these four
-/// stay right. The same holds for the command lines — every tracked script and workflow is read, rather
-/// than the two files that happen to hold an invocation today.</para>
-///
-/// <para><b>What it deliberately does not assert.</b> That <c>dotnet test</c> was ever run, that MTP was
-/// the runner that answered, or that the SDK on the machine is one that has the mode at all — those are
-/// properties of a host, and a gate that guessed at them from a version string would report findings on
-/// correct trees (F-41). What is closed is the case that happened: one half of a runner migration landing
-/// without the other three.</para>
-///
-/// <para><b>Non-vacuity comes first in each fact, and here it is also the anti-evasion guard.</b> Every
-/// scan below asserts it found its subject before it asserts anything about it: a rename that made this
-/// class unable to find the projects, the scripts or the workflows fails on that rather than passing with
-/// nothing compared, and deleting the last invocation of <c>dotnet test</c> from the repository fails the
-/// same way.</para>
-/// </summary>
 public sealed class TestRunnerContractTests
 {
     private const string SolutionFileName = "MyRestaurant.slnx";
     private const string GlobalConfigurationRelativePath = "global.json";
     private const string PackageVersionsRelativePath = "Directory.Packages.props";
 
-    /// <summary>
-    /// The runner name the .NET 10 SDK reads out of <c>global.json</c>'s <c>test</c> section. Written as
-    /// the literal string rather than assembled, because it is a value the SDK compares and not a label.
-    /// </summary>
     private const string TestingPlatformRunner = "Microsoft.Testing.Platform";
 
-    /// <summary>
-    /// The VSTest half of a test project. Both must be absent from every project file and from the central
-    /// version list — <em>absent</em> rather than merely unreferenced, because a version pin standing ready
-    /// for a package that cannot be used is an invitation with a comment on it.
-    /// </summary>
     private static readonly string[] ProhibitedPackages =
     [
         "Microsoft.NET.Test.Sdk",
         "xunit.runner.visualstudio",
     ];
 
-    /// <summary>The one test framework package this tree takes, versionless (central package management).</summary>
     private const string RequiredPackage = "xunit.v3";
 
-    /// <summary>
-    /// How the MTP mode of <c>dotnet test</c> is given something to run. A path that is not introduced by
-    /// one of these is a VSTest-mode command line: in MTP mode a bare argument is read as a directory to
-    /// search, so <c>dotnet test MyRestaurant.slnx</c> does not fail with a message about the runner — it
-    /// looks for a folder of that name, which is the shape of failure this list exists to prevent.
-    /// </summary>
     private static readonly string[] TargetOptions =
     [
         "--solution",
@@ -76,25 +26,10 @@ public sealed class TestRunnerContractTests
         "--test-modules",
     ];
 
-    /// <summary>
-    /// The VSTest option that has no MTP equivalent and is silently ignored where it is accepted at all.
-    /// <c>--logger "trx"</c> is what CI passed for eight milestones; the report is asked for from the test
-    /// application now, after the <c>--</c>.
-    /// </summary>
     private const string ProhibitedOption = "--logger";
 
-    /// <summary>
-    /// At least this many invocations of <c>dotnet test</c> must be found. Four exist — two in
-    /// <c>.github/workflows/ci.yml</c>, two in <c>scripts/ci_local.sh</c> — and the floor is deliberately
-    /// below that, so a slice that moves one gate around does not fail here for a reason that is not a
-    /// finding, while a tree that had lost every invocation still cannot satisfy the assertion by having
-    /// nothing to check (F-41).
-    /// </summary>
     private const int MinimumInvocations = 3;
 
-    /// <summary>
-    /// The runner is selected once, for the repository, in the file the SDK reads before anything else.
-    /// </summary>
     [Fact]
     public void TheRepositorySelectsTheTestingPlatformRunnerInGlobalJson()
     {
@@ -121,9 +56,6 @@ public sealed class TestRunnerContractTests
         Assert.Equal(TestingPlatformRunner, runner.GetString());
     }
 
-    /// <summary>
-    /// No project carries a VSTest adapter, and no version is pinned for one.
-    /// </summary>
     [Fact]
     public void NothingInTheTreeReferencesOrPinsAVSTestAdapter()
     {
@@ -167,10 +99,6 @@ public sealed class TestRunnerContractTests
                 + " natively; the adapter packages are what MTP 2 refuses on the .NET 10 SDK.");
     }
 
-    /// <summary>
-    /// Every test project is an xUnit.net v3 application: the framework package, and the executable shape
-    /// that comes with it.
-    /// </summary>
     [Fact]
     public void EveryTestProjectIsAnXunitApplication()
     {
@@ -205,10 +133,6 @@ public sealed class TestRunnerContractTests
                 + " one that is not is a project `dotnet test` cannot run in MTP mode.");
     }
 
-    /// <summary>
-    /// Every invocation of <c>dotnet test</c> in a script or a workflow is spelled for the runner the
-    /// repository selected.
-    /// </summary>
     [Fact]
     public void EveryInvocationIsSpelledForTheTestingPlatformMode()
     {
@@ -221,9 +145,6 @@ public sealed class TestRunnerContractTests
             {
                 string trimmed = line.Trim();
 
-                // A comment may quote a command line — the two files this gate is about both explain the
-                // migration in comments that name the old spelling on purpose — so what a line is comes
-                // before what it says.
                 if (trimmed.StartsWith('#'))
                 {
                     continue;
@@ -247,8 +168,6 @@ public sealed class TestRunnerContractTests
                 string[] rest = trimmed[(start + "dotnet test".Length)..]
                     .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-                // Nothing after the verb, or a line continuation: a bare `dotnet test` searches the
-                // current directory, which is exactly what the README documents.
                 if (rest.Length == 0 || rest[0] == "\\")
                 {
                     continue;
@@ -278,38 +197,16 @@ public sealed class TestRunnerContractTests
                 + " for the test application itself go after a `--`.");
     }
 
-    /// <summary>
-    /// Whether an MSBuild file <em>declares</em> a package rather than merely naming it, and the
-    /// distinction is the whole of what keeps this gate off correct trees (F-41, and F-67's standard —
-    /// <em>declared, not merely mentioned</em>). Every one of the four test projects explains in a comment
-    /// which packages left it and why, so a scan for the bare name reports two findings on the tree that
-    /// is right. It is looked for as an <c>Include</c> attribute value; both quote forms are admitted
-    /// because MSBuild accepts both, and a gate that understood one would be a gate about typography.
-    ///
-    /// <para><b>Proven not to fire</b> on a comment naming both prohibited packages, which
-    /// <c>MyRestaurant.Domain.Tests.csproj</c> deliberately contains — so a future version of this helper
-    /// that went back to a substring search fails on arrival rather than quietly bounding its own reach.</para>
-    /// </summary>
     private static bool ReferencesPackage(string projectText, string package)
         => projectText.Contains($"Include=\"{package}\"", StringComparison.Ordinal)
             || projectText.Contains($"Include='{package}'", StringComparison.Ordinal);
 
-    /// <summary>
-    /// Every project file in the tree, build output excluded. <c>bin</c> and <c>obj</c> hold generated
-    /// props and, under the end-to-end project, a shipped shell script — neither is authored text, and a
-    /// gate that read them would report findings that depend on whether somebody had built recently.
-    /// </summary>
     private static string[] ProjectFiles()
         => Authored(Directory.EnumerateFiles(RepositoryRoot(), "*.csproj", SearchOption.AllDirectories));
 
     private static string[] TestProjectFiles()
         => Authored(Directory.EnumerateFiles(RepositoryRoot(), "*.Tests.csproj", SearchOption.AllDirectories));
 
-    /// <summary>
-    /// Every shell script and every workflow, which between them hold every invocation of
-    /// <c>dotnet test</c> this repository makes. <c>README.md</c> is deliberately not read: it documents
-    /// the commands for a person, in prose, and a gate over prose is a gate about typography.
-    /// </summary>
     private static string[] ScriptAndWorkflowFiles()
     {
         string root = RepositoryRoot();
@@ -355,10 +252,6 @@ public sealed class TestRunnerContractTests
         return joined.Length == 0 ? "(none)" : joined;
     }
 
-    /// <summary>
-    /// The same walk up to <c>MyRestaurant.slnx</c> the other contract tests use, and it fails rather
-    /// than skips for the same reason: a check that quietly declines to run is worse than none.
-    /// </summary>
     private static string RepositoryRoot()
     {
         for (DirectoryInfo? candidate = new(AppContext.BaseDirectory);

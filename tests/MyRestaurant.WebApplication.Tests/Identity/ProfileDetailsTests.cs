@@ -3,16 +3,10 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests;
 
-/// <summary>
-/// Verifies the normalization and validation behind the profile page (TECHNICAL_SPECIFICATION §4.6,
-/// §11.6). Pure — no container engine, no HTTP, no database — which is the whole reason this logic
-/// was lifted out of the Razor component.
-/// </summary>
 public sealed class ProfileDetailsTests
 {
     [Theory]
-    // The cast matters: a bare [InlineData(null)] on a single-parameter theory is passed as the
-    // argument *array*, not as one null argument, and xUnit throws at discovery.
+
     [InlineData((string?)null)]
     [InlineData("")]
     [InlineData("   ")]
@@ -37,7 +31,6 @@ public sealed class ProfileDetailsTests
     [Fact]
     public void Normalize_DropsControlCharactersWithoutIntroducingWordBreaks()
     {
-        // A stray NUL or bell in a pasted name must vanish, not become a space: "Ad\0am" is "Adam".
         ProfileDetails details = ProfileDetails.Normalize("Ad\0am\u0007", null, null);
 
         Assert.Equal("Adam", details.DisplayName);
@@ -46,7 +39,6 @@ public sealed class ProfileDetailsTests
     [Fact]
     public void Normalize_KeepsNonAsciiNames()
     {
-        // Nothing here is ASCII-only: the display name is a human name.
         ProfileDetails details = ProfileDetails.Normalize("Zoë Ngô", null, null);
 
         Assert.Equal("Zoë Ngô", details.DisplayName);
@@ -72,15 +64,15 @@ public sealed class ProfileDetailsTests
         => Assert.Empty(ProfileDetails.Normalize(null, emailAddress, null).Validate());
 
     [Theory]
-    [InlineData("adam")]                 // no @
-    [InlineData("@example.com")]         // nothing before the @
-    [InlineData("adam@")]                // nothing after the @
-    [InlineData("adam@@example.com")]    // two @
-    [InlineData("adam@example")]         // undotted domain
-    [InlineData("adam@.example.com")]    // domain begins with a dot
-    [InlineData("adam@example.com.")]    // domain ends with a dot
-    [InlineData("adam@-example.com")]    // domain begins with a hyphen
-    [InlineData("adam baker@example.com")] // the space survives normalization inside the local part
+    [InlineData("adam")]
+    [InlineData("@example.com")]
+    [InlineData("adam@")]
+    [InlineData("adam@@example.com")]
+    [InlineData("adam@example")]
+    [InlineData("adam@.example.com")]
+    [InlineData("adam@example.com.")]
+    [InlineData("adam@-example.com")]
+    [InlineData("adam baker@example.com")]
     public void Validate_RejectsEmailAddressesThatDoNot(string emailAddress)
         => Assert.Single(ProfileDetails.Normalize(null, emailAddress, null).Validate());
 
@@ -94,10 +86,10 @@ public sealed class ProfileDetailsTests
         => Assert.Empty(ProfileDetails.Normalize(null, null, phoneNumber).Validate());
 
     [Theory]
-    [InlineData("call the counter")] // letters
-    [InlineData("+")]                // no digits at all
-    [InlineData("()")]               // still no digits
-    [InlineData("12")]               // fewer than three digits
+    [InlineData("call the counter")]
+    [InlineData("+")]
+    [InlineData("()")]
+    [InlineData("12")]
     public void Validate_RejectsPhoneNumbersThatAreNot(string phoneNumber)
         => Assert.Single(ProfileDetails.Normalize(null, null, phoneNumber).Validate());
 
@@ -124,7 +116,6 @@ public sealed class ProfileDetailsTests
     {
         ProfileDetails details = ProfileDetails.Normalize("Adam Baker", "adam@example.com", "7575550143");
 
-        // A row written before this page existed may carry untrimmed text; that is not a change.
         Assert.True(details.SameAs("  Adam  Baker ", "adam@example.com", "7575550143"));
     }
 
@@ -141,7 +132,6 @@ public sealed class ProfileDetailsTests
     {
         ProfileDetails details = ProfileDetails.Normalize("adam", null, null);
 
-        // Recasing your own name is a real edit and must reach the database.
         Assert.False(details.SameAs("Adam", null, null));
     }
 

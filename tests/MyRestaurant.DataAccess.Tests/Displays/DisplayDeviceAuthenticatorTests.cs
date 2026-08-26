@@ -8,17 +8,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Displays;
 
-/// <summary>
-/// Integration tests for <see cref="DapperDisplayDeviceAuthenticator"/> (TECHNICAL_SPECIFICATION §4.2)
-/// against a real PostgreSQL 17 container. They pin the four sentences §4.2 spends on device auth: the
-/// stored hash is what a presented secret is checked against; <c>revoked_at IS NULL</c> is re-checked on
-/// every request; <c>last_seen_at</c> moves at most once a minute; and a deactivated table does not
-/// un-authenticate the device, it only stops the rendering (§4.1).
-///
-/// <para>Devices are created through the real <see cref="DapperDisplayDevicePairing"/>, so the secret
-/// under test is one the application actually issued. Each test truncates first; own
-/// <see cref="PostgreSqlFixture"/>; every test skips without a container engine.</para>
-/// </summary>
 public sealed class DisplayDeviceAuthenticatorTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private const string SamplePasswordHash =
@@ -106,7 +95,6 @@ public sealed class DisplayDeviceAuthenticatorTests : IClassFixture<PostgreSqlFi
         PairedDevice first = await PairDeviceAsync("Table 3", "First", cancellationToken);
         PairedDevice second = await PairDeviceAsync("Table 4", "Second", cancellationToken);
 
-        // The identifier selects the row; the secret must belong to THAT row.
         Assert.Null(await Authenticator().AuthenticateAsync(first.DeviceIdentifier, second.Secret, cancellationToken));
     }
 
@@ -136,7 +124,6 @@ public sealed class DisplayDeviceAuthenticatorTests : IClassFixture<PostgreSqlFi
             RevokeDisplayDeviceOutcome.Revoked,
             await Pairing().RevokeDeviceAsync(device.DeviceIdentifier, device.AdministratorIdentifier, cancellationToken));
 
-        // §4.2: revocation kills the device on its next request.
         Assert.Null(await Authenticator().AuthenticateAsync(device.DeviceIdentifier, device.Secret, cancellationToken));
         Assert.Null(await Authenticator().RevalidateAsync(device.DeviceIdentifier, cancellationToken));
     }
@@ -156,7 +143,6 @@ public sealed class DisplayDeviceAuthenticatorTests : IClassFixture<PostgreSqlFi
         DisplayDeviceSession? session = await Authenticator()
             .AuthenticateAsync(device.DeviceIdentifier, device.Secret, cancellationToken);
 
-        // The credential is still good — §4.1 stops the *rendering*, it does not unpair the screen.
         Assert.NotNull(session);
         Assert.False(session!.TableIsActive);
     }
@@ -170,17 +156,14 @@ public sealed class DisplayDeviceAuthenticatorTests : IClassFixture<PostgreSqlFi
         PairedDevice device = await PairDeviceAsync("Table 3", "Tablet", cancellationToken);
         Assert.Null(await ReadLastSeenAtAsync(device.DeviceIdentifier, cancellationToken));
 
-        // First sighting always records.
         DateTimeOffset first = _clock.UtcNow;
         Assert.NotNull(await Authenticator().AuthenticateAsync(device.DeviceIdentifier, device.Secret, cancellationToken));
         Assert.Equal(first, await ReadLastSeenAtAsync(device.DeviceIdentifier, cancellationToken));
 
-        // Seconds later — within the resolution — the row must not move (§4.2).
         _clock.UtcNow = first.AddSeconds(30);
         Assert.NotNull(await Authenticator().AuthenticateAsync(device.DeviceIdentifier, device.Secret, cancellationToken));
         Assert.Equal(first, await ReadLastSeenAtAsync(device.DeviceIdentifier, cancellationToken));
 
-        // Past a minute it moves again.
         DateTimeOffset later = first.AddSeconds(61);
         _clock.UtcNow = later;
         Assert.NotNull(await Authenticator().AuthenticateAsync(device.DeviceIdentifier, device.Secret, cancellationToken));
@@ -195,8 +178,6 @@ public sealed class DisplayDeviceAuthenticatorTests : IClassFixture<PostgreSqlFi
 
         PairedDevice device = await PairDeviceAsync("Table 3", "Tablet", cancellationToken);
 
-        // This is the circuit path (§4.2 "or circuit revalidation"): the cookie is out of reach, so the
-        // identifier alone re-checks liveness — and the same touch keeps the heartbeat going.
         DisplayDeviceSession? session = await Authenticator().RevalidateAsync(device.DeviceIdentifier, cancellationToken);
 
         Assert.NotNull(session);
@@ -205,8 +186,6 @@ public sealed class DisplayDeviceAuthenticatorTests : IClassFixture<PostgreSqlFi
 
         Assert.Null(await Authenticator().RevalidateAsync(_identifiers.Create(), cancellationToken));
     }
-
-    // --- helpers -----------------------------------------------------------------------------------
 
     private void SkipIfNoContainer()
         => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
@@ -217,7 +196,6 @@ public sealed class DisplayDeviceAuthenticatorTests : IClassFixture<PostgreSqlFi
 
     private DapperDisplayDeviceAuthenticator Authenticator() => new(_connectionFactory!, _clock);
 
-    /// <summary>Creates a table, an administrator, a code, and redeems it — the whole §4.2 happy path.</summary>
     private async Task<PairedDevice> PairDeviceAsync(string tableLabel, string deviceLabel, CancellationToken cancellationToken)
     {
         Guid tableId = _identifiers.Create();
@@ -242,7 +220,6 @@ public sealed class DisplayDeviceAuthenticatorTests : IClassFixture<PostgreSqlFi
             redeemed.DeviceSecret!);
     }
 
-    /// <summary>Seeds a bare active person (a password, no roles, no obligations) and returns its id.</summary>
     private async Task<Guid> SeedPersonAsync(string username, CancellationToken cancellationToken)
     {
         Guid id = _identifiers.Create();
@@ -270,13 +247,6 @@ public sealed class DisplayDeviceAuthenticatorTests : IClassFixture<PostgreSqlFi
         return id;
     }
 
-    /// <summary>
-    /// Reads <c>last_seen_at</c> straight out of the row. Npgsql materialises a <c>timestamptz</c> as a
-    /// UTC <see cref="DateTime"/>, and Dapper will not convert that to a <see cref="DateTimeOffset"/> —
-    /// <c>ExecuteScalarAsync&lt;DateTimeOffset?&gt;</c> throws <see cref="InvalidCastException"/>. So the
-    /// scalar is read at the type the reader actually hands back and projected here, exactly the way
-    /// DisplayDeviceDirectory, TableDirectory, PersonDirectory, and SittingDirectory do it.
-    /// </summary>
     private async Task<DateTimeOffset?> ReadLastSeenAtAsync(Guid deviceIdentifier, CancellationToken cancellationToken)
     {
         await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);

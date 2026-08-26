@@ -8,36 +8,6 @@
 @inject RestaurantOptions Options
 @inject RestaurantTime RestaurantClock
 
-@* The event explorer (TECHNICAL_SPECIFICATION §11.4).
-
-   §11.4's list of administration sections ends with it, in these words: "Event explorer (filter
-   security/order/menu events by subject, actor, type, and time)". It is the last thing M5 owes, and the
-   only screen in the system that reads across subsystems: every other page answers a question about one
-   account, one table, one sitting, or one item, and this one answers "what happened".
-
-   Read-only, and deliberately so. There is no control on this page that changes anything — no unhide, no
-   close, no reset. Every row links to the screen that owns the thing it is about, and that screen has
-   the buttons. An audit log with edit affordances on it is a different and much worse object.
-
-   Static SSR, like every administration surface. The filter is a plain GET form, because a filter is a
-   bookmarkable question rather than a mutation: no antiforgery token, no handler, no POST, and every
-   narrowing affordance on a row is an ordinary link that works with no JavaScript. The parsing and the
-   URL-building live in EventExplorerQuery rather than here, which is what lets both be tested without a
-   browser or a container — the thing HiddenRecords' identical inline logic cannot be.
-
-   §11.12, Stage 1b: the page head and the filter are the shared vocabulary now (`.page-head`,
-   `AdministrationAreaLinks`, `.filter-form`, `.filter-actions` — all in app.css), and the five
-   hand-rolled area links that used to sit in a `.admin-header-actions` div are gone. This page was one
-   of the last two carrying that copy: each of the six copies omitted its own page, so the row was a
-   different row on every screen and no page was reachable from every other. The `.event-*` rules that
-   remain are read by this page alone — a badge palette and an event row — which is what an inline
-   <style> is for here. It contains no media query, and cannot: §11.12's one breakpoint is a rule about
-   the tree rather than about app.css, and for a slice it was asserted only about app.css (F-63).
-
-   §6.8's order_visibility_event is deliberately not a fourth stream: §11.4 names three, and gives
-   visibility its own screen at /administration/hidden-records, where its log sits beside the order it is
-   about and next to the Unhide button that is its only counterpart. *@
-
 <PageTitle>Administration — events</PageTitle>
 
 <section class="panel panel-wide">
@@ -61,7 +31,6 @@
         <p class="status-error" role="alert">@problem</p>
     }
 
-    @* ---- the filter (§11.4: subject, actor, type, time) --------------------------------------------- *@
     <form class="filter-form" method="get" action="@EventExplorerQuery.BasePath">
         <fieldset class="filter-fieldset">
             <legend>Streams</legend>
@@ -152,7 +121,6 @@
         </div>
     </form>
 
-    @* ---- the list ------------------------------------------------------------------------------------ *@
     @if (_events is null)
     {
         <p class="record-empty">Loading…</p>
@@ -200,8 +168,6 @@
 
                         @if (entry.SequenceNumber is { } sequenceNumber)
                         {
-                            @* §6.6's per-order position. Two events on one order are only comparable by
-                               this, never by their timestamps, which can tie. *@
                             <text> · event #@sequenceNumber</text>
                         }
 
@@ -224,9 +190,6 @@
                         }
                         else
                         {
-                            @* security_event.actor_person_identifier is the one nullable actor column in
-                               the three tables (§8.2): NULL means the subject acted on themselves, or
-                               nobody did — a lockout, a failed sign-in. *@
                             <span class="event-muted">
                                 no actor recorded — the subject acted on themselves, or the system did
                             </span>
@@ -250,18 +213,6 @@
     <p><a href="/administration">Back to people</a></p>
 </section>
 
-@* What is left after Stage 1b: a badge palette and an event row, read by this page and nothing else.
-   The page head, the filter, the count line and the empty state are the shared §11.12 vocabulary in
-   app.css now, and the twelve lines of `.event-filter` that used to be here were the second of two
-   inline copies of one shape.
-
-   App.razor links the static wwwroot/app.css rather than the component-scoped bundle, so component CSS
-   isolation is not active here; a rule exactly one page reads may stay inline, and a width media query
-   may not, in any component, ever (§11.12, F-63).
-
-   `--ink-soft` rather than `--muted-foreground`: the latter was never declared in :root, so every rule
-   here that named it was silently falling through to its literal fallback and this page's greys were a
-   different grey from every other page's. *@
 <style>
     .event-list {
         list-style: none;
@@ -285,14 +236,6 @@
         margin: 0;
     }
 
-    /*
-     * All five of these were literals until F-68, and all five were NEAR-copies of a palette value
-     * rather than exact ones — a near-black that was not `--ink`, a neutral tint that was not
-     * `--chip-surface`, and three role tints a few bits off `--danger-surface`, the accent tint and
-     * `--caution-surface`. That is the harder half of the finding: an exact copy is a duplicate and a
-     * near copy is a decision nobody made. Each badge now takes the tint of the role it names, which
-     * is a set somebody can explain — neutral, danger, accent, caution — and all five shift slightly.
-     */
     .event-stream-badge {
         font-size: 0.7rem;
         text-transform: uppercase;
@@ -321,14 +264,6 @@
         font-weight: 600;
     }
 
-    /*
-     * No `margin-left: auto`, which is what this rule used to open with. Inside a wrapping flex row
-     * that pushes the time to the right-hand edge of whichever line it lands on, so on a handset it
-     * ended up alone on its own line, far from the event it timestamps — the wide layout taken as the
-     * default, which is the direction §11.12 exists to reverse. It reads correctly at every width as
-     * the third thing on the line, and needs no breakpoint to do it, which is the better answer than
-     * moving a rule one page reads into the shared query (F-63).
-     */
     .event-when {
         font-size: 0.8rem;
         font-variant-numeric: tabular-nums;
@@ -366,13 +301,6 @@
 </style>
 
 @code {
-    /// <summary>
-    /// How many events the list will draw. §11.4's rule is that administration sees everything and
-    /// narrows "only on explicit request", so this is a rendering bound rather than a filter: when it is
-    /// reached the page says so and points at the filter, instead of quietly answering a smaller
-    /// question. Larger than the hidden-records cap because these three logs are the busiest tables in
-    /// the database and a day's worth of one service can pass a hundred rows before lunch.
-    /// </summary>
     private const int ListCap = 200;
 
     private EventExplorerQuery _query = default!;
@@ -407,11 +335,6 @@
         _events = await Explorer.ListAsync(_query.Filter, ListCap, HttpContext.RequestAborted);
     }
 
-    /// <summary>
-    /// The line above the list. It says whether the count is the whole truth: at <see cref="ListCap"/>
-    /// there may be more, and §11.4 means the page has to admit that rather than let a round number look
-    /// like an answer.
-    /// </summary>
     private string CountSentence(int count)
     {
         string noun = count == 1 ? "event" : "events";
@@ -422,18 +345,11 @@
             : $"{count} {noun} {scope}.";
     }
 
-    /// <summary>The badge link: this same view, restricted to the row's own stream.</summary>
     private string OnlyThisStreamPath(ExplorerEvent entry) => _query.PathWithStreams(
         entry.Stream == EventStream.Security,
         entry.Stream == EventStream.Order,
         entry.Stream == EventStream.Menu);
 
-    /// <summary>
-    /// Where the row's subject lives. Security and menu events name their subject directly; an order
-    /// event's subject is one guest's order, and the screen that renders an order in full is its
-    /// sitting's (§11.4), so that is where it points. A stream this build does not know about gets no
-    /// link rather than a guessed one.
-    /// </summary>
     private static string? SubjectPath(ExplorerEvent entry) => entry.Stream switch
     {
         EventStream.Security => $"/administration/people/{entry.SubjectIdentifier}",
@@ -452,12 +368,6 @@
         _ => stream,
     };
 
-    /// <summary>
-    /// A friendly label for the row, chosen by stream. Every branch falls back to the stored string, and
-    /// so does the stream switch itself: §11.4 requires this screen to render what is actually in the
-    /// tables, and a word this build has not caught up with must appear as itself rather than as a lie or
-    /// a crash. The same rule, and mostly the same words, as ManageSitting's and HiddenRecords'.
-    /// </summary>
     private static string DescribeEvent(ExplorerEvent entry) => entry.Stream switch
     {
         EventStream.Security => DescribeSecurityEventType(entry.EventType),
@@ -466,11 +376,6 @@
         _ => entry.EventType,
     };
 
-    /// <summary>
-    /// The nineteen <c>security_event.event_type</c> values §8.2's CHECK admits (§3.4–§3.7). "TOTP" is
-    /// spelled "authenticator" here for the same reason the enrollment pages spell it that way: the
-    /// person reading this screen manages a restaurant, and the acronym is a protocol name.
-    /// </summary>
     private static string DescribeSecurityEventType(string eventType) => eventType switch
     {
         "account_created" => "Account created",
@@ -495,7 +400,6 @@
         _ => eventType,
     };
 
-    /// <summary>The five <c>order_event.event_type</c> values, in HiddenRecords' words.</summary>
     private static string DescribeOrderEventType(string eventType) => eventType switch
     {
         "guest_submission" => "Guest send",
@@ -506,7 +410,6 @@
         _ => eventType,
     };
 
-    /// <summary>The five <c>menu_item_event.event_type</c> values (§7, §8.2).</summary>
     private static string DescribeMenuEventType(string eventType) => eventType switch
     {
         "created" => "Item created",
@@ -517,10 +420,6 @@
         _ => eventType,
     };
 
-    /// <summary>
-    /// The four <c>order_event.actor_role</c> values. <c>guest</c> is a capacity rather than a stored
-    /// role (§0, §3.7) — an administrator eating lunch appears here as a guest, and that is correct.
-    /// </summary>
     private static string DescribeActorRole(string actorRole) => actorRole switch
     {
         "guest" => "a guest",

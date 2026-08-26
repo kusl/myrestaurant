@@ -3,45 +3,8 @@ using Microsoft.Playwright;
 
 namespace MyRestaurant.EndToEnd.Tests.Harness;
 
-/// <summary>
-/// Something an administrator put on the menu (§7): the identifier the guest picker's card carries in
-/// <c>data-menu-item</c>, and the name every surface — the guest's basket, the kitchen ticket, the bill —
-/// reads.
-///
-/// <para>The description is deliberately <b>not</b> a member. What was typed into the form is the
-/// arrangement; what the guest surface shows is the assertion, and <c>MenuCard</c> is where a scenario
-/// reads it. Carrying it here would invite a scenario to compare the surface against this record instead
-/// of against the sentence it passed in, which is a test comparing a value to itself.</para>
-/// </summary>
 internal sealed record MenuItemOnTheMenu(Guid Identifier, string Name, decimal PriceAmount);
 
-/// <summary>
-/// One heading as <c>/administration/menu</c> renders it since M6 Slice 44 (§7, §11.4): its name, whether
-/// guests can see it, and the items filed under it in the order they appear beneath it.
-///
-/// <para><b><see cref="ItemNames"/> may be empty, and that is the member this record exists for.</b> The
-/// index used to be built from items, so a heading with nothing under it appeared on no surface at all;
-/// it is now a group with a sentence saying it is empty. An empty list here therefore means *the surface
-/// rendered this heading and said it holds nothing*, which is a different fact from a heading the page
-/// never rendered — and a caller distinguishes the two by whether the name is in the list at all.</para>
-///
-/// <para><see cref="IsVisibleToGuests"/> is read off the chip rather than inferred from anything, because
-/// the chip is where §7's asymmetry is stated to the administrator: an inactive heading is hidden from the
-/// guest entirely, which is the opposite of what the same flag does to an item one table away.</para>
-///
-/// <para><b><see cref="OffersMoveUp"/> and <see cref="OffersMoveDown"/> are <em>enabled</em>-ness, not
-/// presence, and the distinction is §11.4's ruling rather than a convenience.</b> The first heading's Up
-/// and the last heading's Down are rendered <b>disabled rather than omitted</b>, because a control that
-/// vanishes at the edge of a list moves every other control up a row on the render after a move — and
-/// §16.3 scenario 16 measures where controls are. So presence is asserted by
-/// <c>ReadMenuIndexAsync</c> itself, which refuses a group that renders anything other than two of them;
-/// what these two members carry is which of the two a person can actually press.</para>
-/// </summary>
-/// <param name="Name">The heading, as the summary line declares it.</param>
-/// <param name="IsVisibleToGuests">True when the group carries the <c>Visible to guests</c> chip.</param>
-/// <param name="ItemNames">The items under it, in rendered order; empty where the group says it is empty.</param>
-/// <param name="OffersMoveUp">True when the group's Up control is rendered <em>and</em> enabled.</param>
-/// <param name="OffersMoveDown">True when the group's Down control is rendered <em>and</em> enabled.</param>
 internal sealed record MenuHeadingOnTheIndex(
     string Name,
     bool IsVisibleToGuests,
@@ -49,113 +12,32 @@ internal sealed record MenuHeadingOnTheIndex(
     bool OffersMoveUp,
     bool OffersMoveDown);
 
-/// <summary>
-/// The roles §3.7's create-staff form offers, as the flags an administrator ticks. A flags enum rather
-/// than three booleans at every call site, because "counter only" and "counter and kitchen" are the two
-/// interesting shapes and a scenario should be able to say which it means.
-///
-/// <para><c>guest</c> is deliberately absent, and so is <c>table_display</c>: the first is the implicit
-/// capacity of any authenticated person on their own order and the second is a device principal —
-/// neither is a stored role, which is exactly what <c>RestaurantRoles</c> says.</para>
-/// </summary>
 [Flags]
 internal enum StaffRoles
 {
-    /// <summary>No role at all. §3.7: such an account "behaves like a guest until a role is granted".</summary>
     None = 0,
 
-    /// <summary>Close and settle sittings, adjust prices, show a table's join QR.</summary>
     Counter = 1,
 
-    /// <summary>Fulfil lines, edit orders, turn menu items off and on.</summary>
     Kitchen = 2,
 
-    /// <summary>Everything, including the administration area itself.</summary>
     Administrator = 4,
 }
 
-/// <summary>
-/// A staff account an administrator created (§3.7), with the temporary password the surface showed once.
-///
-/// <para><b>The temporary password is the interesting field, and it is fragile by design.</b>
-/// <c>CreateStaff.razor</c> generates it, hashes it immediately, and writes the plaintext into exactly
-/// one HTTP response — there is no second chance to read it and nothing in the database that could
-/// answer the question later. So the journey that creates the account is also the only place that can
-/// capture it.</para>
-///
-/// <para>It is not the password the account ends up with. The row is written with
-/// <c>must_change_password</c>, so §3.5's pipeline forces a real one before the account can reach any
-/// authenticated endpoint — see <see cref="AccountJourneys.SignInWithPasswordAsync"/> and
-/// <see cref="AccountJourneys.CompleteForcedPasswordChangeAsync"/>. Those are two calls rather than one
-/// because the page a staff member lands on in between is itself worth asserting on: a §3.7 account that
-/// walked straight past the obligation would be a hole rather than a convenience.</para>
-/// </summary>
 internal sealed record StaffAccount(
     Guid PersonIdentifier,
     string Username,
     string DisplayName,
     string TemporaryPassword);
 
-/// <summary>
-/// What an administrative credential reset (§3.7) handed back: the temporary password the panel showed
-/// once, and whether the account had an authenticator that was cleared with it.
-///
-/// <para><see cref="ClearedAuthenticator"/> is read off the panel's own sentence rather than inferred.
-/// §3.7 makes the TOTP half <em>conditional</em> — <c>ResetCredentialsAsync</c> probes
-/// <c>totp_secret_protected</c> and only then nulls it, deletes the recovery codes, sets
-/// <c>must_enroll_totp</c> and records <c>totp_cleared_by_administrator</c> — so the flag is the
-/// difference between the reset §16.3 scenario 12 is about and a password-only one that would leave the
-/// scenario's second obligation permanently unreachable. A caller asserting on it is asserting that the
-/// account really was enrolled at the moment the administrator pressed the button.</para>
-///
-/// <para>Like <see cref="StaffAccount.TemporaryPassword"/>, the password here exists in exactly one HTTP
-/// response and nowhere else — <c>ManagePerson.razor</c> generates it, hashes it, and renders the
-/// plaintext without a redirect precisely so there is no second chance to read it.</para>
-/// </summary>
 internal sealed record CredentialReset(string TemporaryPassword, bool ClearedAuthenticator);
 
-/// <summary>
-/// One account as §3.7's management surface describes it: the chips under Status, the roles it holds, and
-/// the credentials it carries.
-///
-/// <para><b>Chips rather than columns, deliberately.</b> Every fact here has a row in <c>person</c> that
-/// a fixture could read directly, and reading it directly would prove nothing about §3.7: that
-/// <c>must_change_password</c> is set is one claim, and that an administrator can <em>see</em> it is
-/// another, and only the second is a product behaviour. The same argument applies in reverse to
-/// <see cref="Credentials"/>, which is derived rather than stored — "Authenticator" appears iff
-/// <c>totp_secret_protected IS NOT NULL</c> (§3.4 has no enrolled column), so the absence of that chip
-/// after a reset is the surface agreeing that the secret is gone.</para>
-///
-/// <para>An empty list means the surface said "None" in prose rather than in a chip: no role at all
-/// ("None (guest)"), or no credentials. Both are rendered as a <c>span.muted</c>, which is not a chip
-/// and is not collected — so <c>Roles.Count == 0</c> reads as "a guest" and not as "the reader
-/// missed them".</para>
-/// </summary>
 internal sealed record ManagedAccount(
     string Username,
     IReadOnlyList<string> StatusChips,
     IReadOnlyList<string> Roles,
     IReadOnlyList<string> Credentials);
 
-/// <summary>
-/// The administration journeys the §16.3 scenarios walk: creating a table, issuing a display pairing
-/// code, rotating a table's join secret, putting something on the menu, and — on the people side —
-/// creating a staff account, reading one's facts back, and resetting its credentials
-/// (TECHNICAL_SPECIFICATION §3.7, §4.1, §4.2, §7, §11.4).
-///
-/// <para>All of them go through the real static-SSR administration surfaces on a page that is signed in as
-/// an administrator, because that is what the scenarios are about — "admin creates table" in §16.3 means
-/// the form, the antiforgery token, the endpoint authorization and the redirect, not an
-/// <c>INSERT</c>. The one place these scenarios do reach past the UI is reading a <c>join_secret</c>
-/// (<see cref="RestaurantInstance.ReadJoinSecretAsync"/>), and only because §4.1 makes it deliberately
-/// unreachable from every surface — which is the property under test rather than an obstacle to it.</para>
-///
-/// <para><b>This block sat at the top of the file until F-114</b>, as a second
-/// <c>&lt;summary&gt;</c> element stacked above <see cref="MenuItemOnTheMenu"/>'s. C# has no
-/// file-level documentation comment: a <c>///</c> block binds to the next declaration whatever it
-/// was written about, and two <c>&lt;summary&gt;</c> elements in one block are accepted in
-/// silence — so this class carried none and a three-member record carried two.</para>
-/// </summary>
 internal static class AdministrationJourneys
 {
     private const string TablesPath = "/administration/tables";
@@ -164,35 +46,10 @@ internal static class AdministrationJourneys
 
     private const string MenuSectionsPath = MenuPath + "/sections";
 
-    /// <summary>
-    /// The heading <see cref="CreateMenuItemAsync"/> files an item under when a scenario does not say.
-    ///
-    /// <para><b>A default exists so that <c>0005</c> reached one file instead of sixteen.</b> §7 makes an
-    /// item's section mandatory, and six of the §16.3 scenarios put something on the menu without caring
-    /// what it is filed under — they are about ordering, settlement and reachability. Threading a section
-    /// through every one of them would be sixteen edits to say a thing none of them means. So the journey
-    /// arranges a heading on their behalf, exactly as it has always arranged the form's antiforgery token
-    /// and its redirect.</para>
-    ///
-    /// <para>Named for what it is rather than something plausible like "Mains": a scenario reading this
-    /// word off a surface should not be able to mistake it for a decision the scenario made.</para>
-    /// </summary>
     internal const string DefaultMenuSectionName = "E2E Section";
 
-    /// <summary>
-    /// The element that carries the one-time temporary password on the create-staff success panel. A
-    /// class of its own as of M6 Slice 12: the element also carries <c>.totp-secret</c>, which it
-    /// borrowed for the monospaced treatment, and reading a password out of something named for a TOTP
-    /// secret is a dependency that breaks silently the day that page grows a real authenticator panel.
-    /// </summary>
     private const string TemporaryPasswordSelector = "p.staff-temporary-password";
 
-    /// <summary>
-    /// Creates a table through <c>/administration/tables/new</c> (§4.1) and returns its identifier,
-    /// taken from the "Manage this table" link on the success panel. Reading it back out of the page is
-    /// deliberate: the identifier is minted server-side, so a scenario that recovers it this way is
-    /// testing the surface rather than reimplementing it.
-    /// </summary>
     internal static async Task<Guid> CreateTableAsync(IPage page, string label)
     {
         ArgumentNullException.ThrowIfNull(page);
@@ -230,14 +87,6 @@ internal static class AdministrationJourneys
         return tableIdentifier;
     }
 
-    /// <summary>
-    /// Issues a one-time display pairing code from <c>/administration/tables/{table}/displays</c> (§4.2)
-    /// and returns the plaintext.
-    ///
-    /// <para>The surface renders the code <em>in place</em> rather than through a redirect, precisely
-    /// because this is the only moment the plaintext exists — only its SHA-256 hash is stored. So there
-    /// is no post/redirect/get to wait on here, just the panel appearing.</para>
-    /// </summary>
     internal static async Task<string> IssuePairingCodeAsync(IPage page, Guid tableIdentifier)
     {
         ArgumentNullException.ThrowIfNull(page);
@@ -268,16 +117,6 @@ internal static class AdministrationJourneys
         return issued;
     }
 
-    /// <summary>
-    /// Rotates a table's join secret from its management page (§4.1) and returns once the application has
-    /// confirmed it.
-    ///
-    /// <para>Waiting for the confirmation is load-bearing rather than decorative. Rotation is a
-    /// post/redirect/get, so the click returns as soon as the POST is issued; a scenario that read the new
-    /// secret out of the database immediately afterwards could read the old one and then spend its
-    /// remaining minute failing to explain why. The flash text is matched, not merely its presence,
-    /// because a rename or an activation change flashes through the same element.</para>
-    /// </summary>
     internal static async Task RotateJoinSecretAsync(IPage page, Guid tableIdentifier)
     {
         ArgumentNullException.ThrowIfNull(page);
@@ -307,25 +146,6 @@ internal static class AdministrationJourneys
         }
     }
 
-    /// <summary>
-    /// Puts a heading on the menu through <c>/administration/menu/sections/new</c> (§7, §11.4) and
-    /// returns its identifier, taken from the "Manage this section" link on the success panel.
-    ///
-    /// <para><b>This journey read the identifier off the item form's <c>&lt;option value&gt;</c> for one
-    /// slice, and the shape it has now is the one it was always going to have.</b> Slice 40 shipped the
-    /// create page without an editor, so a section's success panel had no management page to link to and
-    /// the only place its identifier appeared anywhere was the picker on a different form. That was
-    /// reading the surface rather than reaching past it — which is what §16.3 asks for — and it was
-    /// recorded at the time as a shape that goes away when the editor exists. It does, here.</para>
-    ///
-    /// <para>Recovering it from a "Manage this…" link is what <see cref="CreateTableAsync"/>,
-    /// <see cref="CreateMenuItemAsync"/> and <see cref="CreateStaffAccountAsync"/> all do, and the reason
-    /// is the same for all four: the identifier is minted server-side, so a scenario that recovered it any
-    /// other way would be reimplementing the surface.</para>
-    ///
-    /// <para>Throws when the name is already taken. <see cref="EnsureMenuSectionAsync"/> is the idempotent
-    /// one — a scenario that means "create this" wants to hear that it did not.</para>
-    /// </summary>
     internal static async Task<Guid> CreateMenuSectionAsync(
         IPage page,
         string name,
@@ -337,9 +157,6 @@ internal static class AdministrationJourneys
 
         await page.FillAsync("#name", name);
 
-        // Filled unconditionally, including with the empty string, for the reason CreateMenuItemAsync
-        // fills the description that way: a form reached twice in one scenario keeps what was typed the
-        // first time, so skipping the fill would silently attach the previous section's description.
         await page.FillAsync("#description", description ?? string.Empty);
 
         await page.ClickAsync("button:has-text('Create section')");
@@ -372,21 +189,6 @@ internal static class AdministrationJourneys
         return menuSectionIdentifier;
     }
 
-    /// <summary>
-    /// Switches a heading on or off from <c>/administration/menu/sections/{id}</c> (§7) and returns once
-    /// the surface agrees it moved.
-    ///
-    /// <para><b>Through the editor, because the rule under test is not a database rule.</b> §7's asymmetry
-    /// — an inactive <em>section</em> is hidden from the guest entirely, where an inactive <em>item</em>
-    /// stays visible and marked — is asserted at the data layer by <c>MenuDirectoryTests</c>, and what no
-    /// unit test can see is whether the guest's menu actually loses the heading. That needs a real flip
-    /// through a real form, which is what this is; the assertion cut from scenario 17 in Slice 40 was cut
-    /// precisely because this journey could not exist yet.</para>
-    ///
-    /// <para>The wait is on the chip rather than on the flash, because the flash is copy and the chip is
-    /// the fact — and because a no-op flip redirects without one, which is a state this method should
-    /// report as success rather than time out on.</para>
-    /// </summary>
     internal static async Task SetMenuSectionVisibilityAsync(
         IPage page,
         Guid menuSectionIdentifier,
@@ -403,8 +205,6 @@ internal static class AdministrationJourneys
 
         if (await control.CountAsync() == 0)
         {
-            // Already in the requested state: the page renders one of the two forms, never both. Nothing
-            // to press and nothing wrong, which is the same reading the surface itself takes.
             return;
         }
 
@@ -425,15 +225,6 @@ internal static class AdministrationJourneys
         }
     }
 
-    /// <summary>
-    /// Makes sure a heading with this name exists, and returns its identifier — creating it when it does
-    /// not and finding it when it does.
-    ///
-    /// <para><b>Idempotent by looking first rather than by swallowing a failure.</b> The alternative —
-    /// submit, and treat "that name is taken" as success — would also pass on a form that reported the
-    /// wrong error, and §7's names are <c>citext</c>-unique, so "taken" is a real outcome this project
-    /// asserts elsewhere rather than something to catch and discard.</para>
-    /// </summary>
     internal static async Task<Guid> EnsureMenuSectionAsync(IPage page, string name)
     {
         ArgumentNullException.ThrowIfNull(page);
@@ -442,22 +233,6 @@ internal static class AdministrationJourneys
             ?? await CreateMenuSectionAsync(page, name);
     }
 
-    /// <summary>
-    /// The identifier of the section with this name, or <c>null</c> when the item form offers none —
-    /// which is also the answer on a fresh instance, where that form renders its "give the menu a
-    /// heading first" panel and has no picker at all.
-    ///
-    /// <para>This is a <em>lookup</em> and stays one. <see cref="CreateMenuSectionAsync"/> used to borrow
-    /// it to recover the identifier of a section it had just made, because a section had no management
-    /// page to link to; it now reads its own success panel like every other create journey here, which
-    /// leaves this method doing the one thing it was written for — answering "does a heading with this
-    /// name already exist" for <see cref="EnsureMenuSectionAsync"/>.</para>
-    ///
-    /// <para>Matched on the option's text with the surface's own inactive suffix allowed for, and
-    /// compared case-insensitively because <c>menu_section.name</c> is <c>citext</c>: "drinks" and
-    /// "Drinks" are one heading, so a harness that treated them as two would arrange a duplicate the
-    /// database is about to refuse.</para>
-    /// </summary>
     private static async Task<Guid?> FindMenuSectionAsync(IPage page, string name)
     {
         await page.GotoAsync($"{MenuPath}/new");
@@ -495,40 +270,8 @@ internal static class AdministrationJourneys
         return null;
     }
 
-    /// <summary>
-    /// What <c>CreateMenuItem.razor</c> appends to an inactive section's option label (§7 — an inactive
-    /// heading is hidden from the guest and offered to the administrator). Declared once here because two
-    /// methods above strip it, and a second spelling of it would make one of them silently stop matching.
-    /// </summary>
     private const string InactiveSectionSuffix = "(hidden from guests)";
 
-    /// <summary>
-    /// Puts an item on the menu through <c>/administration/menu/new</c> (§7) and returns it, identifier
-    /// included — read back out of the "Manage this item" link the same way
-    /// <see cref="CreateTableAsync"/> recovers a table's, because the identifier is minted server-side
-    /// and a scenario that recovered it any other way would be reimplementing the surface.
-    ///
-    /// <para>The identifier is the part that matters downstream. The guest's picker renders one card per
-    /// item whose visible text is the name, the <em>formatted</em> price and, for a deactivated item, §7's
-    /// availability chip — so a scenario choosing by what it can read would be matching on money formatting
-    /// and on availability copy. The card carries the bare identifier in <c>data-menu-item</c>, and that is
-    /// what <see cref="TableOrderJourneys.ChooseAsync"/> clicks. Until M6 Slice 39 the picker was a
-    /// <c>&lt;select&gt;</c> and the identifier was an <c>&lt;option&gt;</c>'s <c>value</c>; the shape
-    /// changed and this reasoning did not.</para>
-    ///
-    /// <para><b>The description is optional here because it is optional in §7</b>, and passing it is how a
-    /// scenario arranges an item that has something for the guest surface to show. A blank one stores
-    /// <c>""</c> and writes no <c>description_changed</c> event at all, which is the no-op rule rather than
-    /// a special case — so "created without a description" is a real arrangement and not merely the absence
-    /// of one.</para>
-    ///
-    /// <para><b>The section is arranged before the form is opened, and that is what <c>0005</c> costs a
-    /// caller.</b> §7 requires every item to be under a heading, and the create form renders a first-use
-    /// panel instead of a form when there are none — so a journey that went straight to
-    /// <c>/administration/menu/new</c> on a fresh instance would find no <c>#name</c> field and fail with
-    /// a timeout naming the wrong thing. <see cref="EnsureMenuSectionAsync"/> runs first, tolerating a
-    /// name already taken, so this stays callable any number of times in one scenario.</para>
-    /// </summary>
     internal static async Task<MenuItemOnTheMenu> CreateMenuItemAsync(
         IPage page,
         string name,
@@ -542,18 +285,10 @@ internal static class AdministrationJourneys
 
         await page.GotoAsync($"{MenuPath}/new");
 
-        // Selected by VALUE rather than by label, because the label an inactive section renders carries
-        // §7's "(hidden from guests)" suffix — so matching on the visible text would make this journey
-        // depend on a surface's copy, which is the same mistake choosing a guest menu item by its
-        // formatted price would be.
         await page.SelectOptionAsync("#menu-section", sectionIdentifier.ToString("D"));
 
         await page.FillAsync("#name", name);
 
-        // Filled unconditionally, including with the empty string, for the reason TableOrderJourneys fills
-        // the customization note that way: a form reached twice in one scenario keeps what was typed the
-        // first time, so skipping the fill would silently attach the previous item's description to this
-        // one.
         await page.FillAsync("#description", description ?? string.Empty);
 
         await page.FillAsync("#price", priceAmount.ToString("0.00", CultureInfo.InvariantCulture));
@@ -587,25 +322,6 @@ internal static class AdministrationJourneys
         return new MenuItemOnTheMenu(menuItemIdentifier, name, priceAmount);
     }
 
-    /// <summary>
-    /// Files an existing item under another heading from <c>/administration/menu/{id}</c> (§7) and returns
-    /// once the surface agrees it moved.
-    ///
-    /// <para><b>Through the item's own form, because the rule under test is not a database rule.</b> That
-    /// a move appends to the end of its new heading is asserted against a real PostgreSQL by
-    /// <c>MenuAdministrationTests</c>. What no unit test can see is whether a guest already looking at the
-    /// menu watches the card change groupings — which needs a real form, a real commit and the §9
-    /// broadcast that follows it.</para>
-    ///
-    /// <para>Selected by <b>value</b> rather than by label, for the reason
-    /// <see cref="CreateMenuItemAsync"/> gives: an inactive heading renders §7's <em>(hidden from guests)</em>
-    /// suffix, so matching on the visible text would make this journey depend on a surface's copy.</para>
-    ///
-    /// <para>The wait is on the <b>Section link in the facts grid</b> rather than on the flash. The link's
-    /// <c>href</c> is the heading the item is now under, read back off the row this page just re-queried,
-    /// where the flash is copy — and a no-op refile redirects with a different word, which this method
-    /// should report as success rather than time out on.</para>
-    /// </summary>
     internal static async Task MoveMenuItemToSectionAsync(
         IPage page,
         Guid menuItemIdentifier,
@@ -636,36 +352,6 @@ internal static class AdministrationJourneys
         }
     }
 
-    /// <summary>
-    /// Moves one heading one place up or down the menu by pressing the control at the foot of its group
-    /// on <c>/administration/menu</c> (§7, §11.4), and returns once the surface confirms it committed.
-    ///
-    /// <para><b>This is the first thing in the repository that presses a resequencing control, and the
-    /// gap it closes was carried by name for thirteen slices.</b> §16.3 scenario 16 has measured these
-    /// buttons since Slice 47 — where they sit, how tall they are, that they are inside a 375px viewport
-    /// — and nothing had ever pressed one. What only a browser can say is that the whole-ordering POST
-    /// dispatches to the group that owns it: every heading renders two static-SSR forms, so a menu with
-    /// eight headings carries sixteen distinct <c>@formname</c> values, and a page that routed a press to
-    /// the wrong one would move the wrong heading and report success.</para>
-    ///
-    /// <para><b>The group is found by its own <em>Manage this heading</em> link, and the item journey
-    /// below by the row's own management link.</b> An exact <c>href</c> match on
-    /// <c>/administration/menu/sections/{id}</c> is the only thing in a group keyed on the identifier —
-    /// matching on the heading's visible name would make this journey depend on copy, which is the
-    /// mistake choosing a guest menu card by its formatted price would be, and the item rows' links are a
-    /// different route so they cannot collide.</para>
-    ///
-    /// <para><b>Blazor's reserved <c>_handler</c> field was the obvious alternative and is refused.</b>
-    /// Static SSR renders each <c>@formname</c> into a hidden input, so
-    /// <c>input[value='menu-section-move-up-{id}']</c> would name the exact form — and it would make a
-    /// harness selector depend on a framework's private wire format rather than on anything §11.4
-    /// promises. What is read here is what an operator sees.</para>
-    ///
-    /// <para><b>A disabled control is refused immediately rather than clicked.</b> Playwright waits for a
-    /// control to become enabled and then times out, so pressing the first heading's Up would cost thirty
-    /// seconds and report a timeout on a page that is behaving exactly as §11.4 specifies. This says so in
-    /// one line instead.</para>
-    /// </summary>
     internal static async Task MoveMenuHeadingAsync(IPage page, Guid menuSectionIdentifier, bool up)
     {
         ArgumentNullException.ThrowIfNull(page);
@@ -704,23 +390,6 @@ internal static class AdministrationJourneys
                 $"'{label}' on heading {menuSectionIdentifier:D}"));
     }
 
-    /// <summary>
-    /// Moves one item one place up or down <b>within its own heading</b>, by pressing the control on its
-    /// row on <c>/administration/menu</c> (§7, §11.4), and returns once the surface confirms it committed.
-    ///
-    /// <para><b>Within its heading is the whole of what makes this a second journey rather than an
-    /// argument to the one above.</b> §7 makes a position a position <em>within</em> a heading, so the
-    /// index sends that heading's ordering and not the menu's — and the failure a browser can see, which
-    /// no integration fact can, is a page that sent the whole menu and renumbered the puddings because
-    /// somebody moved a drink. The caller names an item and not a heading, because the page already knows
-    /// which group the row is in and asking a scenario to restate it would be asking it to agree with the
-    /// surface about the thing under test.</para>
-    ///
-    /// <para>Scoped to <c>div.menu-group-body</c>, which is what keeps the row out of the <em>Recent
-    /// activity</em> feed at the foot of the same page: that table links to the same route with the same
-    /// class, and it has no move controls at all — so an unscoped match would find a row and then fail
-    /// looking for a button, naming the wrong thing.</para>
-    /// </summary>
     internal static async Task MoveMenuItemAsync(IPage page, Guid menuItemIdentifier, bool up)
     {
         ArgumentNullException.ThrowIfNull(page);
@@ -758,27 +427,6 @@ internal static class AdministrationJourneys
                 $"'{label}' on item {menuItemIdentifier:D}"));
     }
 
-    /// <summary>
-    /// Presses one move control and requires the page to come back saying it committed.
-    ///
-    /// <para><b>The flash is matched rather than merely found, and the sentence is chosen carefully.</b>
-    /// A resequence has three outcomes and §11.4 writes a sentence for each: it moved, it was already
-    /// there, or the set changed underneath the page. Only the first wrote a row, so only the first is
-    /// this method's success — and a journey that accepted any of the three would hand a scenario a
-    /// surface that had done nothing and let the ordering assertion fail thirty seconds later blaming the
-    /// guest's circuit.</para>
-    ///
-    /// <para><b>The match is case-sensitive, and that is what makes it decidable.</b> The stale-set
-    /// sentence ends <em>so nothing was moved</em>, so a case-insensitive search for the word would
-    /// accept the one outcome this method exists to reject. <c>Moved.</c> with a capital and a full stop
-    /// occurs in exactly one of the three.</para>
-    ///
-    /// <para><b>What the flash cannot tell anybody is which verb ran.</b> §11.4 renders the same sentence
-    /// for a heading that moved and an item that moved, correctly — an operator knows which button they
-    /// pressed. So the scoping is what carries that claim: each journey above finds one control inside one
-    /// group or one row and presses that, and the assertion that the right thing moved belongs to the
-    /// scenario reading the order back.</para>
-    /// </summary>
     private static async Task PressMoveAsync(IPage page, ILocator control, string what)
     {
         if (await control.CountAsync() == 0)
@@ -831,23 +479,6 @@ internal static class AdministrationJourneys
         }
     }
 
-    /// <summary>
-    /// How many likes <c>/administration/menu</c> reports against one dish, or <c>null</c> where it
-    /// reports none (§11.4; Stage 5b-ii).
-    ///
-    /// <para><b>Read off <c>data-like-count</c> rather than out of the chip's sentence</b>, so the
-    /// scenario compares an integer with an integer. Parsing <c>"3 likes"</c> would make the assertion
-    /// depend on the wording, and the wording is the one part of this chip that is free to change.</para>
-    ///
-    /// <para><b><c>null</c> is a real answer rather than a failure.</b> The read behind this surface lists
-    /// the dishes anybody likes instead of left-joining the menu, so a dish nobody has pressed carries no
-    /// chip at all — and a caller asserting "nobody likes this yet" needs that to be distinguishable from
-    /// zero rather than collapsed into it.</para>
-    ///
-    /// <para>The row is found by the dish's own management link, which is the only thing in a row that is
-    /// keyed on its identifier: matching on the visible name would make this method wrong the moment two
-    /// dishes shared one, which §7 permits deliberately.</para>
-    /// </summary>
     internal static async Task<int?> ReadMenuIndexLikeCountAsync(IPage page, Guid menuItemIdentifier)
     {
         ArgumentNullException.ThrowIfNull(page);
@@ -889,38 +520,6 @@ internal static class AdministrationJourneys
                     $"§11.4's like chip carries data-like-count=\"{declared}\", which is not an integer."));
     }
 
-    /// <summary>
-    /// Reads <c>/administration/menu</c> as the administrator sees it since M6 Slice 44: a list of
-    /// headings in stored order, each holding the items filed under it (§7, §11.4).
-    ///
-    /// <para><b>This is the administration counterpart of
-    /// <c>TableOrderJourneys.ReadMenuCardsAsync</c>, and the pair is the assertion.</b> §7 states an
-    /// asymmetry that no single surface can demonstrate: the guest is rendered no empty heading and no
-    /// inactive one, and §11.4's administrator is rendered both. A scenario that read only the guest's
-    /// menu would see a heading missing and could not say which of three reasons put it there; a scenario
-    /// that read only this page would see every heading and learn nothing about the rule. Reading both
-    /// and comparing them is what makes the difference between the two lists the thing under test.</para>
-    ///
-    /// <para><b>The groups are read in document order and nothing is sorted here.</b> Stored order is the
-    /// property under assertion — §7 orders headings by <c>(display_order, name,
-    /// menu_section_identifier)</c> and a helper that sorted its own output would make every ordering
-    /// assertion above it a tautology.</para>
-    ///
-    /// <para><b>The name comes off <c>.menu-group-name</c> as declared text.</b> The summary line also
-    /// carries a chip and a count, so reading the <c>&lt;summary&gt;</c> whole would return
-    /// <c>"Starters Visible to guests 2 items · position 0"</c> — and <see cref="ScreenText"/> is used for
-    /// the same reason it exists: a heading is content, but the count beside it lives under a rule that
-    /// could acquire a transform, and the narrow read cannot pick that up at all.</para>
-    ///
-    /// <para>Waiting on <c>.menu-groups</c> rather than on a group: a menu with no headings at all renders
-    /// the first-use panel and no wrapper, so a caller arriving too early fails here naming the page
-    /// rather than thirty seconds later inside a group that was never going to exist.</para>
-    ///
-    /// <para><b>This block was attached to <see cref="ReadMenuIndexLikeCountAsync"/> until F-114.</b>
-    /// Slice 59 inserted that method between this comment and the method it describes, which left one
-    /// member with two <c>&lt;summary&gt;</c> elements and this one with none — silently, because the
-    /// C# compiler has no opinion about how many a documentation comment holds.</para>
-    /// </summary>
     internal static async Task<IReadOnlyList<MenuHeadingOnTheIndex>> ReadMenuIndexAsync(IPage page)
     {
         ArgumentNullException.ThrowIfNull(page);
@@ -954,9 +553,6 @@ internal static class AdministrationJourneys
             string name = await ScreenText.DeclaredAsync(
                 group.Locator("summary.menu-group-summary span.menu-group-name").First);
 
-            // Counted rather than read: the chip's absence is the fact, and `CountAsync` answers it
-            // without a locator that has to succeed. The negative chip is a different string, so
-            // matching on the positive one is the whole test.
             bool visible = await group
                 .Locator("summary.menu-group-summary span.chip-ok")
                 .CountAsync() > 0;
@@ -965,10 +561,6 @@ internal static class AdministrationJourneys
                 .Locator("div.menu-group-body td.record-primary a.record-link")
                 .AllTextContentsAsync();
 
-            // §11.4 renders BOTH controls on every group and disables the one that would exchange with
-            // nothing, rather than omitting it. So two is the count, and a group with one is the
-            // implementation that ruling refuses — caught here rather than left to a scenario asserting
-            // on a control that is not there.
             ILocator moves = group.Locator("div.menu-group-actions button");
             int moveCount = await moves.CountAsync();
 
@@ -994,26 +586,6 @@ internal static class AdministrationJourneys
         return headings;
     }
 
-    /// <summary>
-    /// Creates a staff account through <c>/administration/people/new</c> (§3.7) and returns it, including
-    /// the temporary password the success panel showed — the only moment that plaintext exists anywhere.
-    ///
-    /// <para><b>Through the form, for the reason §16.3 keeps insisting on.</b> "Admin creates staff
-    /// account" is the antiforgery token, the administrator-only endpoint authorization, the duplicate
-    /// username check, the generated password, the Argon2id hash, the role grants recording <em>this</em>
-    /// administrator as grantor, and the <c>must_change_password</c> flag — all in one transaction. An
-    /// <c>INSERT</c> would arrange an account with none of that and would then prove nothing about the
-    /// forced-change journey the caller is about to walk.</para>
-    ///
-    /// <para><b>Roles are ticked by name rather than by position.</b> The three checkboxes are
-    /// <c>InputCheckbox</c> components inside <c>label.choice</c> elements and carry no id, so the row is
-    /// found by the <c>span.choice-name</c> beside it. Indexing into the list would work today and would
-    /// silently grant the wrong role the day a fourth role is added above an existing one — which is
-    /// exactly the kind of failure a scenario would blame on authorization.</para>
-    ///
-    /// <para>The identifier comes back off the "Manage this account" link, the same way
-    /// <see cref="CreateTableAsync"/> and <see cref="CreateMenuItemAsync"/> recover theirs.</para>
-    /// </summary>
     internal static async Task<StaffAccount> CreateStaffAccountAsync(
         IPage page,
         string username,
@@ -1083,22 +655,6 @@ internal static class AdministrationJourneys
         return new StaffAccount(personIdentifier, username, displayName, issued);
     }
 
-    /// <summary>
-    /// Resets one account's credentials from its management page (§3.7) and returns the temporary
-    /// password the panel showed, together with whether an enrolled authenticator was cleared with it.
-    ///
-    /// <para><b>No redirect to wait on, and that is the design rather than an omission.</b> Every other
-    /// action on this page is a post/redirect/get carrying a one-word outcome, so a refresh cannot
-    /// re-post it. This one renders in place, because the plaintext password exists only in the response
-    /// that generated it — a redirect would either lose it or park it in a query string. So the barrier
-    /// below is the panel appearing, not a URL changing.</para>
-    ///
-    /// <para><b>The outcome sentence is matched, not merely found.</b> §3.7 writes one of two, and the
-    /// difference is exactly whether <c>must_enroll_totp</c> was set — which decides whether §3.5's
-    /// second obligation exists at all. A caller that assumed the authenticator branch and got the
-    /// password-only one would go on to wait out a timeout on a page no principal was ever going to be
-    /// sent to.</para>
-    /// </summary>
     internal static async Task<CredentialReset> ResetCredentialsAsync(IPage page, Guid personIdentifier)
     {
         ArgumentNullException.ThrowIfNull(page);
@@ -1106,11 +662,6 @@ internal static class AdministrationJourneys
         await page.GotoAsync(ManagePersonPathFor(personIdentifier));
         await page.ClickAsync("button:has-text('Reset credentials')");
 
-        // p.staff-temporary-password rather than p.totp-secret, which the element also carries for its
-        // monospaced treatment. The distinction is load-bearing here in a way it was only prudent on the
-        // create-staff panel: the very next surface this account sees is §3.5's re-enrollment page, whose
-        // own p.totp-secret holds a real authenticator key, so the narrower name is what keeps "read the
-        // secret off the screen" from meaning two different secrets in one scenario.
         ILocator temporaryPassword = page.Locator(TemporaryPasswordSelector).First;
 
         try
@@ -1137,8 +688,6 @@ internal static class AdministrationJourneys
 
         string sentence = await ScreenText.DeclaredAsync(page.Locator("p.status-success").First);
 
-        // Both sentences open the same way; only one of them mentions the authenticator. Matched on the
-        // clause rather than on the whole sentence so a copy edit elsewhere in it is not a test failure.
         bool clearedAuthenticator =
             sentence.Contains("the authenticator was cleared", StringComparison.Ordinal);
 
@@ -1152,28 +701,6 @@ internal static class AdministrationJourneys
         return new CredentialReset(issued, clearedAuthenticator);
     }
 
-    /// <summary>
-    /// Reads one account's facts off its management page (§3.7): the Status chips, the roles, and the
-    /// credentials.
-    ///
-    /// <para><b>Groups are found by the label beside them, never by position</b> — the same reasoning as
-    /// <see cref="TickRoleAsync"/>. The three <c>div</c>s inside <c>.manage-facts</c> carry no ids, and
-    /// indexing into them would work today and silently start reading roles as credentials the day a
-    /// fourth fact is added above an existing one, which is precisely the kind of failure a scenario would
-    /// blame on the application.</para>
-    ///
-    /// <para><b>Declared text rather than rendered text, for two independent reasons.</b>
-    /// <c>.manage-label</c> is upcased for the eyebrow treatment, so the label this method matches on
-    /// reads back as <c>STATUS</c> through <c>InnerTextAsync</c> and the lookup would miss every time.
-    /// And <c>.chip-role</c> is capitalized, so a role chip whose markup says <c>kitchen</c> — the stored
-    /// vocabulary, which is what <c>person_role.role_name</c>'s CHECK constrains and what a caller will
-    /// want to compare against — would read back as <c>Kitchen</c>. See <see cref="ScreenText"/>; this is
-    /// the second site in the harness where a stylesheet was in a position to fail a correct assertion.</para>
-    ///
-    /// <para>Waiting on <c>.manage-facts</c> is also what tells this page apart from the two other things
-    /// the same route renders: the not-found panel, and the credentials-reset panel a caller might still
-    /// be looking at from <see cref="ResetCredentialsAsync"/>. Neither has one.</para>
-    /// </summary>
     internal static async Task<ManagedAccount> ReadAccountFactsAsync(IPage page, Guid personIdentifier)
     {
         ArgumentNullException.ThrowIfNull(page);
@@ -1218,14 +745,6 @@ internal static class AdministrationJourneys
             ChipsUnder(byLabel, "Credentials", personIdentifier));
     }
 
-    /// <summary>
-    /// One fact group's chips, or a sentence naming every group the page did offer.
-    ///
-    /// <para>A missing group is a failure rather than an empty list. An empty list already means
-    /// something specific on this page — the surface said "None" in prose — and letting a group that was
-    /// never rendered collapse into the same value would turn a renamed heading into a silently passing
-    /// assertion about an account having no roles.</para>
-    /// </summary>
     private static IReadOnlyList<string> ChipsUnder(
         Dictionary<string, IReadOnlyList<string>> byLabel,
         string label,
@@ -1245,14 +764,6 @@ internal static class AdministrationJourneys
             + $" offers: {offered}.");
     }
 
-    /// <summary>
-    /// Ticks one role checkbox on the create-staff form, found by the name rendered beside it.
-    ///
-    /// <para><c>CheckAsync</c> rather than <c>ClickAsync</c>: it is a no-op on a box that is already
-    /// ticked, where a click would untick it. The form is static SSR so nothing is bound live — the
-    /// checkbox state at submit is the whole of what is read — but a helper that quietly meant "toggle"
-    /// would be a trap for the first caller who asked for the same role twice.</para>
-    /// </summary>
     private static async Task TickRoleAsync(IPage page, string roleName)
     {
         ILocator choices = page.Locator("fieldset.choice-fieldset label.choice");
@@ -1272,8 +783,6 @@ internal static class AdministrationJourneys
             return;
         }
 
-        // Read before composing: an await inside an interpolation hole of a string that binds to
-        // DefaultInterpolatedStringHandler is CS4007, because the handler is a ref struct.
         string offered = await DescribeRoleChoicesAsync(page);
 
         throw new InvalidOperationException(
@@ -1282,7 +791,6 @@ internal static class AdministrationJourneys
                 $"The create-staff form offers no '{roleName}' role to grant. What it offers: {offered}."));
     }
 
-    /// <summary>The role names the form is offering, for a failure message.</summary>
     private static async Task<string> DescribeRoleChoicesAsync(IPage page)
     {
         ILocator names = page.Locator("fieldset.choice-fieldset label.choice span.choice-name");
@@ -1302,22 +810,12 @@ internal static class AdministrationJourneys
     private static string ManagePathFor(Guid tableIdentifier)
         => string.Create(CultureInfo.InvariantCulture, $"{TablesPath}/{tableIdentifier:D}");
 
-    /// <summary>
-    /// §3.7's per-account management route. Built from <see cref="PeoplePath"/> and formatted <c>D</c>,
-    /// which is what <c>CreateStaffAccountAsync</c> parsed the identifier out of, so a round trip through
-    /// this and back is exact.
-    /// </summary>
     private static string ManagePersonPathFor(Guid personIdentifier)
         => string.Create(CultureInfo.InvariantCulture, $"{PeoplePath}/{personIdentifier:D}");
 
     private static string DisplaysPathFor(Guid tableIdentifier)
         => string.Create(CultureInfo.InvariantCulture, $"{TablesPath}/{tableIdentifier:D}/displays");
 
-    /// <summary>
-    /// Whatever the surface has to say about why it did not do the thing. An administration page renders
-    /// a refusal into <c>p.status-error</c>; a validation refusal lands in the form's validation summary;
-    /// and being bounced somewhere else entirely (a lost session, a failed policy) shows up as the URL.
-    /// </summary>
     private static async Task<string> DescribeFailureAsync(IPage page)
     {
         ILocator errors = page.Locator("p.status-error, .validation-message");

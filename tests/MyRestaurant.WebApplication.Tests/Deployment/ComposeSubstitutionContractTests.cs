@@ -2,57 +2,12 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Deployment;
 
-/// <summary>
-/// Copying <c>.env.example</c> to <c>.env</c> supplies every variable <c>compose.yaml</c> interpolates
-/// (TECHNICAL_SPECIFICATION §14.1, §16.4, <b>F-57</b>).
-///
-/// <para><b>Why this exists.</b> Every value in <c>compose.yaml</c> is written
-/// <c>${NAME:-default}</c>, and on Debian trixie's podman-compose — which ADR-0004 calls the canonical
-/// engine — the branch after <c>:-</c> is not applied. Every variable that was not already set in the
-/// environment reached its container as the placeholder text: the application printed five
-/// <c>Configuration error:</c> lines naming values like
-/// <c>'${RESTAURANT_TIME_ZONE:-America/New_York}'</c> and exited 1, and <c>POSTGRES_USER</c> reached
-/// <c>initdb</c> as punctuation, so the bootstrap statement failed, initdb wiped the data directory,
-/// and the container crash-looped. One engine behaviour, two dead containers.</para>
-///
-/// <para><b>Why this file is the assertion.</b> The remediation is to supply the variables rather than
-/// to rely on the defaults, and the documented way to supply them is
-/// <c>cp .env.example .env</c> (OPERATIONS §2). That instruction is only true if
-/// <c>.env.example</c> actually <em>assigns</em> every variable the stack interpolates — and when the
-/// finding was made it assigned nineteen of twenty-two, leaving <c>OTEL_EXPORTER_OTLP_ENDPOINT</c>,
-/// <c>OTEL_EXPORTER_OTLP_HEADERS</c> and <c>CLOUDFLARE_TUNNEL_TOKEN</c> commented out. A commented-out
-/// line supplies nothing. So this is F-50's pattern once more: <c>compose.yaml</c> is the authoritative
-/// statement of what needs supplying, <c>.env.example</c> is the restatement, and the restatement is
-/// what stops being true when somebody adds a setting.</para>
-///
-/// <para><b>Why an empty assignment is not the same as a commented-out one</b>, which is the part worth
-/// having a test about. <c>OTEL_EXPORTER_OTLP_ENDPOINT</c>'s emptiness is what switches the exporter off
-/// (<c>Program.cs</c> attaches no OTLP exporter when it is blank). Commented out, the literal
-/// <c>${OTEL_EXPORTER_OTLP_ENDPOINT:-}</c> arrives instead — which is <em>not</em> blank, so the
-/// exporter is switched on and pointed at a hostname made of braces. The setting whose whole purpose is
-/// to be absent is the one that fails loudest when it is merely unwritten.</para>
-///
-/// <para><b>Scope, stated so the gaps are deliberate.</b> Only placeholders inside an
-/// <c>environment:</c> mapping are in scope — those are what a container is handed.
-/// <c>SOURCE_REVISION</c> appears under <c>build.args</c> and is excluded: it is stamped by a pipeline
-/// or by <c>scripts/dev_instance.sh</c>, and <c>Containerfile</c>'s own <c>ARG</c> is where its
-/// fallback is decided (F-50's ruling). This test says nothing about whether any particular engine
-/// applies defaults — that is a property of a host, it is not decidable from the text, and
-/// <c>scripts/check_compose_substitution.sh</c> asks the engine directly.</para>
-///
-/// <para>Pure: reads two files off the disk it was built from. No server, no container, no engine.</para>
-/// </summary>
 public sealed class ComposeSubstitutionContractTests
 {
     private const string SolutionFileName = "MyRestaurant.slnx";
     private const string ComposeRelativePath = "compose.yaml";
     private const string ExampleEnvironmentRelativePath = ".env.example";
 
-    /// <summary>
-    /// The scan read both sides. Asserted first and on its own, because every assertion below it is
-    /// satisfied by an empty placeholder set (<b>F-41</b>) — and a re-indented <c>environment:</c>
-    /// block would produce exactly that in silence.
-    /// </summary>
     [Fact]
     public void TheScanFindsBothSides()
     {
@@ -71,11 +26,6 @@ public sealed class ComposeSubstitutionContractTests
             + $" The assertion below passes vacuously against an empty set, so this one runs first.");
     }
 
-    /// <summary>
-    /// <b>This is F-57.</b> Every variable the stack interpolates is assigned in
-    /// <c>.env.example</c>, so that copying it leaves nothing depending on the engine applying a
-    /// default.
-    /// </summary>
     [Fact]
     public void EveryInterpolatedVariableIsAssignedInTheExampleEnvironment()
     {
@@ -97,13 +47,6 @@ public sealed class ComposeSubstitutionContractTests
             + $" that is the right value.");
     }
 
-    /// <summary>
-    /// A variable whose <c>compose.yaml</c> default is empty is assigned <em>empty</em> here, not given
-    /// a value. Derived from the compose file rather than listed, and the reason is
-    /// <c>OTEL_EXPORTER_OTLP_ENDPOINT</c>: an empty endpoint attaches no exporter, so a plausible
-    /// example value in this file would switch OpenTelemetry export on for everybody who followed the
-    /// runbook.
-    /// </summary>
     [Fact]
     public void VariablesWhoseComposeDefaultIsEmptyAreAssignedEmpty()
     {
@@ -129,17 +72,6 @@ public sealed class ComposeSubstitutionContractTests
             + $" empty and put the example in a comment beside it.");
     }
 
-    // ---------------------------------------------------------------------------------------------
-    // Reading the two files. Plain string work, no parser and no regular expressions — the same
-    // choice ConfigurationSurfaceTests and ComposeDependencyContractTests make about this same
-    // compose file, and for the same reason.
-    // ---------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// Every <c>${NAME…}</c> that appears inside an <c>environment:</c> mapping, in any service.
-    /// Bounded to those mappings deliberately: they are what a container is handed, and
-    /// <c>build.args</c>' <c>SOURCE_REVISION</c> has its fallback decided in <c>Containerfile</c>.
-    /// </summary>
     private static IReadOnlyList<string> ReadInterpolatedEnvironmentVariables()
     {
         List<string> names = [];
@@ -158,10 +90,6 @@ public sealed class ComposeSubstitutionContractTests
         return names;
     }
 
-    /// <summary>
-    /// The variables written <c>${NAME:-}</c> — a default of nothing at all — inside an
-    /// <c>environment:</c> mapping.
-    /// </summary>
     private static IReadOnlyList<string> ReadVariablesWithEmptyComposeDefault()
     {
         List<string> names = [];
@@ -181,16 +109,6 @@ public sealed class ComposeSubstitutionContractTests
         return names;
     }
 
-    /// <summary>
-    /// The lines of every <c>environment:</c> mapping in the file, across all services. The shape
-    /// being read:
-    /// <code>
-    /// services:
-    ///   web:
-    ///     environment:
-    ///       RESTAURANT_NAME: ${RESTAURANT_NAME:-My Restaurant}
-    /// </code>
-    /// </summary>
     private static IReadOnlyList<string> ReadEnvironmentMappingLines()
     {
         string[] lines = ReadRepositoryFile(ComposeRelativePath).Split('\n');
@@ -240,7 +158,6 @@ public sealed class ComposeSubstitutionContractTests
         return collected;
     }
 
-    /// <summary>The <c>NAME</c> of every <c>${NAME…}</c> in one line of text.</summary>
     private static IReadOnlyList<string> ReadPlaceholderNames(string line)
     {
         List<string> names = [];
@@ -270,10 +187,6 @@ public sealed class ComposeSubstitutionContractTests
         }
     }
 
-    /// <summary>
-    /// Every uncommented <c>NAME=value</c> in <c>.env.example</c>, mapped to its value. A commented
-    /// line is deliberately not an assignment — that distinction is the whole finding.
-    /// </summary>
     private static IReadOnlyDictionary<string, string> ReadExampleAssignments()
     {
         Dictionary<string, string> assignments = new(StringComparer.Ordinal);
@@ -328,7 +241,6 @@ public sealed class ComposeSubstitutionContractTests
         return indent;
     }
 
-    /// <summary>The first line equal to <paramref name="value"/> at or after <paramref name="from"/>.</summary>
     private static int IndexOfLine(string[] lines, string value, int from)
     {
         for (int index = from; index < lines.Length; index++)
@@ -342,11 +254,6 @@ public sealed class ComposeSubstitutionContractTests
         return -1;
     }
 
-    /// <summary>
-    /// The first line at or after <paramref name="from"/> whose indentation is exactly
-    /// <paramref name="indent"/> spaces and which carries content — i.e. where the enclosing block
-    /// ends. The same walk the other two Deployment tests use on this file, deliberately.
-    /// </summary>
     private static int IndexOfIndent(string[] lines, int from, int indent)
     {
         for (int index = from; index < lines.Length; index++)
@@ -387,10 +294,6 @@ public sealed class ComposeSubstitutionContractTests
         return File.ReadAllText(path);
     }
 
-    /// <summary>
-    /// The same walk up to <c>MyRestaurant.slnx</c> the other contract tests use, and it fails
-    /// rather than skips for the same reason: a check that quietly declines to run is worse than none.
-    /// </summary>
     private static DirectoryInfo FindRepositoryRoot()
     {
         for (DirectoryInfo? candidate = new(AppContext.BaseDirectory);

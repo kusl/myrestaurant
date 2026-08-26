@@ -2,12 +2,6 @@
 @inject RestaurantOptions Options
 @inject IFirstAdministratorBootstrap Bootstrap
 
-@* The landing page. It does two jobs: point a fresh deployment at /setup while no administrator
-   exists (§3.6), and — since MainLayout deliberately carries at most one area link per role to keep the
-   phone-sized header from wrapping onto three rows — be the one place every area a person can reach
-   is listed. The links are role-gated with <AuthorizeView Roles="…">, matching the §3.7 policies:
-   showing somebody a door that answers "access denied" is worse than not showing it. *@
-
 <PageTitle>@Options.RestaurantName</PageTitle>
 
 <section class="landing">
@@ -27,11 +21,6 @@
     <p class="eyebrow">Ordering system</p>
     <h1 class="landing-title">@Options.RestaurantName</h1>
 
-    @* Kept deliberately short of a feature list. The previous wording ended "the cross-cutting event
-       explorer arrives next", which stopped being true when M5 shipped it and went on telling every
-       visitor otherwise for two milestones — a landing page is the worst place in the application to
-       carry a roadmap, because it is the one text nobody re-reads and everybody sees. This says what
-       the system is for and lets the role links below say what a given person can reach. *@
     <p class="landing-lede">
         Guests scan the code on their table, join, and order from their own phones. The kitchen sees
         each send the moment it lands and marks lines away; the counter adjusts, adds, removes, and
@@ -79,9 +68,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Point a fresh deployment at /setup while no administrator exists (§3.6). Best-effort: the
-        // landing page must still render if the database is briefly unreachable (that is what
-        // /healthz/ready is for), so a failure here simply hides the pointer.
         try
         {
             _needsSetup = !await Bootstrap.AdministratorExistsAsync();

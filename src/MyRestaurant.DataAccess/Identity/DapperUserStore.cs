@@ -9,39 +9,6 @@ using Npgsql;
 
 namespace MyRestaurant.DataAccess.Identity;
 
-/// <summary>
-/// The custom ASP.NET Core Identity store over the <c>person*</c> tables with Dapper
-/// (TECHNICAL_SPECIFICATION §3.1, ADR-0003 — Identity core services over Dapper, never EF). One
-/// class implements the whole family a <see cref="UserManager{TUser}"/> needs for passwords,
-/// security stamps, lockout, TOTP, recovery codes, roles, email, phone, and — as of the M2 passkey
-/// slice — WebAuthn passkeys (<c>IUserPasskeyStore</c>, new in .NET 10). <see cref="UserManager{TUser}"/>
-/// discovers each capability by casting the resolved <see cref="IUserStore{TUser}"/> to the
-/// relevant interface, so registering this once via <c>AddUserStore&lt;DapperUserStore&gt;()</c> is enough.
-///
-/// <para>Design notes that matter for correctness:</para>
-/// <list type="bullet">
-///   <item><b>citext</b> makes <c>username</c>/<c>email_address</c> case-insensitively unique and
-///   searchable, so there are no normalized shadow columns; the normalized-* store methods are
-///   no-ops and lookups compare against the natural column (cast to <c>citext</c> so the operator
-///   resolves regardless of how the driver types the parameter).</item>
-///   <item><b>Security stamp</b> is a <c>uuid</c>: <see cref="SetSecurityStampAsync"/> mints a fresh
-///   <see cref="Guid"/> and ignores the opaque string Identity passes (see <see cref="Person"/>).</item>
-///   <item><b>Two-factor enabled</b> is derived from <c>totp_secret_protected</c>; the TOTP secret is
-///   stored Data-Protection-encrypted (§3.4).</item>
-///   <item><b>Recovery codes</b> live in their own table, stored SHA-256-hashed, and are single-use;
-///   those methods write to the database directly rather than mutating the entity.</item>
-///   <item><b>Role grants/revokes</b> are <em>not</em> exposed here: <c>person_role</c> requires the
-///   granting administrator (self-referencing for the first admin, §3.6), which the parameterless
-///   <c>AddToRoleAsync</c>/<c>RemoveFromRoleAsync</c> contract cannot supply — those run through the
-///   transactional account-administration service (a later M2 increment). The read side is fully
-///   implemented so role claims flow into the cookie at sign-in.</item>
-///   <item><b>Deletion does not exist</b> (F-10b): <see cref="DeleteAsync"/> throws. Accounts are
-///   deactivated (<c>is_active=false</c>), never removed, so history keeps its actors.</item>
-/// </list>
-///
-/// The store holds no connection: every method opens one from the injected factory and disposes it,
-/// so a single instance is safe for the scoped Identity lifetime.
-/// </summary>
 public sealed class DapperUserStore :
     IUserStore<Person>,
     IUserPasswordStore<Person>,
@@ -55,21 +22,8 @@ public sealed class DapperUserStore :
     IUserPhoneNumberStore<Person>,
     IUserPasskeyStore<Person>
 {
-    /// <summary>
-    /// Data-Protection purpose for the at-rest TOTP secret (§3.4). Do not change without a migration
-    /// plan. <c>internal</c> because <see cref="DapperFirstAdministratorBootstrap"/> protects the first
-    /// administrator's secret with the exact same purpose (it writes the <c>person</c> row directly, in
-    /// one transaction, §3.6), so the secret this store unprotects at sign-in must have been protected
-    /// with an identical purpose.
-    /// </summary>
     internal const string TotpSecretProtectorPurpose = "MyRestaurant.Identity.TotpSecret.v1";
 
-    // Every SELECT aliases snake_case columns to the POCO's PascalCase properties. Postgres folds the
-    // unquoted aliases to lower case and Dapper matches case-insensitively, so no global
-    // MatchNamesWithUnderscores setting is needed (which would silently affect every other query).
-    // Every column is person.-qualified: person_identifier also exists on person_role (and most other
-    // child tables), so the bare name is ambiguous (42702) the moment a query JOINs one of them — as
-    // GetUsersInRoleAsync does. The qualification is harmless in the single-table lookups.
     private const string PersonColumns = """
         person.person_identifier      AS PersonIdentifier,
         person.username               AS Username,
@@ -87,9 +41,6 @@ public sealed class DapperUserStore :
         person.created_at             AS CreatedAt
         """;
 
-    // The passkey_credential columns, aliased to PasskeyCredentialRow. is_user_verified /
-    // is_backup_eligible / is_backed_up arrive in migration 0002 (the .NET 10 UserPasskeyInfo carries
-    // them; assertion reads the backup-eligible bit — see the passkey region below).
     private const string PasskeyColumns = """
         credential_id            AS CredentialId,
         public_key               AS PublicKey,
@@ -128,10 +79,6 @@ public sealed class DapperUserStore :
         _totpSecretProtector = dataProtectionProvider.CreateProtector(TotpSecretProtectorPurpose);
     }
 
-    // ---------------------------------------------------------------------------------------------
-    // IUserStore — identity, lookup, and the row's lifecycle (create/update; never delete).
-    // ---------------------------------------------------------------------------------------------
-
     public Task<string> GetUserIdAsync(Person user, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(user);
@@ -151,7 +98,6 @@ public sealed class DapperUserStore :
         return Task.CompletedTask;
     }
 
-    // No normalized-username column: citext handles case-insensitive uniqueness/lookup (§3.1).
     public Task<string?> GetNormalizedUserNameAsync(Person user, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(user);
@@ -165,7 +111,6 @@ public sealed class DapperUserStore :
     {
         ArgumentNullException.ThrowIfNull(user);
 
-        // Make direct store usage safe (tests, bootstrap) — UserManager also sets these, harmlessly.
         if (user.PersonIdentifier == Guid.Empty)
         {
             user.PersonIdentifier = _identifierFactory.Create();
@@ -205,7 +150,6 @@ public sealed class DapperUserStore :
         }
         catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.CheckViolation)
         {
-            // The only CHECK on person is the 3–64 char username length (§3.1).
             return IdentityResult.Failed(_errorDescriber.InvalidUserName(user.Username));
         }
     }
@@ -252,7 +196,6 @@ public sealed class DapperUserStore :
         }
     }
 
-    /// <summary>Deletion does not exist (F-10b): accounts are deactivated so history keeps its actors.</summary>
     public Task<IdentityResult> DeleteAsync(Person user, CancellationToken cancellationToken)
         => throw new NotSupportedException(
             "Persons are never deleted (F-10b). Deactivate the account (set is_active=false) instead so "
@@ -278,8 +221,6 @@ public sealed class DapperUserStore :
     {
         ArgumentNullException.ThrowIfNull(normalizedUserName);
 
-        // citext '=' is case-insensitive; cast the parameter so the operator resolves whether the
-        // driver sends it as text or unknown.
         string sql = $"SELECT {PersonColumns} FROM person WHERE username = @Username::citext;";
         await using DbConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         return await connection
@@ -287,10 +228,6 @@ public sealed class DapperUserStore :
                 new CommandDefinition(sql, new { Username = normalizedUserName }, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
     }
-
-    // ---------------------------------------------------------------------------------------------
-    // IUserPasswordStore — hash is set/read on the entity; UpdateAsync persists it.
-    // ---------------------------------------------------------------------------------------------
 
     public Task SetPasswordHashAsync(Person user, string? passwordHash, CancellationToken cancellationToken)
     {
@@ -311,15 +248,10 @@ public sealed class DapperUserStore :
         return Task.FromResult(!string.IsNullOrEmpty(user.PasswordHash));
     }
 
-    // ---------------------------------------------------------------------------------------------
-    // IUserSecurityStampStore — regenerate a uuid on every set (see the type remarks on Person).
-    // ---------------------------------------------------------------------------------------------
-
     public Task SetSecurityStampAsync(Person user, string stamp, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(user);
-        // Identity's opaque Base32 'stamp' does not fit a uuid column; mint a fresh guid instead.
-        // Full randomness (v4) is preferable for an unpredictability stamp than a time-ordered v7.
+
         user.SecurityStamp = Guid.NewGuid();
         return Task.CompletedTask;
     }
@@ -329,11 +261,6 @@ public sealed class DapperUserStore :
         ArgumentNullException.ThrowIfNull(user);
         return Task.FromResult<string?>(user.SecurityStamp.ToString());
     }
-
-    // ---------------------------------------------------------------------------------------------
-    // IUserLockoutStore — counters/end-date live on the entity; UpdateAsync persists them. Lockout
-    // is always enabled (§3.1): 5 consecutive failures lock for 5 minutes.
-    // ---------------------------------------------------------------------------------------------
 
     public Task<DateTimeOffset?> GetLockoutEndDateAsync(Person user, CancellationToken cancellationToken)
     {
@@ -372,11 +299,7 @@ public sealed class DapperUserStore :
         => Task.FromResult(true);
 
     public Task SetLockoutEnabledAsync(Person user, bool enabled, CancellationToken cancellationToken)
-        => Task.CompletedTask; // Always enabled; the flag is not stored.
-
-    // ---------------------------------------------------------------------------------------------
-    // IUserTwoFactorStore — enabled is derived from the encrypted TOTP secret (§3.4).
-    // ---------------------------------------------------------------------------------------------
+        => Task.CompletedTask;
 
     public Task<bool> GetTwoFactorEnabledAsync(Person user, CancellationToken cancellationToken)
     {
@@ -388,8 +311,6 @@ public sealed class DapperUserStore :
     {
         ArgumentNullException.ThrowIfNull(user);
 
-        // Enabling is implied by having a confirmed authenticator secret, so setting true is a no-op;
-        // disabling clears the secret (and any forced-enrollment obligation), matching "not enrolled".
         if (!enabled)
         {
             user.TotpSecretProtected = null;
@@ -398,10 +319,6 @@ public sealed class DapperUserStore :
 
         return Task.CompletedTask;
     }
-
-    // ---------------------------------------------------------------------------------------------
-    // IUserAuthenticatorKeyStore — the TOTP secret, stored Data-Protection-encrypted (§3.4).
-    // ---------------------------------------------------------------------------------------------
 
     public Task SetAuthenticatorKeyAsync(Person user, string key, CancellationToken cancellationToken)
     {
@@ -419,10 +336,6 @@ public sealed class DapperUserStore :
             : _totpSecretProtector.Unprotect(user.TotpSecretProtected);
         return Task.FromResult(key);
     }
-
-    // ---------------------------------------------------------------------------------------------
-    // IUserTwoFactorRecoveryCodeStore — own table, SHA-256-hashed, single-use. These write directly.
-    // ---------------------------------------------------------------------------------------------
 
     public async Task ReplaceCodesAsync(Person user, IEnumerable<string> recoveryCodes, CancellationToken cancellationToken)
     {
@@ -467,8 +380,6 @@ public sealed class DapperUserStore :
         ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(code);
 
-        // Match by SHA-256 hash and mark exactly one unused row used. The subselect + single-row
-        // update guarantees single-use even in the (astronomically unlikely) event of a hash clash.
         const string sql = """
             UPDATE totp_recovery_code
             SET used_at = @Now
@@ -502,11 +413,6 @@ public sealed class DapperUserStore :
             cancellationToken: cancellationToken)).ConfigureAwait(false);
     }
 
-    // ---------------------------------------------------------------------------------------------
-    // IUserRoleStore — read side only; grants/revokes need the granting administrator (§3.6) and run
-    // through the transactional account-administration service (a later increment).
-    // ---------------------------------------------------------------------------------------------
-
     public Task AddToRoleAsync(Person user, string roleName, CancellationToken cancellationToken)
         => throw new NotSupportedException(
             "Role grants record the granting administrator (person_role.granted_by_person_identifier is "
@@ -536,8 +442,6 @@ public sealed class DapperUserStore :
         ArgumentNullException.ThrowIfNull(user);
         ArgumentException.ThrowIfNullOrEmpty(roleName);
 
-        // Stored role names are lower case (CHECK-constrained); Identity hands us the normalized
-        // (upper) form, so compare lower-cased.
         await using DbConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
         return await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
             "SELECT EXISTS (SELECT 1 FROM person_role WHERE person_identifier = @PersonIdentifier AND role_name = lower(@RoleName));",
@@ -564,11 +468,6 @@ public sealed class DapperUserStore :
         return people.ToList();
     }
 
-    // ---------------------------------------------------------------------------------------------
-    // IUserEmailStore / IUserPhoneNumberStore — optional contact fields for manual escalation only
-    // (§11.1). There is no confirmation concept in the schema, so the confirmed-* accessors are inert.
-    // ---------------------------------------------------------------------------------------------
-
     public Task SetEmailAsync(Person user, string? email, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(user);
@@ -583,7 +482,7 @@ public sealed class DapperUserStore :
     }
 
     public Task<bool> GetEmailConfirmedAsync(Person user, CancellationToken cancellationToken)
-        => Task.FromResult(true); // Not modeled; sign-in never gates on it (RequireConfirmedEmail=false).
+        => Task.FromResult(true);
 
     public Task SetEmailConfirmedAsync(Person user, bool confirmed, CancellationToken cancellationToken)
         => Task.CompletedTask;
@@ -601,7 +500,7 @@ public sealed class DapperUserStore :
     public Task<string?> GetNormalizedEmailAsync(Person user, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(user);
-        return Task.FromResult(user.EmailAddress); // citext normalizes at the database.
+        return Task.FromResult(user.EmailAddress);
     }
 
     public Task SetNormalizedEmailAsync(Person user, string? normalizedEmail, CancellationToken cancellationToken)
@@ -621,24 +520,10 @@ public sealed class DapperUserStore :
     }
 
     public Task<bool> GetPhoneNumberConfirmedAsync(Person user, CancellationToken cancellationToken)
-        => Task.FromResult(true); // Not modeled.
+        => Task.FromResult(true);
 
     public Task SetPhoneNumberConfirmedAsync(Person user, bool confirmed, CancellationToken cancellationToken)
         => Task.CompletedTask;
-
-    // ---------------------------------------------------------------------------------------------
-    // IUserPasskeyStore — WebAuthn passkeys (§3.3, .NET 10). Own table (passkey_credential, §8.2 +
-    // migration 0002), one row per credential. These write directly rather than mutating the entity.
-    //
-    // A UserPasskeyInfo carries more than §8.2's original columns: the backup-eligible / backed-up /
-    // user-verified flags. The framework's assertion path reads the STORED backup-eligible bit and
-    // fails the ceremony if it disagrees with the authenticator, so it must round-trip — 0002 adds it.
-    // The attestation object and client-data JSON are NOT persisted (attestation is 'none' and nothing
-    // re-reads them in v1); they are reconstructed as empty on read, which the framework never consults
-    // after registration. AddOrUpdate mirrors the reference EF store: on an existing credential only the
-    // mutable fields (sign count, name, backed-up, user-verified) are written, so the immutable public
-    // key and backup-eligible bit captured at registration are never clobbered by a later assertion.
-    // ---------------------------------------------------------------------------------------------
 
     public async Task AddOrUpdatePasskeyAsync(Person user, UserPasskeyInfo passkey, CancellationToken cancellationToken)
     {
@@ -651,8 +536,6 @@ public sealed class DapperUserStore :
 
         if (existing is not null)
         {
-            // Update only the fields the WebAuthn assertion step legitimately changes (sign count and
-            // backup state) plus the user-settable display name — matching the reference store.
             const string updateSql = """
                 UPDATE passkey_credential SET
                     signature_counter       = @SignatureCounter,
@@ -789,15 +672,13 @@ public sealed class DapperUserStore :
             row.IsUserVerified,
             row.IsBackupEligible,
             row.IsBackedUp,
-            // Not persisted (attestation is 'none', §3.3) and never read after registration.
+
             attestationObject: [],
             clientDataJson: [])
         {
             Name = row.CredentialDisplayName,
         };
 
-    // Transports are opaque tokens the server only echoes back into allowCredentials; store them as a
-    // comma-separated list (tokens never contain commas) and split on read; null when absent.
     private static string? JoinTransports(string[]? transports)
         => transports is { Length: > 0 } ? string.Join(',', transports) : null;
 
@@ -806,7 +687,6 @@ public sealed class DapperUserStore :
             ? null
             : transports.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    /// <summary>The read shape of one <c>passkey_credential</c> row (Dapper maps the aliased columns).</summary>
     private sealed class PasskeyCredentialRow
     {
         public byte[] CredentialId { get; set; } = [];
@@ -820,11 +700,8 @@ public sealed class DapperUserStore :
         public bool IsBackedUp { get; set; }
     }
 
-    // ---------------------------------------------------------------------------------------------
-
     public void Dispose()
     {
-        // Nothing to release: connections are opened and disposed per method, never held.
     }
 
     private async Task<DbConnection> OpenAsync(CancellationToken cancellationToken)

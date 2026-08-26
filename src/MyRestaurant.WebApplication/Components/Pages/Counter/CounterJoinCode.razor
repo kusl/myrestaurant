@@ -8,26 +8,6 @@
 @inject RestaurantOptions Options
 @inject RestaurantTime RestaurantClock
 
-@* The counter's join-code fallback (TECHNICAL_SPECIFICATION §4.5, §11.3: "a per-table 'Show join code'
-   button rendering the rotating QR full-screen").
-
-   The same server-rendered rotating QR the table's own display shows, on a screen a guest can be walked
-   to when that display is dead. The join secret never leaves the server — this page carries only the
-   rendered SVG and the URL it encodes (§4.1, §4.5).
-
-   Deliberately the same shape as the administration page at
-   /administration/tables/{id}/join-code rather than a shared component: the two differ in their policy
-   (§3.7 gives the counter its own), in where "back" goes, and in how big the code is drawn — a counter
-   holds this up across a pass, an administrator reads it at a desk. What they must not differ in is the
-   code itself, and they do not: both call ITableJoinTokens.DescribeCurrentAsync and render what it
-   returns.
-
-   Static SSR, so this is a snapshot of the current window. That is safe by construction: a scanned code
-   keeps working for the current *and* previous window (worst case about twice the rotation, §4.3), so it
-   cannot die in a guest's hand mid-scan, and "Show a fresh code" re-renders on demand. The
-   window-aligned automatic refresh belongs to the paired display surface (§11.5), which has a circuit to
-   run a timer on. A deactivated or unknown table renders no code (§4.1). *@
-
 <PageTitle>@(_table is null ? "Join code" : $"Join code — {_table.Label}")</PageTitle>
 
 @if (_table is null)
@@ -53,7 +33,6 @@ else if (!_table.IsActive)
 }
 else if (_qr is null)
 {
-    @* Active table but no code came back — a transient condition, not a reason to dereference null. *@
     <section class="panel account-panel">
         <p class="eyebrow">Counter</p>
         <h1>@_table.Label</h1>
@@ -95,8 +74,6 @@ else
     </section>
 }
 
-@* Namespaced under .counter-code-* and inline for the same reason the administration pages keep their
-   CSS inline: App.razor links the static stylesheet, so component CSS isolation is not active. *@
 <style>
     .counter-code-panel .counter-qr {
         display: flex;
@@ -105,7 +82,6 @@ else
     }
 
     .counter-code-panel .join-qr-svg {
-        /* Bigger than the administration page's: this one is read across a counter, not at a desk. */
         width: 100%;
         max-width: 26rem;
         height: auto;

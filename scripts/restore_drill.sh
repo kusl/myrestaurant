@@ -1,62 +1,20 @@
 #!/usr/bin/env bash
 #
-# Restore drill (TECHNICAL_SPECIFICATION §15, OPERATIONS §6). Proves a recovery set can actually come
-# back — without a maintenance window, without a scratch host, and without touching the live stack.
+# Restore drill (TECHNICAL_SPECIFICATION §15, OPERATIONS §6). Proves a recovery set can come back,
+# without a maintenance window, a scratch host, or touching the live stack.
 #
-#   scripts/restore_drill.sh                     drill the newest set in BACKUP_DIRECTORY
-#   scripts/restore_drill.sh --dump <path>       drill a specific dump (and its sibling key ring)
-#   scripts/restore_drill.sh --from-live         take a fresh set with scripts/backup.sh, then drill it
-#   scripts/restore_drill.sh --strict            ignored pg_restore errors and an empty key ring fail
-#   scripts/restore_drill.sh --keep              leave the scratch container running for inspection
-#   scripts/restore_drill.sh --no-keys           do not expect a key ring beside the dump
-#   scripts/restore_drill.sh --help              this text
+#   scripts/restore_drill.sh               drill the newest set in BACKUP_DIRECTORY
+#   scripts/restore_drill.sh --dump <path> drill a specific dump (and its sibling key ring)
+#   scripts/restore_drill.sh --from-live   take a fresh set with scripts/backup.sh, then drill it
+#   scripts/restore_drill.sh --strict      ignored pg_restore errors and an empty key ring fail
+#   scripts/restore_drill.sh --keep        leave the scratch container running for inspection
+#   scripts/restore_drill.sh --no-keys     do not expect a key ring beside the dump
+#   scripts/restore_drill.sh --help        this text
 #
-# IT NEVER WRITES TO THE LIVE DATABASE. Every query and every restore in this script targets a
-# container this script created, whose name is printed before anything happens and which is destroyed
-# on the way out. The only thing that goes near the live instance is `--from-live`, and all that does
-# is delegate to `scripts/backup.sh`, which only reads.
+# IT NEVER WRITES TO THE LIVE DATABASE. Every restore targets a container this script creates,
+# names before anything happens, and destroys on the way out. Only --from-live goes near the live
+# instance, and it delegates to scripts/backup.sh, which only reads.
 #
-# WHY THIS EXISTS. §15 has always promised a restore drill and OPERATIONS §6 has always described one
-# — as five steps to perform by hand, once, against a scratch host, before you need it. A procedure
-# nobody has executed is a hypothesis. When this drill was first written it immediately found that
-# `scripts/restore.sh` could not have completed a restore at all (F-38): `pg_restore` exits non-zero
-# whenever it ignored any error, and under `set -e` that killed the script one line before it started
-# `web` again. Three other defects came with it. A drill you can run in ninety seconds finds that
-# class of thing; a drill you perform once a year does not.
-#
-# WHAT IT PROVES, as seven gates:
-#
-#   A  the archive is a readable custom-format dump with a non-empty table of contents
-#   B  it restores into an empty database, and how many errors pg_restore ignored doing it
-#   C  every table and view the migrations declare is present afterwards — the expected set is read
-#      out of src/MyRestaurant.DataAccess/Migrations/*.sql, so a new migration extends this gate by
-#      itself and nothing here needs editing
-#   D  DbUp's journal carries one row per migration file, so the restored schema is not merely
-#      structurally plausible but at a version this code will accept (ADR-0012)
-#   E  every projection view still resolves against the restored tables — `SELECT count(*)` on each,
-#      which is the check `pg_restore --clean` is most plausibly able to break
-#   F  a row census, reported rather than asserted: it is how you notice you have been faithfully
-#      backing up an empty database for a month
-#   G  the Data Protection key ring is beside the dump and contains keys (§3.4)
-#
-# What it deliberately does NOT prove: that the application boots against the restored database. That
-# is boot-smoke's job in .github/workflows/ci.yml, which does exactly that on every push, and doing it
-# here would mean building an image inside a drill.
-#
-# Exit codes:  0 every gate passed   1 a gate failed (or the drill could not run)
-#
-# Environment:
-#   BACKUP_DIRECTORY             where sets live (default /var/lib/myrestaurant/backups)
-#   POSTGRES_USER / POSTGRES_DB  credentials the scratch database is created with
-#   DRILL_POSTGRES_IMAGE         scratch image (default docker.io/library/postgres:17-alpine —
-#                                fully qualified so a short-name registry prompt cannot hang a drill)
-#   CONTAINER_ENGINE             force the engine (podman or docker) instead of taking the first of
-#                                podman/docker on PATH. Unlike scripts/backup.sh, this script has no
-#                                container to identify — it creates its own — so nothing here can
-#                                infer the engine from the work. On a host with both engines the
-#                                default costs a second image pull into the losing engine's store,
-#                                and `--from-live` delegates to scripts/backup.sh, which honours the
-#                                same variable; setting it keeps the whole drill on one engine.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -107,8 +65,6 @@ soft() { WARN_COUNT=$(( WARN_COUNT + 1 )); printf '[drill]     WARN  %s\n' "$*";
 bad()  { FAIL_COUNT=$(( FAIL_COUNT + 1 )); printf '[drill]     FAIL  %s\n' "$*"; }
 die()  { printf '[drill] error: %s\n' "$*" >&2; exit 1; }
 
-# In --strict a reservation is a failure. Everything that would otherwise be a WARN routes through
-# here, so the two modes cannot drift apart.
 reserve() {
     if (( STRICT )); then
         bad "$*"
@@ -117,17 +73,6 @@ reserve() {
     fi
 }
 
-# ---------------------------------------------------------------------------------------------------
-# 0. Engine. CONTAINER_ENGINE wins outright; otherwise podman leads because ADR-0004 makes rootless
-#    Podman canonical.
-#
-#    Every container this script touches is one it created, so unlike scripts/backup.sh — where the
-#    engine is decided by which one can see the named database container (F-43) — there is nothing
-#    here to infer from. A host with both engines is therefore the case worth naming: the drill will
-#    pull DRILL_POSTGRES_IMAGE into whichever store it picked, which on a CI runner means pulling an
-#    image the other engine already has. That is slow rather than wrong, and CONTAINER_ENGINE is how
-#    a caller that knows better says so.
-# ---------------------------------------------------------------------------------------------------
 if [[ -n "${CONTAINER_ENGINE:-}" ]]; then
     command -v "$CONTAINER_ENGINE" >/dev/null 2>&1 \
         || die "CONTAINER_ENGINE='$CONTAINER_ENGINE' is not on PATH."
@@ -140,16 +85,11 @@ else
     die "need podman or docker on PATH (or set CONTAINER_ENGINE)."
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# 1. Choose the set to drill.
-# ---------------------------------------------------------------------------------------------------
 if (( FROM_LIVE )); then
     if [[ -n "$DUMP" ]]; then
         die "--from-live and --dump are mutually exclusive."
     fi
     info "taking a fresh set with scripts/backup.sh…"
-    # Exit 2 is 'database dumped, key ring not captured' — a real result the drill should go on to
-    # report through gate G, not a reason to stop before the drill has run.
     backup_status=0
     bash scripts/backup.sh || backup_status=$?
     case "$backup_status" in
@@ -181,18 +121,9 @@ info "engine        $ENGINE$( [[ -n "${CONTAINER_ENGINE:-}" ]] && echo "  (CONTA
 info "strict mode   $( (( STRICT )) && echo "on" || echo "off" )"
 info "on exit       $( (( KEEP )) && echo "the scratch container is KEPT (--keep)" || echo "the scratch container is removed" )"
 
-# ---------------------------------------------------------------------------------------------------
-# 2. The scratch instance. Distinct name, no published port (so it cannot collide with the live
-#    127.0.0.1:5432), no volume (so its data dies with it).
-# ---------------------------------------------------------------------------------------------------
 SCRATCH="myrestaurant-restore-drill-$$"
 RESTORE_LOG="$(mktemp "${TMPDIR:-/tmp}/myrestaurant-drill.XXXXXX")"
 
-# An inline, single-quoted trap (expanding when it fires, not when it is installed) rather than a
-# named function: the scratch container must not survive this script by any path, and there is no `$?`
-# juggling to justify the indirection — bash preserves the script's exit status across an EXIT trap
-# that does not itself call `exit`, and every code this script returns is decided explicitly, by `die`
-# or by the report at the bottom.
 trap 'rm -f -- "$RESTORE_LOG" 2>/dev/null || true
       if (( KEEP )); then
           printf "\n[drill] --keep: %s is still running. Remove it with: %s rm --force %s\n" \
@@ -228,17 +159,12 @@ else
     die "cannot drill without a scratch database."
 fi
 
-# Every query below goes through here, and here names $SCRATCH and nothing else. That is the whole of
-# the non-destructiveness argument: there is no other connection target in this file.
 scratch_query() {
     "$ENGINE" exec "$SCRATCH" psql \
         --username "$PGUSER" --dbname "$PGDB" \
         --no-align --tuples-only --quiet --set=ON_ERROR_STOP=1 --command "$1"
 }
 
-# ---------------------------------------------------------------------------------------------------
-# Gate A — the archive is readable.
-# ---------------------------------------------------------------------------------------------------
 gate "gate A · archive is a readable custom-format dump"
 
 toc=""
@@ -254,9 +180,6 @@ else
     fi
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# Gate B — it restores.
-# ---------------------------------------------------------------------------------------------------
 gate "gate B · restores into an empty database"
 
 restore_status=0
@@ -275,14 +198,6 @@ else
     tail -n 8 "$RESTORE_LOG" | sed 's/^/[drill]       /'
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# Gate C — every declared relation came back.
-#
-# The expected set is read from the migrations rather than hard-coded here, so this gate grows with
-# the schema on its own. If the DDL is ever reformatted past what these patterns match, the gate
-# reports THAT rather than silently passing on an empty expectation — which is the failure mode a
-# hard-coded list has and this does not.
-# ---------------------------------------------------------------------------------------------------
 gate "gate C · every table and view the migrations declare is present"
 
 mapfile -t expected_tables < <(
@@ -346,8 +261,6 @@ else
     bad "${#missing_views[@]} view(s) missing: ${missing_views[*]-}"
 fi
 
-# Anything in the database the migrations did not declare. `schemaversions` is DbUp's own journal and
-# is expected; it gets its own gate below. Everything else is reported so a stray object cannot hide.
 for actual in ${actual_tables[@]+"${actual_tables[@]}"}; do
     if [[ "$actual" == "schemaversions" ]]; then
         continue
@@ -357,15 +270,8 @@ for actual in ${actual_tables[@]+"${actual_tables[@]}"}; do
     fi
 done
 
-# ---------------------------------------------------------------------------------------------------
-# Gate D — DbUp's journal. Structural completeness is not enough: the code that will boot against
-# this database asks DbUp whether every embedded script has been applied, and answers /healthz/ready
-# from that. A restored schema whose journal is short is a schema this code will try to migrate.
-# ---------------------------------------------------------------------------------------------------
 gate "gate D · DbUp journal carries one row per migration file"
 
-# `mapfile` reports success even when the process substitution feeding it failed, so there is nothing
-# to test here — an unreadable journal simply arrives as an empty array, which is the case handled next.
 mapfile -t journal < <(scratch_query "SELECT scriptname FROM schemaversions ORDER BY scriptname" 2>/dev/null || true)
 
 if (( ${#journal[@]} == 0 )); then
@@ -377,8 +283,6 @@ else
         migration_name="$(basename -- "$migration")"
         found=0
         for entry in "${journal[@]}"; do
-            # DbUp journals the embedded RESOURCE name (MyRestaurant.DataAccess.Migrations.0001_….sql),
-            # so the file name is a suffix of it rather than equal to it.
             if [[ "$entry" == *"$migration_name" ]]; then
                 found=1
                 break
@@ -396,11 +300,6 @@ else
     fi
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# Gate E — the projection views still resolve. A view survives `--clean` as a definition; whether it
-# still resolves against the restored tables is a different question, and §8.3's views are the only
-# place in the schema where one object's correctness depends on nine others.
-# ---------------------------------------------------------------------------------------------------
 gate "gate E · every projection view resolves"
 
 broken_views=()
@@ -418,11 +317,6 @@ else
     bad "view(s) that do not resolve: ${broken_views[*]}"
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# Gate F — the row census. Reported, never asserted: the only sensible row count for a brand-new
-# instance is almost all zeros, and the only way to notice you have been backing up an empty database
-# for a month is to have been shown the numbers.
-# ---------------------------------------------------------------------------------------------------
 gate "gate F · row census (reported, not asserted)"
 
 if (( ${#present_tables[@]} == 0 )); then
@@ -448,11 +342,6 @@ else
     fi
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# Gate G — the key ring (§3.4). A dump that restores perfectly and a key ring that was never captured
-# is a restaurant whose accounts all come back and whose enrolled authenticators all do not. This gate
-# is the reason a "successful" drill of a database-only set is not allowed to look like a pass.
-# ---------------------------------------------------------------------------------------------------
 gate "gate G · the Data Protection key ring is beside the dump"
 
 if (( ! WITH_KEYS )); then
@@ -472,9 +361,6 @@ else
     fi
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# Report.
-# ---------------------------------------------------------------------------------------------------
 echo
 info "────────────────────────────────────────────────────────────────────────"
 info "  restore drill: $PASS_COUNT passed, $WARN_COUNT warned, $FAIL_COUNT failed"

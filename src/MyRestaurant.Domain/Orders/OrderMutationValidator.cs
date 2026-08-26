@@ -1,44 +1,26 @@
 namespace MyRestaurant.Domain.Orders;
 
-/// <summary>What the validator needs to know about a menu item to accept a line-add (§6.5.4).</summary>
 public sealed record MenuItemSnapshot(Guid MenuItemIdentifier, bool IsActive);
 
-/// <summary>
-/// The contextual facts a mutation is validated against — supplied by the data layer under the
-/// serialized transaction (TECHNICAL_SPECIFICATION §6.6): sitting openness, whether the actor
-/// owns this order and is a sitting member, and the current menu snapshot (existence + active
-/// flag, re-read in the transaction).
-/// </summary>
 public sealed record OrderMutationContext(
     bool SittingIsOpen,
     bool ActorIsOrderOwner,
     bool ActorIsSittingMember,
     IReadOnlyDictionary<Guid, MenuItemSnapshot> MenuItems);
 
-/// <summary>A proposed event awaiting validation before it is assigned a sequence number and written.</summary>
 public sealed record ProposedOrderEvent(
     OrderEventType EventType,
     Guid ActorPersonIdentifier,
     OrderActorRole ActorRole,
     IReadOnlyList<OrderOperation> Operations);
 
-/// <summary>One validation failure. <see cref="OperationIndex"/> is <c>-1</c> for event-level failures.</summary>
 public sealed record OrderMutationError(int OperationIndex, string Reason);
 
-/// <summary>The all-or-nothing outcome: valid, or invalid with per-operation reasons (§6.5.9).</summary>
 public sealed record OrderMutationValidationResult(bool IsValid, IReadOnlyList<OrderMutationError> Errors)
 {
     public static OrderMutationValidationResult Success { get; } = new(true, []);
 }
 
-/// <summary>
-/// Enforces the §6.5 validation invariants (and the §6.3/§6.4 capability rules) as a pure
-/// function of the order's prior events, a proposed event, and the transaction context. This is
-/// what the order-mutating transaction evaluates under the lock (§6.6); on any failure the whole
-/// event is rejected and the caller returns per-operation reasons plus a fresh projection so the
-/// client restages (§6.5.9). The database CHECK/UNIQUE/FK constraints are the backstop; this is
-/// the first line and the one that produces friendly reasons.
-/// </summary>
 public static class OrderMutationValidator
 {
     public const int EventLevel = -1;
@@ -56,19 +38,16 @@ public static class OrderMutationValidator
 
         List<OrderMutationError> errors = [];
 
-        // (1) Every event owns at least one operation.
         if (proposed.Operations.Count == 0)
         {
             errors.Add(new OrderMutationError(EventLevel, "An event must contain at least one operation."));
         }
 
-        // Event-type ↔ role consistency (mirrors the §8.2 same-row CHECKs).
         if (!OrderEventRules.RoleMayAuthor(proposed.EventType, proposed.ActorRole))
         {
             errors.Add(new OrderMutationError(EventLevel, $"A {proposed.ActorRole} actor may not author a {proposed.EventType} event."));
         }
 
-        // (8) Post-close: administrators only; corrective event types only; never a guest submission.
         if (!context.SittingIsOpen)
         {
             if (proposed.ActorRole != OrderActorRole.Administrator)
@@ -82,7 +61,6 @@ public static class OrderMutationValidator
             }
         }
 
-        // (4) A guest submission requires an owner who is a member of the (open) sitting.
         if (proposed.EventType == OrderEventType.GuestSubmission)
         {
             if (!context.ActorIsOrderOwner)
@@ -104,7 +82,6 @@ public static class OrderMutationValidator
         {
             OrderOperation operation = proposed.Operations[index];
 
-            // (§6.3) The operation subtype must be permitted for this event type.
             if (!OrderEventRules.OperationIsAllowedFor(proposed.EventType, operation))
             {
                 errors.Add(new OrderMutationError(index, $"A {DescribeOperation(operation)} is not permitted in a {proposed.EventType} event."));
@@ -146,19 +123,16 @@ public static class OrderMutationValidator
         HashSet<Guid> addedThisEvent,
         List<OrderMutationError> errors)
     {
-        // (2 / DB UNIQUE) The line identifier is the line's identity — it must be new.
         if (priorStates.ContainsKey(added.OrderLineIdentifier) || !addedThisEvent.Add(added.OrderLineIdentifier))
         {
             errors.Add(new OrderMutationError(index, "The line identifier is already in use; a new line needs a new identifier."));
         }
 
-        // (4) Quantity 1–100.
         if (added.Quantity is < MinimumQuantity or > MaximumQuantity)
         {
             errors.Add(new OrderMutationError(index, $"Quantity must be between {MinimumQuantity} and {MaximumQuantity}."));
         }
 
-        // (4) The menu item must exist and be active, re-checked in this transaction.
         if (!context.MenuItems.TryGetValue(added.MenuItemIdentifier, out MenuItemSnapshot? menuItem))
         {
             errors.Add(new OrderMutationError(index, "The menu item does not exist."));
@@ -178,28 +152,24 @@ public static class OrderMutationValidator
         HashSet<Guid> removedThisEvent,
         List<OrderMutationError> errors)
     {
-        // (5) A removal may not reference a line added in the same event.
         if (addedThisEvent.Contains(removed.OrderLineIdentifier))
         {
             errors.Add(new OrderMutationError(index, "A line added in the same batch cannot also be removed in it."));
             return;
         }
 
-        // (2) The referenced line must belong to this order.
         if (!priorStates.TryGetValue(removed.OrderLineIdentifier, out LineState? line))
         {
             errors.Add(new OrderMutationError(index, "The referenced line does not belong to this order."));
             return;
         }
 
-        // (3 / DB UNIQUE) Removal is terminal — a line may not be removed twice.
         if (line.IsRemoved || !removedThisEvent.Add(removed.OrderLineIdentifier))
         {
             errors.Add(new OrderMutationError(index, "The line has already been removed."));
             return;
         }
 
-        // (3) A guest may remove only their own, still-pending lines.
         if (proposed.ActorRole == OrderActorRole.Guest)
         {
             bool addedByThisGuest = line.AddedByEventType == OrderEventType.GuestSubmission
@@ -228,7 +198,6 @@ public static class OrderMutationValidator
             return;
         }
 
-        // (7) Price adjustment targets non-removed lines and requires a non-empty reason.
         if (line.IsRemoved)
         {
             errors.Add(new OrderMutationError(index, "A removed line's price cannot be adjusted."));
@@ -257,7 +226,6 @@ public static class OrderMutationValidator
             return;
         }
 
-        // (6) Fulfillment targets a currently-pending, non-removed line.
         if (line.IsRemoved)
         {
             errors.Add(new OrderMutationError(index, "A removed line cannot be fulfilled."));
@@ -280,7 +248,6 @@ public static class OrderMutationValidator
             return;
         }
 
-        // (6) A reversal targets a currently-fulfilled line (fulfilled/reverted must alternate).
         if (line.IsRemoved)
         {
             errors.Add(new OrderMutationError(index, "A removed line's fulfillment cannot be reverted."));

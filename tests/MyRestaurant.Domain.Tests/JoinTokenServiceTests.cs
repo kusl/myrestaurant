@@ -3,20 +3,13 @@ using Xunit;
 
 namespace MyRestaurant.Domain.Tests;
 
-/// <summary>
-/// Locks the rotating join-token algorithm (TECHNICAL_SPECIFICATION §4.3) to precomputed vectors so
-/// any drift in the message construction, HMAC, or Base64Url encoding is caught. The expected tokens
-/// were computed independently (Python <c>hmac</c>) and must not be regenerated from this code.
-/// </summary>
 public sealed class JoinTokenServiceTests
 {
-    // Vector 1: join_secret = bytes 0x00..0x1F, table = ...0001.
     private static readonly byte[] Vector1Secret = CreateSequentialSecret();
     private static readonly Guid Vector1Table = Guid.Parse("00000000-0000-0000-0000-000000000001");
     private const string Vector1Window0Token = "-XXFSZhMKikHoFW_xlwnqNqv4M46LzZhw7ISAC6QVW0";
     private const string Vector1Window1Token = "5JDkdy7zOopIM67-6k2i2eX8MgyrcTFpGAuylQ5X_jk";
 
-    // Vector 2: join_secret = 0xAB x 32, table = deadbeef-..., window 28840320.
     private static readonly byte[] Vector2Secret = CreateRepeatedSecret(0xAB, 32);
     private static readonly Guid Vector2Table = Guid.Parse("deadbeef-0000-4000-8000-000000000000");
     private const long Vector2Window = 28_840_320L;
@@ -37,7 +30,7 @@ public sealed class JoinTokenServiceTests
     [Fact]
     public void CurrentWindowIndex_IsUnixTimeDividedByRotation()
     {
-        DateTimeOffset instant = DateTimeOffset.FromUnixTimeSeconds(1_784_289_600); // 2026-07-17T12:00:00Z
+        DateTimeOffset instant = DateTimeOffset.FromUnixTimeSeconds(1_784_289_600);
         Assert.Equal(29_738_160L, JoinTokenService.CurrentWindowIndex(instant, 60));
     }
 
@@ -70,7 +63,7 @@ public sealed class JoinTokenServiceTests
     [Fact]
     public void NextRotationInstant_IsTheStartOfTheNextWindow()
     {
-        DateTimeOffset instant = DateTimeOffset.FromUnixTimeSeconds(1_784_289_637); // mid-window
+        DateTimeOffset instant = DateTimeOffset.FromUnixTimeSeconds(1_784_289_637);
         DateTimeOffset next = JoinTokenService.NextRotationInstant(instant, 60);
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1_784_289_660), next);
     }
@@ -85,8 +78,8 @@ public sealed class JoinTokenServiceTests
     }
 
     [Theory]
-    [InlineData(0)]   // current window
-    [InlineData(-1)]  // immediately previous window
+    [InlineData(0)]
+    [InlineData(-1)]
     public void Validate_AcceptsCurrentAndPreviousWindow(long windowDelta)
     {
         DateTimeOffset instant = DateTimeOffset.FromUnixTimeSeconds(1_784_289_600);
@@ -99,8 +92,8 @@ public sealed class JoinTokenServiceTests
     }
 
     [Theory]
-    [InlineData(-2)]   // just past the accept window
-    [InlineData(-11)]  // last window inside the default lookback
+    [InlineData(-2)]
+    [InlineData(-11)]
     public void Validate_ClassifiesRecentOlderWindowsAsExpired(long windowDelta)
     {
         DateTimeOffset instant = DateTimeOffset.FromUnixTimeSeconds(1_784_289_600);
@@ -116,7 +109,7 @@ public sealed class JoinTokenServiceTests
     public void Validate_ClassifiesTokensOlderThanLookbackAsInvalid()
     {
         DateTimeOffset instant = DateTimeOffset.FromUnixTimeSeconds(1_784_289_600);
-        long window = JoinTokenService.CurrentWindowIndex(instant, 60) - 12; // one past the lookback
+        long window = JoinTokenService.CurrentWindowIndex(instant, 60) - 12;
         string token = JoinTokenService.ComputeToken(Vector1Secret, Vector1Table, window);
 
         Assert.Equal(
@@ -150,7 +143,6 @@ public sealed class JoinTokenServiceTests
     [Fact]
     public void Validate_RejectsWellFormedButWrongLengthToken()
     {
-        // Valid Base64Url, but decodes to 16 bytes rather than the 32-byte HMAC-SHA256 output.
         string sixteenBytes = Base64UrlText.Encode(new byte[16]);
         DateTimeOffset instant = DateTimeOffset.FromUnixTimeSeconds(1_784_289_600);
 

@@ -7,21 +7,6 @@
 @inject TotpEnrollment Enrollment
 @inject NavigationManager Navigation
 
-@* Obligation (2) of the post-authentication pipeline (TECHNICAL_SPECIFICATION §3.5): forced TOTP
-   re-enrollment after an administrative reset wiped an enrolled secret and set `must_enroll_totp`.
-   ObligationsMiddleware routes every request here (this route is exempt) until the flag clears.
-
-   Same mechanics as the voluntary page, three differences that suit an obligation:
-     • the copy explains WHY re-enrollment is required, not "would you like to";
-     • ConfirmAsync is called with forced: true, so it records `forced_totp_enrollment_completed`
-       and clears `must_enroll_totp` in the same store update that writes the secret (mirroring the
-       forced password page's one-update pattern);
-     • there is no recovery-code regeneration branch — the point here is to (re)enroll.
-   On GET: if the obligation is already clear (stale link / cleared in another tab) the visitor is
-   passed along; if a password change is ALSO outstanding, the earlier pipeline step wins and we
-   send them there (both pipeline pages are exempt, so navigating between them by hand is allowed).
-   Static SSR: confirmation rotates the stamp and re-issues the cookie, which a circuit cannot do. *@
-
 <PageTitle>Re-enroll your authenticator</PageTitle>
 
 <section class="panel account-panel">
@@ -48,12 +33,7 @@
             <a class="button-primary" href="@_destination">Continue</a>
         </div>
     }
-    @* Guard on _start rather than a bare `else`: ComponentBase fires an intermediate render via
-       StateHasChanged the instant the async GetUserAsync in OnInitializedAsync suspends, while
-       _recoveryCodes and _start are both still null. A bare `else` would fall in here and
-       dereference a null _start, and that NRE aborts the whole static-SSR response. Rendering
-       nothing on that transient pass is fine — static SSR flushes only the final, quiescent HTML,
-       by which point _start is set, or the recovery codes are shown, or we have navigated away. *@
+
     else if (_start is not null)
     {
         <h1>Re-enroll your authenticator</h1>
@@ -117,7 +97,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // BL0008: a form POST binds Input itself and may assign null, so the default lives here.
         Input ??= new();
 
         _destination = ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl);
@@ -129,10 +108,8 @@
             return;
         }
 
-        // The database is consulted rather than the claim so a just-cleared flag never re-traps anyone.
         if (HttpContext.Request.Method == HttpMethods.Get)
         {
-            // Password change is the earlier pipeline step; if it is also outstanding, defer to it.
             if (user.MustChangePassword)
             {
                 Navigation.NavigateTo(AccountRoutes.ForcedPasswordChange);
@@ -146,7 +123,6 @@
             }
         }
 
-        // Still outstanding: prepare a secret + QR + ticket to display.
         _start = Enrollment.BeginEnrollment(user);
     }
 
@@ -159,7 +135,6 @@
             return;
         }
 
-        // Cleared elsewhere in the meantime: move along instead of showing a stale demand.
         if (!user.MustEnrollTotp)
         {
             Navigation.NavigateTo(_destination);
@@ -176,10 +151,7 @@
         switch (confirmation)
         {
             case TotpEnrollmentConfirmation.Succeeded:
-                // Confirm cleared must_enroll_totp and rotated the stamp; refresh the cookie so the
-                // stale obligation claim does not keep the middleware redirecting here (and so the
-                // session survives the next stamp revalidation). Cookie is written in this SSR submit
-                // handler, before the recovery codes render below.
+
                 await SignInManager.RefreshSignInAsync(user);
                 _recoveryCodes = result!.RecoveryCodes;
                 _start = null;

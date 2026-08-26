@@ -13,71 +13,6 @@
 @inject RestaurantOptions Options
 @inject RestaurantTime RestaurantClock
 
-@* The administration menu index (TECHNICAL_SPECIFICATION §7, §11.4, §11.12 — `area.administration`:
-   "Menu (CRUD + activity, event history per item)"). It lists every HEADING with the items filed
-   under it, links each of both to its own management page, offers creation of either, and shows the
-   recent activity feed that answers "what changed today" without opening an item.
-
-   Static SSR, like every administration surface. Deactivated items are listed, not filtered: §7 is
-   explicit that an 86'd item stays on the menu marked "currently unavailable", and a page that hid
-   them from the administrator would hide exactly the rows somebody is looking for. The same holds one
-   register up, and more strongly: an inactive SECTION is hidden from the guest entirely and from
-   §11.4's administrator not at all — whose job on this page may be stocking next week's breakfast
-   menu before switching it on.
-
-   **THIS IS SECTIONS-FIRST AS OF M6 SLICE 44, AND THAT IS THE POINT OF THE SURFACE.** Until now it
-   was a flat list of every item with the heading as a COLUMN, which is what a menu index looks like
-   when the model has just learned to express a menu and the surface has not caught up. Slice 40 shipped
-   the column as the honest intermediate and said so: a record list whose rows link nowhere is a list of
-   dead ends, so the fact went on the screen and the destination waited for the editor it had to open
-   into. The editor landed in Slice 41 and the refile verb in Slice 43. This is the destination.
-
-   **A heading is a `<details>` rendered open, and the item list inside it is §11.12's record list.**
-   The disclosure is native: no script on a page that hosts no island, a real disclosure in the
-   accessibility tree rather than a div somebody wired up, and no state on the server. It is rendered
-   open on every request because a heading collapsed by the server is a heading whose items nobody
-   looking for an item can find — and because §16.3 scenario 16 measures what the layout engine laid
-   out, so a closed group would quietly remove its own controls from the barrier that exists to find
-   exactly that. Collapsing is the operator's decision, not this page's.
-
-   **AN EMPTY HEADING IS VISIBLE HERE FOR THE FIRST TIME.** The list this page used to render was built
-   from ITEMS, so a heading with nothing under it appeared nowhere on it — the old code said so in a
-   comment beside a count that meant "sections that have something in them". A heading created with a
-   typo, or one stocked for next week and not yet filled, was a row this surface could not show. It now
-   reads both lists and renders the headings, so emptiness is a state with a sentence rather than an
-   absence.
-
-   **THIS PAGE CAN NOW REORDER A HEADING, AND THAT IS WHAT SLICE 47 IS.** For three slices the cut was
-   recorded here rather than papered over: `ReorderMenuSectionAsync` sets an ABSOLUTE `display_order`,
-   and positions are deliberately non-unique with a name tiebreak (§7), so "move this heading up" is not
-   expressible as one absolute write — two headings sharing a position have an order nobody assigned and
-   no single number distinguishes them. The verb that expresses it is `ResequenceMenuSectionsAsync`,
-   which takes the WHOLE ordering and assigns 0…n-1 from it, and this page is its only caller: the list
-   below is already rendered in stored order, so Up and Down exchange two entries in that list and post
-   all of it. Nothing is computed from a position, which is the point — a number that means "one less
-   than the heading above" cannot be written when two headings share a number.
-
-   Each button is its own form with its own `@@formname`, because Blazor's static SSR dispatches a POST
-   to the form that names it and there is one pair per heading. The first heading's Up and the last
-   heading's Down are rendered DISABLED rather than omitted: a control that vanishes at the edge of a
-   list moves every other control up a row on the render after a move, and §16.3 scenario 16 measures
-   where controls are.
-
-   **AND IT CAN NOW REORDER AN ITEM WITHIN ITS HEADING, WHICH IS SLICE 48.** Slice 47 named this as the
-   next ordering slice rather than widening itself into it, because `menu_item.display_order` has the
-   identical absolute-write shape and the identical non-unique positions but writes to a DIFFERENT event
-   table with different paired CHECKs. `ResequenceMenuItemsAsync` takes a heading and the whole ordering
-   of the items under it — that heading's list, not the menu's, because a position is a position WITHIN a
-   heading and sending the whole menu would renumber the puddings because somebody moved a drink. The
-   list each group's loop is already rendering is the list that gets exchanged and posted, so again
-   nothing is computed from a position.
-
-   An absolute position is still writable, on the heading's own page and on the item's own page, and that
-   is not a duplicate: somebody who wants breakfast at 0 and does not care what else moves is stating an
-   absolute, and a number in a form is what that means.
-
-   Two record lists (§11.12) and no inline <style>. The group vocabulary is `.menu-group*` in app.css. *@
-
 <PageTitle>Administration — menu</PageTitle>
 
 <section class="panel panel-wide">
@@ -133,9 +68,6 @@
         <div class="menu-groups">
             @foreach (MenuSectionSummary menuSectionSummary in _sections)
             {
-                @* @key on the section identifier rather than the loop index: a heading that moves
-                   position between renders would otherwise be reconciled as an edit of whichever
-                   heading now sits where it used to. *@
                 <details class="menu-group" open @key="menuSectionSummary.MenuSectionIdentifier">
                     <summary class="menu-group-summary">
                         <span class="menu-group-name">@menuSectionSummary.Name</span>
@@ -146,11 +78,6 @@
                             }
                             else
                             {
-                                @* §7's asymmetry, worded as the consequence rather than as the flag —
-                                   the same wording the editor uses. "Inactive" is what the column says;
-                                   "hidden from guests" is what it does, and it is the opposite of what
-                                   the same word does one table away, where an inactive ITEM stays on the
-                                   guest's menu and is marked. *@
                                 <span class="chip chip-warn">Hidden from guests</span>
                             }
                             <span class="menu-group-count">
@@ -197,32 +124,6 @@
                                                 <td class="record-primary" data-label="">
                                                     <a class="record-link" href="@ManagePath(item.MenuItemIdentifier)">@item.Name</a>
 
-                                                    @* §11.4's half of the like (Stage 5b-ii). BESIDE THE
-                                                       NAME RATHER THAN IN A COLUMN OF ITS OWN, and that
-                                                       is Stage 4d's ruling applied a second time: a
-                                                       column empty on most rows puts a `data-label`
-                                                       reading *Liked* beside nothing on the handheld
-                                                       card, which is the shape S11.12's label rule
-                                                       exists to prevent. A dish nobody likes renders no
-                                                       chip at all, which is what the read already says
-                                                       — it lists what IS liked rather than left-joining
-                                                       the menu — and on a menu of sixty the chips
-                                                       ARE the comparison this panel is asked for.
-
-                                                       A NEUTRAL CHIP: no `-ok`, no `-warn`. A count of
-                                                       likes is neither good news nor a warning, and the
-                                                       two modifiers on this page already mean available
-                                                       and unavailable one cell over.
-
-                                                       `data-like-count` carries the number machine
-                                                       readably so S16.3 reads an integer rather than
-                                                       parsing a sentence. A data attribute rather than a
-                                                       class, deliberately: `.record-` is a shared
-                                                       vocabulary prefix (S11.12), and a hook that
-                                                       borrowed that prefix without declaring a rule
-                                                       would be a name in the shared namespace that the
-                                                       stylesheet has never heard of. THIS SLICE ADDS NO
-                                                       CSS AT ALL. *@
                                                     @if (LikeCount(item) is { } likes)
                                                     {
                                                         <span class="chip" data-like-count="@likes">
@@ -232,12 +133,6 @@
 
                                                     @if (item.Description.Length > 0)
                                                     {
-                                                        @* Under the name rather than in a column of its
-                                                           own. A description is a sentence, and a
-                                                           sentence in a table cell at 375px is the shape
-                                                           F-59 was about; this way the handheld card
-                                                           reads name-then-sentence and the wide table
-                                                           reads it as a subtitle. *@
                                                         <span class="record-secondary">@item.Description</span>
                                                     }
                                                 </td>
@@ -254,14 +149,7 @@
                                                 </td>
                                                 <td class="record-numeric" data-label="Position">@item.DisplayOrder</td>
                                                 <td class="record-actions" data-label="">
-                                                    @* Two posts and a link, the same three controls a
-                                                       heading's group carries, one register down. The
-                                                       forms are named from the ITEM's identifier, so a
-                                                       menu with sixty dishes has a hundred and twenty
-                                                       distinct form names and Blazor's static SSR routes
-                                                       each POST to the row that owns it. The ends are
-                                                       disabled rather than omitted, on the rule the
-                                                       group's row already follows. *@
+
                                                     <form method="post" @formname="@ItemMoveFormName(item, up: true)"
                                                           @onsubmit="@(() => MoveItemAsync(menuSectionSummary.MenuSectionIdentifier, item.MenuItemIdentifier, -1))">
                                                         <AntiforgeryToken />
@@ -287,11 +175,7 @@
                         }
 
                         <div class="menu-group-actions">
-                            @* Two posts and a link. The forms carry `@@formname` values built from the
-                               heading's identifier because there is one pair per group and Blazor's
-                               static SSR routes a POST by that name; the handler receives the identifier
-                               rather than a position, and computes the exchange against the very list
-                               this loop is rendering. *@
+
                             <form method="post" @formname="@MoveFormName(menuSectionSummary, up: true)"
                                   @onsubmit="@(() => MoveAsync(menuSectionSummary.MenuSectionIdentifier, -1))">
                                 <AntiforgeryToken />
@@ -353,9 +237,6 @@
                 <tbody>
                     @foreach (MenuItemEventEntry entry in _recent)
                     {
-                        @* @key is on the event identifier rather than the loop index: two events on the
-                           same item in the same second are ordered by their UUIDv7 keys (§8.2), and an
-                           index would make the second one look like an edit of the first. *@
                         <tr @key="entry.MenuItemEventIdentifier">
                             <td class="record-primary" data-label="">
                                 <a class="record-link" href="@ManagePath(entry.MenuItemIdentifier)">@entry.MenuItemName</a>
@@ -381,24 +262,11 @@
 </section>
 
 @code {
-    /// <summary>
-    /// Enough to cover a service's worth of 86s without turning the index into the archive. §11.4's
-    /// "filters narrow only on explicit request" governs the per-item history, which is uncapped; this
-    /// panel is a glance, and its cap is the explicit request.
-    /// </summary>
     private const int RecentActivityCount = 20;
 
     private IReadOnlyList<MenuSectionSummary>? _sections;
     private IReadOnlyList<MenuItemSummary> _items = [];
-    /// <summary>
-    /// How many people currently like each dish, for the dishes anybody does (§7, §11.4).
-    ///
-    /// <para><b>A dish nobody likes is absent rather than present with a zero</b>, which is what
-    /// <see cref="IMenuItemReactionDirectory.ListLikeCountsAsync"/> returns and is why
-    /// <see cref="LikeCount"/> answers <c>null</c> rather than <c>0</c>. The surface renders no chip for
-    /// it. Storing a zero here would be this page inventing a fact the read deliberately declined to
-    /// state.</para>
-    /// </summary>
+
     private Dictionary<Guid, int> _likeCounts = new();
 
     private IReadOnlyList<MenuItemEventEntry>? _recent;
@@ -416,22 +284,9 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Two reads rather than one, and the second is the one this surface gained. IMenuDirectory
-        // builds its list from menu_item, so a heading with nothing under it is not in it at all —
-        // which is precisely the row an administrator wondering where their new heading went is looking
-        // for. IMenuSectionDirectory is the list of headings themselves, empty ones included, and its
-        // own doc comment says that is what it is for.
         _sections = await MenuSections.ListAsync(HttpContext.RequestAborted);
         _items = await MenuItems.ListAsync(HttpContext.RequestAborted);
 
-        // The third read, and it is ListLikeCountsAsync rather than ListLikedByAsync. The two are one
-        // keystroke apart and the wrong one produces a page that renders perfectly with every number
-        // either 0 or 1 — this administrator's own opinion, presented as the restaurant's. §11.4 asks
-        // *which of these is popular*; §11.1 asks *which of these do I like*; they are two reads over one
-        // fold, and this is the one that is not about the person reading it.
-        //
-        // One read for the whole menu rather than one per row, which is what that verb exists for: a
-        // lookup inside the render loop would turn a sixty-dish menu into sixty queries.
         _likeCounts = (await MenuItemReactionReads.ListLikeCountsAsync(HttpContext.RequestAborted))
             .ToDictionary(count => count.MenuItemIdentifier, count => count.LikeCount);
 
@@ -441,31 +296,12 @@
 
         _recent = await MenuEvents.ListRecentAsync(RecentActivityCount, HttpContext.RequestAborted);
 
-        // Post/redirect/get, the shape every administration write on this tree uses: a committed move
-        // redirects back here with one word, so a refresh cannot re-post it. On a POST the handler below
-        // is about to run and there is nothing to say yet.
         if (HttpMethods.IsGet(HttpContext.Request.Method))
         {
             _flashMessage = FlashFor(Done);
         }
     }
 
-    /// <summary>
-    /// Exchanges one heading with its neighbour and posts the <b>whole</b> ordering (§7).
-    ///
-    /// <para><b>The list is the source of the move, which is why this takes an offset rather than a
-    /// position.</b> <c>_sections</c> is what the page rendered, in the order §7's read produced; the
-    /// exchange happens in a copy of it and the result is sent as the complete ordering. So the write is
-    /// expressible even when two headings share a <c>display_order</c> — which the schema permits on
-    /// purpose, and which is the whole reason an absolute write could not express it.</para>
-    ///
-    /// <para><b>Every failure here is a stale page rather than a fault, and each reloads.</b> An identifier
-    /// this render does not hold, or a neighbour past either end, means somebody else changed the menu
-    /// between this page being drawn and the button being pressed. The same is true of
-    /// <c>MenuSectionSetChanged</c>, which the write service returns when the ordering is no longer a
-    /// permutation of the stored set — it refuses rather than reconciling, and the honest answer on this
-    /// side is to render the truth again.</para>
-    /// </summary>
     private async Task MoveAsync(Guid menuSectionIdentifier, int offset)
     {
         if (_sections is null)
@@ -476,9 +312,6 @@
 
         if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } administrator)
         {
-            // Endpoint authorization already guarantees this; menu_section_event.actor_person_identifier
-            // is NOT NULL and §7 requires every change to name somebody, so this is the belt to that brace
-            // — the same helper ManageMenuSection carries, in the one form this page needs.
             _errorMessage = "Your session could not be identified. Sign in again and retry.";
             return;
         }
@@ -513,23 +346,6 @@
         }
     }
 
-    /// <summary>
-    /// Exchanges one item with its neighbour <b>under the same heading</b> and posts that heading's whole
-    /// ordering (§7).
-    ///
-    /// <para><b>The same shape as <see cref="MoveAsync"/> one register down, and the one difference is the
-    /// set.</b> A position is a position <em>within</em> a heading, so the list exchanged is
-    /// <see cref="ItemsUnder"/>'s — not <c>_items</c>, which is the whole menu and whose neighbours cross
-    /// heading boundaries. Sending the whole menu would ask the write service to renumber the puddings
-    /// because somebody moved a drink.</para>
-    ///
-    /// <para><b>Every failure here is a stale page rather than a fault, and each reloads.</b> An identifier
-    /// this render does not hold under this heading, or a neighbour past either end, means somebody else
-    /// changed the menu between this page being drawn and the button being pressed — as does
-    /// <c>MenuItemSetChanged</c>, which the write service returns when the ordering is no longer a
-    /// permutation of what that heading holds. The honest answer on this side is to render the truth
-    /// again.</para>
-    /// </summary>
     private async Task MoveItemAsync(Guid menuSectionIdentifier, Guid menuItemIdentifier, int offset)
     {
         if (_sections is null)
@@ -540,8 +356,6 @@
 
         if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } administrator)
         {
-            // As MoveAsync: endpoint authorization already guarantees this, and
-            // menu_item_event.actor_person_identifier is NOT NULL.
             _errorMessage = "Your session could not be identified. Sign in again and retry.";
             return;
         }
@@ -579,26 +393,9 @@
         }
     }
 
-    /// <summary>
-    /// The items filed under one heading, in the order guests read them.
-    ///
-    /// <para><b>Filtered rather than grouped, and rather than asked for per section.</b> §7's read
-    /// orders by <c>(section.display_order, section.name, section.menu_section_identifier,
-    /// item.display_order, item.name, item.menu_item_identifier)</c>, so this filter preserves the order
-    /// somebody chose without re-deciding it — where a <c>GroupBy</c> would re-order the headings into
-    /// hash order and make the ordering decision a second time in a second file. A per-section read
-    /// would be a query with one caller, which is the defect <see cref="IMenuDirectory"/> declines to
-    /// invent for exactly this reason. The menu is single-digit-to-sixty rows on the machine this runs
-    /// on, and the same filter is what <c>ManageMenuSection</c> already does.</para>
-    /// </summary>
     private IReadOnlyList<MenuItemSummary> ItemsUnder(MenuSectionSummary section)
         => _items.Where(item => item.MenuSectionIdentifier == section.MenuSectionIdentifier).ToArray();
 
-    /// <summary>
-    /// How many items are under a heading, as a phrase rather than a bare number, because it sits in a
-    /// summary line beside a position and two adjacent integers with no words between them are
-    /// unreadable.
-    /// </summary>
     private string ItemCountLabel(MenuSectionSummary section)
     {
         int count = ItemsUnder(section).Count;
@@ -611,13 +408,6 @@
         };
     }
 
-    /// <summary>
-    /// Whether a heading is at an end of the list, which is what disables one of its two buttons. Compared
-    /// by identifier rather than by <c>display_order</c>, and that is the same distinction the whole verb
-    /// rests on: two headings may share a position, so "has the lowest number" is not "is first" — but
-    /// "is the first entry of the list this page is rendering" is exactly what Up would exchange with
-    /// nothing.
-    /// </summary>
     private bool IsFirst(MenuSectionSummary menuSectionSummary)
         => _sections is null
             || _sections.Count == 0
@@ -628,21 +418,9 @@
             || _sections.Count == 0
             || _sections[^1].MenuSectionIdentifier == menuSectionSummary.MenuSectionIdentifier;
 
-    /// <summary>
-    /// One form name per heading per direction. Unique within the page because the identifier is, which is
-    /// what Blazor's static SSR needs to route a POST to the right handler; a shared name would dispatch
-    /// every group's button to whichever form rendered first.
-    /// </summary>
     private static string MoveFormName(MenuSectionSummary menuSectionSummary, bool up)
         => $"menu-section-move-{(up ? "up" : "down")}-{menuSectionSummary.MenuSectionIdentifier}";
 
-    /// <summary>
-    /// Whether an item is at an end of <b>its own heading's</b> list, which is what disables one of its two
-    /// buttons. Compared by identifier against the filtered list for exactly the reason
-    /// <see cref="IsFirst"/> gives: two items may share a <c>display_order</c>, so "has the lowest number"
-    /// is not "is first", while "is the first entry of the list this group is rendering" is precisely what
-    /// Up would exchange with nothing.
-    /// </summary>
     private bool IsFirstUnder(MenuSectionSummary section, MenuItemSummary item)
     {
         IReadOnlyList<MenuItemSummary> items = ItemsUnder(section);
@@ -657,11 +435,6 @@
         return items.Count == 0 || items[^1].MenuItemIdentifier == item.MenuItemIdentifier;
     }
 
-    /// <summary>
-    /// One form name per item per direction, built from the item's identifier rather than from its heading's
-    /// — the item identifier is unique across the whole page, so no two rows can collide even when the same
-    /// dish name appears under two headings.
-    /// </summary>
     private static string ItemMoveFormName(MenuItemSummary item, bool up)
         => $"menu-item-move-{(up ? "up" : "down")}-{item.MenuItemIdentifier}";
 
@@ -670,11 +443,6 @@
     private void RedirectWithOutcome(string outcome)
         => Navigation.NavigateTo($"{IndexPath}?done={outcome}");
 
-    /// <summary>
-    /// The word the redirect carried, as a sentence. Three outcomes and three sentences, because the two
-    /// that wrote nothing are ordinary events on a shared menu rather than errors: somebody else moved the
-    /// heading first, or somebody else changed which headings there are.
-    /// </summary>
     private static string? FlashFor(string? outcome) => outcome switch
     {
         "moved" => "Moved. Every open menu has already picked up the new order.",
@@ -694,31 +462,11 @@
     private static string SectionPath(Guid menuSectionIdentifier)
         => $"/administration/menu/sections/{menuSectionIdentifier}";
 
-    /// <summary>
-    /// How many people currently like one dish, or <c>null</c> where nobody does.
-    ///
-    /// <para><b><c>null</c> rather than <c>0</c>, and the distinction is the read's rather than this
-    /// page's.</b> <c>ListLikeCountsAsync</c> lists the dishes that <em>are</em> liked instead of
-    /// left-joining the whole menu, so an absent key means nobody has pressed it — and rendering
-    /// <c>0 likes</c> on fifty-eight rows of a sixty-dish menu would bury the four that answer the
-    /// question this panel exists for.</para>
-    /// </summary>
     private int? LikeCount(MenuItemSummary item)
         => _likeCounts.TryGetValue(item.MenuItemIdentifier, out int likes) ? likes : null;
 
     private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
 
-    /// <summary>
-    /// A friendly label for each event type §8.2's <c>menu_item_event</c> vocabulary CHECK admits,
-    /// falling back to the stored string for anything else — §11.4 renders the record, so an
-    /// unrecognised type must show as itself rather than be swallowed. The arms below are deliberately
-    /// not counted in prose: this comment said <em>five</em> and named <em>two</em> new types where the
-    /// plan specified three, in a sentence nothing in the tree could check (F-77).
-    ///
-    /// <para>This feed is a glance rather than an audit, so a <c>description_changed</c> says that a
-    /// description moved without quoting it — the sentence belongs on the item's own page, where the
-    /// uncapped history renders it in full.</para>
-    /// </summary>
     private string Describe(MenuItemEventEntry entry) => entry.EventType switch
     {
         "created" => $"Created at {Money(entry.NewPriceAmount ?? 0m)}",

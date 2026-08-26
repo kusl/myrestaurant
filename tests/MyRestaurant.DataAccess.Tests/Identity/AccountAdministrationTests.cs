@@ -8,33 +8,14 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Identity;
 
-/// <summary>
-/// Integration tests for <see cref="DapperAccountAdministration"/> (account administration,
-/// TECHNICAL_SPECIFICATION §3.7) against a real PostgreSQL 17 container. They pin the behaviours that
-/// make the slice correct: staff creation writes an account with <c>must_change_password</c> plus its
-/// role grants and audit rows in one go; grant/revoke are idempotent, rotate the subject's security
-/// stamp (§3.1), and audit; the last administrator can be neither un-roled nor deactivated; and a
-/// credential reset stores the temporary password, forces a change, and — only when TOTP was enrolled —
-/// clears the authenticator and recovery codes, forcing re-enrolment, auditing both actions.
-///
-/// <para>Every operation is global to the auth tables (role counts, uniqueness), so — like the
-/// bootstrap tests — the tables are truncated before each test. xUnit builds a fresh instance per test
-/// method and runs them sequentially, so <see cref="InitializeAsync"/> gives each a clean database.
-/// Own <c>IClassFixture</c> (own container); if no container engine is available, every test skips.</para>
-/// </summary>
 public sealed class AccountAdministrationTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
-    // A plausibly-shaped Argon2id PHC string. The service stores the caller-supplied hash verbatim
-    // (§3.2/§3.7), so the exact bytes never matter — only that they round-trip.
     private const string SamplePasswordHash =
         "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0c2FsdA$b3JpZ2luYWxvcmlnaW5hbG9yaWdpbg";
 
     private const string ResetPasswordHash =
         "$argon2id$v=19$m=19456,t=2,p=1$cmVzZXRyZXNldHJlc2V0cg$cmVzZXR0YWdyZXNldHRhZ3Jlc2V0dA";
 
-    // The stored role names (the person_role.role_name CHECK values, §3.7). Spelled here as literals
-    // because the RestaurantRoles constants live in the web layer, which this data-layer test project
-    // does not (and must not) reference.
     private const string Administrator = "administrator";
     private const string Counter = "counter";
     private const string Kitchen = "kitchen";
@@ -117,7 +98,6 @@ public sealed class AccountAdministrationTests : IClassFixture<PostgreSqlFixture
         Guid adminId = await SeedAdministratorAsync("owner", cancellationToken);
         int peopleBefore = await CountPeopleAsync(cancellationToken);
 
-        // "owner" already exists (the seeded administrator).
         CreateStaffStatus status = await administration.CreateStaffAsync(
             new NewStaffAccount(_identifiers.Create(), "owner", null, SamplePasswordHash, [Counter]),
             adminId,
@@ -153,7 +133,7 @@ public sealed class AccountAdministrationTests : IClassFixture<PostgreSqlFixture
 
         Assert.Equal(RoleGrantOutcome.AlreadyHeld, second);
         Assert.Equal(1, await CountRoleAsync(staffId, Counter, cancellationToken));
-        Assert.Equal(stampAfterGrant, await ReadStampAsync(staffId, cancellationToken)); // unchanged
+        Assert.Equal(stampAfterGrant, await ReadStampAsync(staffId, cancellationToken));
         Assert.Equal(1, await CountEventAsync(staffId, SecurityEventType.RoleGranted, adminId, cancellationToken));
     }
 
@@ -198,7 +178,6 @@ public sealed class AccountAdministrationTests : IClassFixture<PostgreSqlFixture
         Assert.Equal(RoleRevokeOutcome.WouldRemoveLastAdministrator, refused);
         Assert.Equal(1, await CountRoleAsync(firstAdmin, Administrator, cancellationToken));
 
-        // A second administrator now exists, so removing the first is allowed.
         Guid secondAdmin = await SeedAdministratorAsync("deputy", cancellationToken);
 
         RoleRevokeOutcome allowed = await administration.RevokeRoleAsync(
@@ -328,7 +307,6 @@ public sealed class AccountAdministrationTests : IClassFixture<PostgreSqlFixture
         Assert.Equal(AccountActivationOutcome.WouldDeactivateLastAdministrator, refused);
         Assert.True((await ReadPersonAsync(firstAdmin, cancellationToken)).IsActive);
 
-        // With a second active administrator, deactivating the first is allowed.
         Guid secondAdmin = await SeedAdministratorAsync("deputy", cancellationToken);
 
         AccountActivationOutcome allowed = await administration.SetAccountActiveAsync(
@@ -338,14 +316,11 @@ public sealed class AccountAdministrationTests : IClassFixture<PostgreSqlFixture
         Assert.False((await ReadPersonAsync(firstAdmin, cancellationToken)).IsActive);
     }
 
-    // --- helpers -----------------------------------------------------------------------------------
-
     private void SkipIfNoContainer()
         => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
 
     private DapperAccountAdministration Build() => new(_connectionFactory!, _clock, _identifiers);
 
-    /// <summary>Seeds an active administrator (person + self-granted administrator role) and returns its id.</summary>
     private async Task<Guid> SeedAdministratorAsync(string username, CancellationToken cancellationToken)
     {
         Guid id = await SeedPersonAsync(username, cancellationToken);
@@ -353,7 +328,6 @@ public sealed class AccountAdministrationTests : IClassFixture<PostgreSqlFixture
         return id;
     }
 
-    /// <summary>Seeds a bare active person (a password, no roles, no obligations) and returns its id.</summary>
     private async Task<Guid> SeedPersonAsync(string username, CancellationToken cancellationToken, string? totpSecretProtected = null)
     {
         Guid id = _identifiers.Create();
@@ -478,8 +452,6 @@ public sealed class AccountAdministrationTests : IClassFixture<PostgreSqlFixture
             "SELECT count(*)::int FROM person;", cancellationToken: cancellationToken));
     }
 
-    // Plain mutable POCO so Dapper's default property mapping applies; every SELECT aliases its
-    // snake_case columns to these PascalCase names.
     private sealed class PersonRow
     {
         public string Username { get; set; } = string.Empty;

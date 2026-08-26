@@ -3,18 +3,6 @@
 @inject SignInManager<Person> SignInManager
 @inject NavigationManager Navigation
 
-@* The sign-in page (TECHNICAL_SPECIFICATION §3.3, §3.5, §4.1). Static SSR on purpose: issuing the
-   authentication cookie needs a real HTTP response, which a Blazor circuit does not have. The form
-   is a plain full-page POST (EditForm in SSR emits the antiforgery token itself). Auditing and
-   metering happen centrally in RestaurantSignInManager, never here.
-
-   Password and passkey share one form. It uses OnSubmit (not OnValidSubmit) so the passkey button can
-   skip the password DataAnnotations: the passkey-submit element writes the assertion credential into
-   Input.Passkey and submits natively, and the handler runs PasskeySignInAsync on that before it
-   validates anything. A passkey sign-in never gets a TOTP challenge (§3.5) — that is guaranteed in the
-   sign-in manager, not here. The username carries autocomplete="username webauthn" so browsers can
-   surface a discoverable passkey inline (conditional mediation). *@
-
 <PageTitle>Sign in</PageTitle>
 
 <section class="panel account-panel">
@@ -65,11 +53,6 @@
             </div>
         </EditForm>
 
-        @* §4.4/§11.1: an anonymous guest who scanned a table's QR is sent here holding a join grant,
-           and for a first-time guest this page is a dead end unless it offers the other half of
-           "sign-in/registration". The return URL is carried across so registering lands them back at
-           the table, where the grant is still waiting. Staff never use this link — administrators
-           create those accounts (§3.7). *@
         <p class="form-footnote">
             New here? <a href="@RegisterUrl">Create an account</a> — it takes a moment, and a passkey
             means nothing to remember. Lost access to an existing account? Ask at the counter.
@@ -90,19 +73,10 @@
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
 
-    /// <summary>
-    /// The registration surface, carrying this page's return URL so the two are interchangeable
-    /// entry points to the same destination (§4.4). Not sanitized here — <c>/register</c> passes it
-    /// through <see cref="ObligationsEnforcement.SafeLocalReturnUrl"/> before it redirects anywhere,
-    /// exactly as this page does with its own.
-    /// </summary>
     private string RegisterUrl => string.IsNullOrEmpty(ReturnUrl)
         ? AccountRoutes.Register
         : $"{AccountRoutes.Register}?ReturnUrl={Uri.EscapeDataString(ReturnUrl)}";
 
-    // BL0008: on a static-SSR form POST the framework binds [SupplyParameterFromForm] itself and may
-    // assign null, silently discarding a `= new()` initializer — so the default is applied here instead.
-    // OnSubmit means we validate by hand (below), so we drive an explicit EditContext.
     protected override void OnInitialized()
     {
         Input ??= new();
@@ -113,10 +87,6 @@
     {
         string destination = ObligationsEnforcement.SafeLocalReturnUrl(ReturnUrl);
 
-        // Passkey path (§3.3): the element posted an assertion credential (or an error). Handle it
-        // before any password validation — the username/password fields are irrelevant here — and
-        // note PasskeySignInAsync never returns RequiresTwoFactor (a passkey bypasses the §3.5 second
-        // factor by construction).
         if (!string.IsNullOrEmpty(Input.Passkey?.Error))
         {
             _errorMessage = "That passkey could not be used. Try again, or sign in with your password.";
@@ -147,14 +117,11 @@
             return;
         }
 
-        // Password path: OnSubmit fires regardless of validity, so enforce the DataAnnotations now.
         if (!_editContext.Validate())
         {
             return;
         }
 
-        // isPersistent: the §3.1 session is a 24-hour sliding cookie either way; persisting it lets
-        // a guest's phone survive a browser restart mid-meal. lockoutOnFailure per §3.1.
         SignInResult result = await SignInManager.PasswordSignInAsync(
             Input.Username,
             Input.Password,
@@ -163,7 +130,6 @@
 
         if (result.Succeeded)
         {
-            // The obligations middleware intercepts this navigation when a §3.5 flag is set.
             Navigation.NavigateTo(destination);
         }
         else if (result.RequiresTwoFactor)
@@ -193,8 +159,6 @@
         [Required(ErrorMessage = "Enter your password.")]
         public string Password { get; set; } = string.Empty;
 
-        // Populated by the passkey-submit element on the assertion path; ignored by the password path.
-        // Not [Required] — the passkey button must submit without a username or password.
         public PasskeyInputModel? Passkey { get; set; }
     }
 }

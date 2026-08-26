@@ -4,21 +4,6 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Identity;
 
-/// <summary>
-/// Pure tests for the guest registration ticket (TECHNICAL_SPECIFICATION §4.3, §11.1): the
-/// Data-Protection round-trip carries every field the credential step needs, a tampered or foreign
-/// value is rejected rather than trusted, the embedded issued-at bounds how long a half-finished
-/// registration stays resumable, and <see cref="RegistrationTicket.CanDeclineThePasskey"/> answers the
-/// one question the passkey step branches on.
-///
-/// <para>The last test here is the one worth keeping honest. A registration ticket and a
-/// <see cref="SetupTicket"/> carry almost the same fields, and the account the setup one describes is
-/// about to be granted <c>administrator</c> — so the two protectors using distinct purposes is not
-/// tidiness, it is the thing that stops a value minted on one path being read on the other.</para>
-///
-/// <para>No server, no container — these always run. An <see cref="EphemeralDataProtectionProvider"/>
-/// gives each test a throwaway key ring.</para>
-/// </summary>
 public sealed class RegistrationTicketTests
 {
     private static readonly DateTimeOffset IssuedAt = new(2026, 3, 4, 18, 30, 0, TimeSpan.Zero);
@@ -51,8 +36,6 @@ public sealed class RegistrationTicketTests
     [Fact]
     public void TryUnprotect_PasskeyOnlyTicket_CarriesNoPasswordHash()
     {
-        // The passkey-first default (§4.3): the guest left the password blank, so the ticket has no
-        // credential in it at all and the passkey step is the only way forward.
         RegistrationTicketProtector protector = NewProtector();
         RegistrationTicket passkeyOnly = new(
             Guid.NewGuid(), IssuedAt, "quiet.guest", DisplayName: null, PasswordHash: null);
@@ -69,8 +52,6 @@ public sealed class RegistrationTicketTests
     [InlineData(SamplePasswordHash, true)]
     public void CanDeclineThePasskey_IsTrueOnlyWhenAPasswordWasSet(string? passwordHash, bool expected)
     {
-        // §3.3 makes the passkey "always offered, never required" — but declining is only offerable
-        // when something else can sign this person in, which is exactly this predicate.
         RegistrationTicket ticket = new(Guid.NewGuid(), IssuedAt, "guest", null, passwordHash);
 
         Assert.Equal(expected, ticket.CanDeclineThePasskey);
@@ -82,8 +63,6 @@ public sealed class RegistrationTicketTests
         RegistrationTicketProtector protector = NewProtector();
         string protectedTicket = protector.Protect(SampleTicket());
 
-        // Data Protection authenticates its payload, so any change fails the integrity check and
-        // Unprotect throws — TryUnprotect must swallow that as "false" so the surface starts over.
         char[] chars = protectedTicket.ToCharArray();
         chars[0] = chars[0] == 'A' ? 'B' : 'A';
 
@@ -103,9 +82,6 @@ public sealed class RegistrationTicketTests
     [Fact]
     public void TryUnprotect_ASetupTicketProtectedUnderItsOwnPurpose_ReturnsFalse()
     {
-        // Same key ring, different purpose. Without the purpose split, a value minted by the
-        // first-administrator wizard would deserialize cleanly here — the field names overlap — and
-        // /register would resume somebody else's half-finished bootstrap.
         EphemeralDataProtectionProvider sharedKeyRing = new();
         SetupTicketProtector setup = new(sharedKeyRing);
         RegistrationTicketProtector registration = new(sharedKeyRing);
@@ -137,17 +113,13 @@ public sealed class RegistrationTicketTests
         TimeSpan lifetime = RegistrationCookie.Lifetime;
 
         Assert.False(ticket.HasExpired(IssuedAt, lifetime));
-        Assert.False(ticket.HasExpired(IssuedAt + lifetime, lifetime)); // exactly at the edge
+        Assert.False(ticket.HasExpired(IssuedAt + lifetime, lifetime));
         Assert.True(ticket.HasExpired(IssuedAt + lifetime + TimeSpan.FromSeconds(1), lifetime));
     }
 
     [Fact]
     public void Cookie_OutlivesTheJoinGrantItTravelsBeside()
     {
-        // Not arbitrary: §4.4's grant is the authorization to sit at a table and is deliberately short,
-        // while this ticket only has to survive a form and a fingerprint prompt. If it were the shorter
-        // of the two, a guest could hold a live grant and still be unable to finish becoming a person —
-        // the one combination the join flow has no page for.
         Assert.True(RegistrationCookie.Lifetime > TimeSpan.FromMinutes(10));
     }
 

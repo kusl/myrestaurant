@@ -1,17 +1,3 @@
-// Passkey (WebAuthn) client helper — TECHNICAL_SPECIFICATION §3.3.
-//
-// Adapted from the ASP.NET Core Blazor Web template's PasskeySubmit.razor.js, with two changes:
-//   * it is a plain classic script (the account pages are static-SSR and load no JS modules), loaded
-//     once from App.razor, guarded against double-definition; and
-//   * the ceremony endpoints are this app's routes (AccountRoutes.PasskeyCreationOptions /
-//     PasskeyRequestOptions) rather than the template's /Account/* paths — keep these two default
-//     URLs in sync with ObligationsEnforcement.AccountRoutes. An element may override either with a
-//     `creation-options-url` / `request-options-url` attribute; the first-administrator setup wizard
-//     uses this to point attestation at its anonymous /setup/passkey/creation-options endpoint (§3.6).
-//
-// The <passkey-submit> element is form-associated: it intercepts the __passkeySubmit button, runs the
-// browser ceremony, writes {Name}.CredentialJson (or {Name}.Error) into the form, and submits natively
-// — which bypasses Blazor's EditForm validation so the passkey button never trips the password rules.
 (function () {
     'use strict';
 
@@ -126,12 +112,12 @@
                 formData.append(`${this.attrs.name}.CredentialJson`, credentialJson);
             } catch (error) {
                 if (error.name === 'AbortError') {
-                    // The user explicitly canceled the operation — return without error.
+
                     return;
                 }
                 console.error(error);
                 if (useConditionalMediation) {
-                    // Conditional mediation is not user-initiated; log but do not surface an error.
+
                     return;
                 }
                 const errorMessage = error.name === 'NotAllowedError'
@@ -147,7 +133,7 @@
             if (browserSupportsPasskeys &&
                 this.attrs.operation === 'Request' &&
                 await PublicKeyCredential.isConditionalMediationAvailable?.()) {
-                await this.obtainAndSubmitCredential(/* useConditionalMediation */ true);
+                await this.obtainAndSubmitCredential( true);
             }
         }
     });

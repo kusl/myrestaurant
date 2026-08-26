@@ -7,22 +7,6 @@ using MyRestaurant.Domain.Time;
 
 namespace MyRestaurant.WebApplication.Identity;
 
-/// <summary>
-/// The non-page account endpoints. Sign-out is a POST endpoint rather than a page
-/// (TECHNICAL_SPECIFICATION §3.5): it must clear the authentication cookies on the response, must
-/// never be triggerable by a crafted GET link, and must stay reachable while the obligations
-/// pipeline blocks everything else (its path is exempt in <see cref="ObligationsEnforcement"/>).
-/// Binding the optional form field makes the endpoint "accept form data", which switches on the
-/// framework's automatic antiforgery validation for it — the layout's sign-out form supplies the
-/// token via <c>&lt;AntiforgeryToken /&gt;</c>.
-///
-/// <para>The two passkey-options endpoints (§3.3) return the WebAuthn ceremony JSON that the browser
-/// feeds to <c>navigator.credentials</c>. They are fetched by the <c>passkey-submit</c> element, not
-/// posted by a form, so they validate the antiforgery token manually from the request header (the
-/// element carries it) rather than via form binding. Creation options require an authenticated user
-/// (you register a passkey for yourself); request options are anonymous, because sign-in — including
-/// the username-first and discoverable flows — happens before there is a session.</para>
-/// </summary>
 public static class AccountEndpoints
 {
     public static IEndpointRouteBuilder MapRestaurantAccountEndpoints(this IEndpointRouteBuilder endpoints)
@@ -33,17 +17,10 @@ public static class AccountEndpoints
             SignInManager<Person> signInManager,
             [FromForm] string? returnUrl) =>
         {
-            // Clears the application, external, and both two-factor cookies. Harmless when the
-            // caller was already anonymous. No security_event is written: sign-out is not in the
-            // §8.2 event-type vocabulary (sessions also end silently by expiry and stamp rotation,
-            // so recording only explicit sign-outs would tell a misleading story).
             await signInManager.SignOutAsync();
             return Results.LocalRedirect(ObligationsEnforcement.SafeLocalReturnUrl(returnUrl));
         });
 
-        // Registration ceremony options for the signed-in user (attestation). The user entity's Id is
-        // the WebAuthn user handle; the framework stashes the challenge in a short-lived cookie that
-        // PerformPasskeyAttestationAsync later reads.
         endpoints.MapPost(AccountRoutes.PasskeyCreationOptions, async (
             HttpContext context,
             UserManager<Person> userManager,
@@ -70,9 +47,6 @@ public static class AccountEndpoints
             return Results.Content(optionsJson, "application/json");
         }).RequireAuthorization();
 
-        // Assertion ceremony options for sign-in (anonymous). With a username we scope allowCredentials
-        // to that account (username-first); without one we return no allowCredentials so the browser
-        // offers any discoverable passkey for this relying party.
         endpoints.MapPost(AccountRoutes.PasskeyRequestOptions, async (
             HttpContext context,
             UserManager<Person> userManager,
@@ -90,13 +64,6 @@ public static class AccountEndpoints
             return Results.Content(optionsJson, "application/json");
         });
 
-        // Registration ceremony options for the FIRST-ADMINISTRATOR wizard (§3.6). Anonymous — there is
-        // no session during setup — and gated on the zero-administrator condition, so it is dead the
-        // moment an administrator exists. The pending identity lives in the setup cookie (the wizard
-        // minted the person id at its first step); we use that id as the WebAuthn user handle so it
-        // equals the account the wizard will create, which a later discoverable sign-in relies on. Like
-        // the other options endpoints it is fetched (not form-posted), so the antiforgery token is read
-        // from the request header the passkey element supplies.
         endpoints.MapPost(AccountRoutes.SetupPasskeyCreationOptions, async (
             HttpContext context,
             IFirstAdministratorBootstrap bootstrap,
@@ -118,7 +85,6 @@ public static class AccountEndpoints
                 || ticket is null
                 || ticket.HasExpired(clock.UtcNow, SetupCookie.Lifetime))
             {
-                // No valid in-flight setup — the wizard must be (re)started before a passkey can be added.
                 return Results.BadRequest();
             }
 
@@ -132,17 +98,6 @@ public static class AccountEndpoints
             return Results.Content(optionsJson, "application/json");
         });
 
-        // Registration ceremony options for a GUEST who is registering (§4.3, §11.1). Anonymous for
-        // the same reason the setup one is — the account does not exist yet, so there is no session to
-        // authorize against — and gated the same way, on a Data-Protection-protected cookie that only
-        // this server could have written. The pending person id in that ticket becomes the WebAuthn
-        // user handle, which must equal the person row the commit will write or a later discoverable
-        // sign-in would present a handle matching nobody (§3.3).
-        //
-        // Note what this deliberately does NOT check: whether the caller holds a join grant. §4.3 puts
-        // registration at the moment of joining a table, but a grant that expires while a guest is
-        // fumbling a fingerprint prompt must cost them the table, not the account they were halfway
-        // through creating — §4.4 already sends them to the friendly re-scan page for the former.
         endpoints.MapPost(AccountRoutes.RegistrationPasskeyCreationOptions, async (
             HttpContext context,
             SignInManager<Person> signInManager,
@@ -158,8 +113,6 @@ public static class AccountEndpoints
                 || ticket is null
                 || ticket.HasExpired(clock.UtcNow, RegistrationCookie.Lifetime))
             {
-                // No valid in-flight registration — the details step must be completed (or redone)
-                // before a passkey can be created for an identity that does not exist yet.
                 return Results.BadRequest();
             }
 

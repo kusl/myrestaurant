@@ -7,13 +7,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Identity;
 
-/// <summary>
-/// Integration tests for <see cref="DapperSecurityEventLog"/> (TECHNICAL_SPECIFICATION §3.5, §8.2,
-/// §16.2) against a real PostgreSQL 17 container: a self-inflicted event stores a null actor; an
-/// administrative event stores the acting administrator; and the CHECK-backed vocabulary is guarded
-/// client-side (that last test needs no container and always runs). If no container engine is
-/// available, the database-backed tests skip.
-/// </summary>
 public sealed class DapperSecurityEventLogTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private readonly PostgreSqlFixture _fixture;
@@ -83,8 +76,6 @@ public sealed class DapperSecurityEventLogTests : IClassFixture<PostgreSqlFixtur
     [Fact]
     public async Task RecordAsync_UnknownEventType_ThrowsBeforeTouchingTheDatabase()
     {
-        // No container needed: the client-side guard rejects the value before opening a connection.
-        // The token is passed so xUnit's test cancellation stays responsive (xUnit1051).
         DapperSecurityEventLog log = new(new ThrowingConnectionFactory(), _clock, new UuidV7IdentifierFactory());
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
@@ -94,8 +85,6 @@ public sealed class DapperSecurityEventLogTests : IClassFixture<PostgreSqlFixtur
                 "not_a_real_event",
                 TestContext.Current.CancellationToken));
     }
-
-    // --- helpers -----------------------------------------------------------------------------------
 
     private DapperSecurityEventLog BuildLog()
         => new(_connectionFactory!, _clock, new UuidV7IdentifierFactory());
@@ -128,8 +117,6 @@ public sealed class DapperSecurityEventLogTests : IClassFixture<PostgreSqlFixtur
 
     private async Task<SecurityEventRow> ReadSingleEventAsync(Guid subject, CancellationToken cancellationToken)
     {
-        // Alias snake_case columns to the row's PascalCase properties so Dapper matches by name without
-        // the global MatchNamesWithUnderscores setting the store deliberately avoids.
         await using DbConnection connection = await _connectionFactory!.OpenConnectionAsync(cancellationToken);
         return await connection.QuerySingleAsync<SecurityEventRow>(new CommandDefinition(
             """
@@ -143,7 +130,6 @@ public sealed class DapperSecurityEventLogTests : IClassFixture<PostgreSqlFixtur
             cancellationToken: cancellationToken));
     }
 
-    /// <summary>One projected <c>security_event</c> row for assertions.</summary>
     private sealed class SecurityEventRow
     {
         public string EventType { get; init; } = string.Empty;
@@ -151,7 +137,6 @@ public sealed class DapperSecurityEventLogTests : IClassFixture<PostgreSqlFixtur
         public DateTimeOffset OccurredAt { get; init; }
     }
 
-    /// <summary>An <see cref="IDatabaseConnectionFactory"/> that must never be called; proves the guard runs first.</summary>
     private sealed class ThrowingConnectionFactory : IDatabaseConnectionFactory
     {
         public ValueTask<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)

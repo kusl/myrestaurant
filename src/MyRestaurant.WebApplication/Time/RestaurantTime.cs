@@ -3,36 +3,8 @@ using MyRestaurant.WebApplication.Configuration;
 
 namespace MyRestaurant.WebApplication.Time;
 
-/// <summary>
-/// Renders a stored instant for a screen (TECHNICAL_SPECIFICATION §8.1: instants are "stored
-/// <c>timestamptz</c> UTC; rendered in <c>RESTAURANT_TIME_ZONE</c>"; §13, F-36). This is the single
-/// place the configured zone is honoured — nothing outside this class may call
-/// <see cref="DateTimeOffset.ToLocalTime"/>, which reads the <em>server process's</em> zone and
-/// therefore renders UTC in a container that sets no <c>TZ</c>.
-///
-/// <para><b>Restaurant time, always — never the reader's.</b> A restaurant is a physical place in one
-/// IANA zone. A guest in New York reading the history of a meal they ate in Tokyo wants the times the
-/// meal actually happened at, not the times it would have been on their own wristwatch; a kitchen
-/// ticket and the bill it becomes must agree to the minute across every screen in the building. So the
-/// reader's zone is deliberately irrelevant: every instant on every surface, for every viewer, is
-/// rendered in <c>RESTAURANT_TIME_ZONE</c>, and the footer clock (§11.7) says so out loud.</para>
-///
-/// <para><b>Why not <see cref="CultureInfo"/>'s <c>"t"</c>/<c>"g"</c> patterns.</b> They take the
-/// 12- versus 24-hour choice, the separator, and the month names from the <em>server's</em> culture,
-/// which in this deployment is whatever locale the container image happens to carry — the same trap
-/// <see cref="Orders.MoneyText"/> documents for <c>"C"</c>. Every pattern below is explicit and
-/// formatted with <see cref="CultureInfo.InvariantCulture"/>; the one genuine choice, 12- versus
-/// 24-hour, is configuration (<c>RESTAURANT_CLOCK_FORMAT</c>, §13) rather than an accident of the
-/// image. <c>js/clock.js</c> reproduces these patterns character for character so the ticking footer
-/// never disagrees with the server-rendered text beside it.</para>
-/// </summary>
 public sealed class RestaurantTime
 {
-    /// <summary>
-    /// How far ahead <see cref="Snapshot"/> looks for the next UTC-offset change. Long enough to cover
-    /// both edges of an annual daylight-saving cycle from any starting point, so a page left open for a
-    /// week still knows when the clocks move; short enough that the scan below stays trivial.
-    /// </summary>
     private const int TransitionSearchDays = 800;
 
     private const string DatePattern = "d MMM yyyy";
@@ -41,9 +13,7 @@ public sealed class RestaurantTime
     private const string TwentyFourHourTimePattern = "HH:mm";
     private const string TwelveHourTimeWithSecondsPattern = "h:mm:ss tt";
     private const string TwentyFourHourTimeWithSecondsPattern = "HH:mm:ss";
-    // Separators and the literal T are quoted: in a custom format string ":" means "the culture's
-    // time separator" and an unquoted letter is asking to be reinterpreted. Invariant culture makes
-    // both harmless today, but this one string has to be ISO 8601 for a machine, not for a reader.
+
     private const string MachineReadablePattern = "yyyy'-'MM'-'dd'T'HH':'mm':'sszzz";
 
     private readonly object _transitionGate = new();
@@ -61,11 +31,6 @@ public sealed class RestaurantTime
         ZoneLabel = LabelFor(options.TimeZoneId);
     }
 
-    /// <summary>
-    /// Direct construction, for tests and for any caller that already holds a resolved zone. The
-    /// identifier is carried separately rather than read from <see cref="TimeZoneInfo.Id"/> so the
-    /// label shown to a guest is the string an operator actually configured.
-    /// </summary>
     public RestaurantTime(TimeZoneInfo zone, string zoneIdentifier, bool usesTwelveHourClock)
     {
         ArgumentNullException.ThrowIfNull(zone);
@@ -77,104 +42,40 @@ public sealed class RestaurantTime
         ZoneLabel = LabelFor(zoneIdentifier);
     }
 
-    /// <summary>The configured zone identifier, e.g. <c>America/New_York</c>.</summary>
     public string ZoneIdentifier { get; }
 
-    /// <summary>
-    /// The short, human half of <see cref="ZoneIdentifier"/> — <c>New York</c>, <c>Tokyo</c>,
-    /// <c>Buenos Aires</c>. Shown in the footer, where the full identifier would swamp a phone; the
-    /// full identifier stays available as the element's title.
-    /// </summary>
     public string ZoneLabel { get; }
 
-    /// <summary>Whether times render as <c>3:04 PM</c> (true) or <c>15:04</c> (false); §13.</summary>
     public bool UsesTwelveHourClock { get; }
 
-    /// <summary>The instant, shifted into the restaurant's zone. The absolute moment is unchanged.</summary>
     public DateTimeOffset ToRestaurantTime(DateTimeOffset instant)
         => TimeZoneInfo.ConvertTime(instant, _zone);
 
-    /// <summary>Time of day only — <c>3:04 PM</c> or <c>15:04</c>.</summary>
     public string Time(DateTimeOffset instant)
         => Render(instant, UsesTwelveHourClock ? TwelveHourTimePattern : TwentyFourHourTimePattern);
 
-    /// <summary>Time of day to the second — <c>3:04:05 PM</c> or <c>15:04:05</c>.</summary>
     public string TimeWithSeconds(DateTimeOffset instant)
         => Render(instant, UsesTwelveHourClock ? TwelveHourTimeWithSecondsPattern : TwentyFourHourTimeWithSecondsPattern);
 
-    /// <summary>Date only — <c>26 Jul 2026</c>.</summary>
     public string Date(DateTimeOffset instant) => Render(instant, DatePattern);
 
-    /// <summary>Date and time of day — <c>26 Jul 2026, 3:04 PM</c>.</summary>
     public string DateAndTime(DateTimeOffset instant)
         => $"{Date(instant)}, {Time(instant)}";
 
-    /// <summary>
-    /// The footer clock's reading — <c>Sun 26 Jul 2026, 3:04:05 PM</c>. The weekday earns its place
-    /// here and nowhere else: this is the one line on the page whose job is to tell a reader what
-    /// "now" is at the restaurant, and a bare date cannot do that across a time-zone boundary.
-    /// <c>js/clock.js</c> formats identically.
-    /// </summary>
     public string DateAndTimeWithSeconds(DateTimeOffset instant)
         => $"{Render(instant, WeekdayDatePattern)}, {TimeWithSeconds(instant)}";
 
-    /// <summary>
-    /// The <c>datetime</c> attribute value for a <c>&lt;time&gt;</c> element —
-    /// <c>2026-07-26T15:04:05-04:00</c>. Machine-readable, and carries the offset so the markup is
-    /// unambiguous even though the text beside it is not annotated.
-    /// </summary>
     public string MachineReadable(DateTimeOffset instant) => Render(instant, MachineReadablePattern);
 
-    /// <summary>
-    /// The UTC instant at which a calendar day <em>in the restaurant's zone</em> begins — the lower bound
-    /// of a date filter (§6.8's hidden-records view, §11.4).
-    ///
-    /// <para>This is the same rule as every other method here, applied in the other direction. A person
-    /// typing "26 Jul" into a filter means the restaurant's 26 July, not UTC's and not their own: they are
-    /// looking for a meal that happened at a place. Converting the boundary here rather than in SQL keeps
-    /// §8.1's "one type performs that conversion" true — a <c>… AT TIME ZONE …</c> in a query would be a
-    /// second place the configured zone is honoured, and the second place is where the two drift.</para>
-    ///
-    /// <para>The returned value is normalised to UTC (offset zero) rather than carried in the restaurant's
-    /// offset. That is not cosmetic: Npgsql refuses to write a <see cref="DateTimeOffset"/> whose offset is
-    /// not zero to a <c>timestamptz</c> parameter, so a boundary handed straight to a query must already
-    /// be UTC.</para>
-    ///
-    /// <para><b>Daylight saving.</b> In a zone whose clocks move at midnight — Cuba's do — the local
-    /// midnight of a spring-forward day does not exist, and <see cref="TimeZoneInfo.GetUtcOffset(DateTime)"/>
-    /// answers with the zone's standard offset for such a time. The boundary is then out by the size of
-    /// the shift for that one day a year. That is deliberately preferred over
-    /// <see cref="TimeZoneInfo.ConvertTimeToUtc(DateTime, TimeZoneInfo)"/>, which throws on an invalid
-    /// local time: a filter that returns a range an hour wide at one edge is a filter, and a filter that
-    /// throws is a blank page.</para>
-    /// </summary>
     public DateTimeOffset StartOfDay(DateOnly day)
     {
-        // Unspecified on purpose: TimeZoneInfo.GetUtcOffset(DateTime) reads an Unspecified value as a
-        // local time in *this* zone, which is exactly the question being asked. A Utc or Local Kind would
-        // silently mean something else.
         DateTime localMidnight = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
 
         return new DateTimeOffset(localMidnight, _zone.GetUtcOffset(localMidnight)).ToUniversalTime();
     }
 
-    /// <summary>
-    /// The UTC instant at which the day <em>after</em> <paramref name="day"/> begins in the restaurant's
-    /// zone — the exclusive upper bound that pairs with <see cref="StartOfDay"/>.
-    ///
-    /// <para>Half-open ranges (<c>&gt;= start</c>, <c>&lt; end</c>) rather than inclusive ones, so no
-    /// caller ever has to decide whether 23:59:59.999999 is inside a day. <c>timestamptz</c> has
-    /// microsecond resolution and an inclusive upper bound written as "the last microsecond" is a bug
-    /// waiting for the first row that lands on it.</para>
-    /// </summary>
     public DateTimeOffset StartOfNextDay(DateOnly day) => StartOfDay(day.AddDays(1));
 
-    /// <summary>
-    /// Everything <c>js/clock.js</c> needs to keep ticking without the server: the anchoring instant,
-    /// the offset that applies to it, and — because a page can outlive a daylight-saving boundary — the
-    /// next instant at which that offset changes, with the offset that takes over. Also served as JSON
-    /// by <see cref="RestaurantClockEndpoints"/> so a long-lived surface can re-anchor without a reload.
-    /// </summary>
     public RestaurantClockSnapshot Snapshot(DateTimeOffset utcNow)
     {
         CachedTransition transition = TransitionAfter(utcNow);
@@ -192,10 +93,6 @@ public sealed class RestaurantTime
     private string Render(DateTimeOffset instant, string pattern)
         => ToRestaurantTime(instant).ToString(pattern, CultureInfo.InvariantCulture);
 
-    /// <summary>
-    /// <c>America/Argentina/Buenos_Aires</c> → <c>Buenos Aires</c>; <c>UTC</c> → <c>UTC</c>. A Windows
-    /// identifier ("Eastern Standard Time") has no separator and is returned unchanged.
-    /// </summary>
     private static string LabelFor(string zoneIdentifier)
     {
         int lastSeparator = zoneIdentifier.LastIndexOf('/');
@@ -206,13 +103,6 @@ public sealed class RestaurantTime
         return tail.Replace('_', ' ');
     }
 
-    /// <summary>
-    /// The next offset change at or after <paramref name="utcNow"/>, memoized. The scan is a day-by-day
-    /// walk to find the bracketing day, then a bisection to the second — a few hundred
-    /// <see cref="TimeZoneInfo.GetUtcOffset(DateTimeOffset)"/> calls, run at most once per transition
-    /// (or once per <see cref="TransitionSearchDays"/> in a zone that never moves) rather than once per
-    /// page render.
-    /// </summary>
     private CachedTransition TransitionAfter(DateTimeOffset utcNow)
     {
         lock (_transitionGate)
@@ -249,8 +139,6 @@ public sealed class RestaurantTime
 
         if (bracket is not { } high)
         {
-            // No change within the horizon. Re-ask then rather than never: the tz database is updated
-            // in place under a running container, and a zone can acquire a rule it did not have.
             return new CachedTransition(Instant: null, OffsetMinutes: null, RecomputeAfter: horizon);
         }
 
@@ -276,19 +164,6 @@ public sealed class RestaurantTime
     private sealed record CachedTransition(DateTimeOffset? Instant, int? OffsetMinutes, DateTimeOffset RecomputeAfter);
 }
 
-/// <summary>
-/// The wire shape of the footer clock's anchor (§11.7). Serialized camelCase by the minimal-API JSON
-/// defaults, which is what <c>js/clock.js</c> reads.
-/// </summary>
-/// <param name="EpochMilliseconds">The server's instant, milliseconds since the Unix epoch, UTC.</param>
-/// <param name="UtcOffsetMinutes">The restaurant zone's offset from UTC at that instant, in minutes.</param>
-/// <param name="NextTransitionEpochMilliseconds">
-/// When the offset next changes, or <c>null</c> if it does not within the search horizon.
-/// </param>
-/// <param name="NextUtcOffsetMinutes">The offset that takes over at that transition, or <c>null</c>.</param>
-/// <param name="ZoneIdentifier">The configured IANA identifier, e.g. <c>America/New_York</c>.</param>
-/// <param name="ZoneLabel">Its short human form, e.g. <c>New York</c>.</param>
-/// <param name="UsesTwelveHourClock">Whether to render <c>3:04:05 PM</c> rather than <c>15:04:05</c>.</param>
 public sealed record RestaurantClockSnapshot(
     long EpochMilliseconds,
     int UtcOffsetMinutes,

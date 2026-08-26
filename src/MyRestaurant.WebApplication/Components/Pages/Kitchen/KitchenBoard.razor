@@ -19,28 +19,8 @@
 @inject RestaurantTime RestaurantClock
 @inject IJSRuntime JavaScript
 
-@* The kitchen board (TECHNICAL_SPECIFICATION §10, §11.2).
-
-   Interactive server, prerendered, and the only surface in the tree that is expected to sit on one
-   circuit for a whole service. Everything it shows is derived: the queue is the kitchen_pending_line
-   view (§8.3), the Undo list is IKitchenBoardReads, the "86" panel is the menu. It holds no state of its
-   own except the alert state, which is a browser-audio permission and therefore cannot be anything but
-   circuit state (§10.3).
-
-   Nothing here enforces §6.5. Every tap goes through IOrderWorkflow to the one transaction, which
-   re-decides under the lock (§6.6) — so two cooks tapping the same line at the same moment produce one
-   fulfillment and one refusal, and the refusal is shown rather than swallowed. What this surface
-   refuses on its own it refuses only to make the answer immediate.
-
-   The actor role is read from the principal rather than assumed: §6.2 lets kitchen OR administrator
-   author a fulfillment, and an administrator covering the pass must not be recorded as the kitchen. *@
-
 <PageTitle>Kitchen</PageTitle>
 
-@* §11.10's pair. data-live says whether a circuit produced this markup at all; data-loaded whether
-   the three queries behind it have answered — see IsLiveAttributeValue and IsLoadedAttributeValue.
-   The two counts beside them publish §10.3's unseen tally as numbers rather than only as English
-   inside the badge. *@
 <section class="panel kitchen-board" id="kitchen-board-surface"
          data-live="@IsLiveAttributeValue"
          data-loaded="@IsLoadedAttributeValue"
@@ -54,9 +34,6 @@
         <div class="kitchen-header-status">
             @if (_alerts.HasUnseen)
             {
-                @* §10.3: "a persistent, high-contrast visual badge with unseen-alert count". It is shown
-                   whenever something is unacknowledged, armed or not — the badge is the record of what
-                   arrived, and the sound is only how you find out sooner. *@
                 <button type="button" class="kitchen-alert-badge" @onclick="AcknowledgeAlerts">
                     @_alerts.UnseenCount new @(_alerts.UnseenCount == 1 ? "alert" : "alerts")@(_alerts.UnseenReminderCount > 0 ? $" ({_alerts.UnseenReminderCount} overdue)" : string.Empty)
                     <span class="kitchen-alert-dismiss">tap to clear</span>
@@ -132,7 +109,6 @@
             }
         </p>
 
-        @* ---- the queue (§11.2) ----------------------------------------------------------------- *@
         @foreach (KitchenQueueTable table in _queue)
         {
             <article class="kitchen-table" @key="table.TableIdentifier">
@@ -163,9 +139,7 @@
                             {
                                 <li class="kitchen-line @(line.HasNote ? "has-note" : string.Empty)"
                                     @key="line.OrderLineIdentifier">
-                                    @* One tap on the line is one fulfillment event (§11.2). The whole row
-                                       is the target because a cook is wearing gloves and looking at a
-                                       pass, not aiming at a 24-pixel checkbox. *@
+
                                     <button type="button" class="kitchen-line-button"
                                             disabled="@_busy"
                                             @onclick="() => FulfillLineAsync(ticket, line)">
@@ -176,7 +150,6 @@
 
                                     @if (line.CustomizationNote is { } note)
                                     {
-                                        @* §11.2: "customization notes prominent". *@
                                         <p class="kitchen-line-note">@note</p>
                                     }
                                 </li>
@@ -187,7 +160,6 @@
             </article>
         }
 
-        @* ---- undo (§11.2) ------------------------------------------------------------------------ *@
         @if (_recentlyFulfilled.Count > 0)
         {
             <section class="kitchen-recent">
@@ -220,31 +192,6 @@
             </section>
         }
 
-        @* ---- the "86" panel (§7, §11.2) ---------------------------------------------------------- *@
-        @* GROUPED UNDER HEADINGS AS OF M6 SLICE 50, and this was the last surface in the application
-           that read the menu flat. The guest's picker has been grouped since Slice 40 and the
-           administrator's index since Slice 44; a cook was still scrolling one undivided list of every
-           dish in the building looking for the one that just ran out.
-
-           The walk is `MenuGrouping.EveryHeading`, which is the same walk §11.1 uses through the other
-           door. Two doors rather than a flag, because the rule they express is §7's asymmetry and it
-           points opposite ways for these two readers — see F-100.
-
-           HEADINGS GUESTS CANNOT SEE ARE HERE, MARKED, and that is the opposite of §11.1's rule rather
-           than an oversight. §7: deactivating a heading does NOT deactivate its items — their is_active
-           is untouched, and switching the heading back on brings the menu back exactly as it was. This
-           panel is the only surface in the application that can read or change those flags, so dropping
-           the hidden headings would make that rule unmanageable: a cook could not 86 the eggs they will
-           need the moment breakfast comes back on, and could not bring back something 86'd last week.
-           The heading is chipped instead, which is what the row below does one register down for an item.
-
-           AN EMPTY HEADING IS STILL ABSENT, because groups are built from items and there is nothing on
-           a stock list to say about a heading holding no stock. §11.4's index is the one surface where
-           such a heading is visible.
-
-           THE HEADING'S OWN DESCRIPTION IS DELIBERATELY NOT RENDERED. The record carries it — §11.1
-           needs it — and "served until 11am" is a sentence for a guest choosing, not for a cook counting.
-           A stock list wants to be short. *@
         <section class="kitchen-eighty-six">
             <h2 class="kitchen-recent-heading">Availability (“86”)</h2>
             <p class="muted">
@@ -266,19 +213,11 @@
             {
                 @foreach (MenuHeadingGroup heading in headings)
                 {
-                    @* @key on the heading's identifier rather than the loop index: a heading that moves
-                       position between renders would otherwise be reconciled as an edit of whichever
-                       heading now sits where it used to — and this board re-reads on every MenuChanged,
-                       so a resequence from /administration/menu lands here mid-service. *@
                     <div class="kitchen-menu-group" @key="heading.MenuSectionIdentifier">
                         <h3 class="kitchen-menu-group-name" id="@HeadingId(heading)">
                             @heading.MenuSectionName
                             @if (!heading.MenuSectionIsActive)
                             {
-                                @* The consequence rather than the flag, which is the wording §11.4's
-                                   index and the section editor both use. "Inactive" is what the column
-                                   says; "hidden from guests" is what it does — and it is the opposite of
-                                   what the same word does one table away. *@
                                 <span class="chip chip-warn">Hidden from guests</span>
                             }
                         </h3>
@@ -309,20 +248,8 @@
 </section>
 
 <style>
-    /* Component-local, like TableDisplay's. Every class below is used only by this file, so putting it
-       in app.css would export a vocabulary nobody else reads; the .table-* classes moved to app.css
-       precisely because a second component did read them. Anything shared — .panel, .chip, .muted,
-       .button-primary, .status-error — is app.css's and is only consumed here.
-
-       A RULE may be local. A COLOUR may not (F-68): every value below is a property from app.css's
-       :root, and there were thirteen literals in this block, five of them byte-identical to a
-       property declared there. The fallbacks are gone too — `var(--hairline, #e2e6ec)` was the
-       palette's hairline written a second time in the position where a wrong name renders in
-       silence, which is the mechanism F-64 was found through (F-69). */
 
     .kitchen-board {
-        /* A cook reads this from a step back with their hands full. Everything is bigger than the rest
-           of the application on purpose. */
         font-size: 1.05rem;
     }
 
@@ -450,7 +377,7 @@
         width: 100%;
         align-items: center;
         gap: 0.6rem;
-        /* Comfortably bigger than the 44px touch target guidance: gloves, steam, and a hurry. */
+
         min-height: 3rem;
         padding: 0.5rem 0.75rem;
         border: 1px solid var(--hairline);
@@ -544,19 +471,6 @@
         color: var(--ink-soft);
     }
 
-    /*
-     * The "86" panel's headings (M6 Slice 50). Component-local, like everything else in this block: no
-     * other surface reads a `.kitchen-*` name, and `.kitchen-` is deliberately NOT on
-     * HandheldLayoutContractTests' SharedSelectorPrefixes — which is the list that says which vocabulary
-     * app.css owns. The chip inside the heading is app.css's and is only consumed here, the way
-     * `.chip-ok` already is fifty lines up in this same file.
-     *
-     * No `.menu-group*` name is reached for, and that is the rule rather than a coincidence: those are
-     * app.css's, declared once for §11.4's index, and a page-local rule sharing one of their names would
-     * win from later in the document at the same specificity and the stylesheet would lose in silence
-     * (F-66). A cook's group and an administrator's group are also not the same shape — one is a run of
-     * touch targets, the other a details holding a table.
-     */
     .kitchen-menu-group + .kitchen-menu-group {
         margin-top: 1.1rem;
     }
@@ -586,11 +500,6 @@
         color: var(--ink-soft);
     }
 
-    /*
-     * `#fef2f2` and `#fca5a5` until F-68, neither of them in the palette and neither of them chosen:
-     * a third red surface and a fourth red hairline, on a screen that already had two. They read the
-     * palette now, which makes this row a shade deeper and its border a shade paler than yesterday.
-     */
     .kitchen-menu-item.is-off {
         background: var(--danger-surface);
         border-color: var(--danger-hairline);
@@ -602,18 +511,10 @@
 </style>
 
 @code {
-    /// <summary>
-    /// How far back the Undo list reaches (§11.2's "recently-fulfilled"). Long enough that a mis-tap
-    /// noticed when the plate reaches the pass is still undoable, short enough that the panel does not
-    /// become a second, stale copy of the service. Not configuration: §13 does not name it, and a
-    /// setting nobody would ever change is a setting that only adds a way to be wrong.
-    /// </summary>
     private static readonly TimeSpan RecentFulfillmentWindow = TimeSpan.FromMinutes(15);
 
     private readonly KitchenAlertState _alerts = new();
 
-    // Captured once, so nothing ever touches _lifetime.Token after Dispose has run — the shape
-    // TableDisplay and TableOrderSurface both use.
     private readonly CancellationTokenSource _lifetime = new();
     private CancellationToken _stopping;
     private IDisposable? _subscription;
@@ -635,50 +536,8 @@
     [CascadingParameter]
     private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
 
-    /// <summary>
-    /// Whether a live circuit produced this markup — <c>"true"</c> only in interactive-server rendering,
-    /// <c>"false"</c> during the prerender pass. Published for the same reason <c>TableDisplay</c>
-    /// publishes it, and the stakes here are the highest of the three surfaces that do.
-    ///
-    /// <para>The board's whole job is to react. Prerendering renders the queue as it stood at the moment
-    /// of the request and then nothing ever arrives: no <c>KitchenAlert</c>, no re-read, no badge — and
-    /// a kitchen that has simply had no orders for ten minutes looks exactly the same. That is §10's
-    /// worst failure and the one nobody notices while it is happening. The attribute costs eight
-    /// characters and turns it into something an operator can see in dev tools.</para>
-    ///
-    /// <para><c>data-unseen-alerts</c> beside it is the §10.3 count as a number. The badge already says
-    /// it in English, but the count is the one piece of state on this screen that exists <em>only</em>
-    /// in circuit memory — everything else can be re-derived from the database — and reading it back out
-    /// of a sentence that also carries pluralisation and an overdue parenthetical means parsing prose to
-    /// learn a fact the component already knows.</para>
-    ///
-    /// <para><c>data-unseen-reminders</c> is the §10.2 half of that same tally: how many of the unseen
-    /// alerts arrived because a send had gone <em>untouched</em> rather than because one had just come
-    /// in. It is published for the same reason and with more force — the parenthetical it would
-    /// otherwise have to be read out of ("(1 overdue)") appears only when the number is non-zero, so
-    /// its absence is ambiguous between "no reminders" and "no badge at all". Purely additive: the
-    /// count is <see cref="KitchenAlertState.UnseenReminderCount"/>, which the badge above already
-    /// renders, and nothing on screen changes.</para>
-    /// </summary>
     private string IsLiveAttributeValue => RendererInfo.IsInteractive ? "true" : "false";
 
-    /// <summary>
-    /// Whether <see cref="LoadAsync"/> has answered, published alongside <c>data-live</c> — §11.10's
-    /// second bit, and the half this surface was missing until M6 Slice 23.
-    ///
-    /// <para><b>Why both, rather than either.</b> <c>ComponentBase</c> renders the moment
-    /// <c>OnInitializedAsync</c> yields, so the circuit's first render is <c>data-live="true"</c> with
-    /// <c>_loaded</c> still false — the one state in which the queue, the Undo list and the "86" panel
-    /// are all absent and the board says "Loading the board…". A reader that waited on
-    /// <c>data-live</c> alone would be steered <em>towards</em> that instant rather than past it.</para>
-    ///
-    /// <para>The window is not the prerender — prerendering runs the whole lifecycle before it emits,
-    /// so the first HTML a browser gets is fully loaded. It is the hand-over: the circuit builds this
-    /// component again from nothing and the DOM returns to loading for as long as three queries take.
-    /// F-44 caught that on <c>/counter</c> and recorded that this board carried the same latent race,
-    /// passing only because every caller here goes on to wait for a specific line or menu row, which
-    /// waits out the reload incidentally. Incidentally is not a barrier.</para>
-    /// </summary>
     private string IsLoadedAttributeValue => _loaded ? "true" : "false";
 
     protected override async Task OnInitializedAsync()
@@ -690,9 +549,6 @@
             AuthenticationState state = await AuthenticationStateTask;
             _person = PersonPrincipal.IdentifierFor(state.User);
 
-            // §6.2: a fulfillment may be authored by kitchen or administrator. Record what the person
-            // actually is. Kitchen wins when they hold both, because that is the capacity they are
-            // standing at this screen in.
             _actorRole = state.User.IsInRole(RestaurantRoles.Kitchen)
                 ? OrderActorRole.Kitchen
                 : OrderActorRole.Administrator;
@@ -706,8 +562,6 @@
     {
         if (firstRender)
         {
-            // Only on the circuit: OnAfterRender does not run during prerendering, so no subscription is
-            // created for a render about to be thrown away.
             _subscription = Broadcaster.Subscribe(OnDomainNotification);
         }
 
@@ -716,7 +570,6 @@
             return;
         }
 
-        // Claim the token before awaiting, so the re-render this may cause cannot announce it twice.
         _announcedAlertToken = _alerts.AlertToken;
 
         if (!_alerts.IsArmed)
@@ -732,7 +585,7 @@
         }
         catch (JSDisconnectedException)
         {
-            return; // the circuit went away mid-alert
+            return;
         }
         catch (OperationCanceledException)
         {
@@ -743,8 +596,6 @@
             played = false;
         }
 
-        // §10.3: "whenever playback fails" the visual badge is the fallback, so a failure has to be
-        // recorded rather than shrugged off.
         bool changed = played ? _alerts.ReportPlaybackSucceeded() : _alerts.ReportPlaybackFailed();
         if (changed)
         {
@@ -752,7 +603,6 @@
         }
     }
 
-    /// <summary>Everything the board shows, re-read in one pass. Three small, indexed queries.</summary>
     private async Task LoadAsync()
     {
         IReadOnlyList<KitchenPendingLineView> pending = await OrderReads
@@ -766,7 +616,6 @@
         _menu = await MenuDirectory.ListAsync(_stopping);
     }
 
-    /// <summary>§11.2: "Tap a line → one <c>fulfillment</c> event".</summary>
     private Task FulfillLineAsync(KitchenQueueTicket ticket, KitchenQueueLine line)
         => AppendAsync(
             ticket.GuestOrderIdentifier,
@@ -774,7 +623,6 @@
             [new LineFulfilledOperation(line.OrderLineIdentifier)],
             $"{line.Quantity} × {line.MenuItemName} is away.");
 
-    /// <summary>§11.2: "'fulfill all for this order' → one event, N operations".</summary>
     private Task FulfillTicketAsync(KitchenQueueTicket ticket)
         => AppendAsync(
             ticket.GuestOrderIdentifier,
@@ -782,7 +630,6 @@
             ticket.Lines.Select(line => (OrderOperation)new LineFulfilledOperation(line.OrderLineIdentifier)).ToArray(),
             $"{ticket.PersonName}'s order is away — {ticket.LineCount} {(ticket.LineCount == 1 ? "line" : "lines")}.");
 
-    /// <summary>§11.2: "an Undo affordance on recently-fulfilled lines → <c>fulfillment_reversal</c>".</summary>
     private Task UndoFulfillmentAsync(KitchenFulfilledLineView line)
         => AppendAsync(
             line.GuestOrderIdentifier,
@@ -790,11 +637,6 @@
             [new LineFulfillmentRevertedOperation(line.OrderLineIdentifier)],
             $"{line.Quantity} × {line.MenuItemName} is back on the board.");
 
-    /// <summary>
-    /// The one path every kitchen action takes. Through <see cref="IOrderWorkflow"/> so the commit is
-    /// counted (§12) and broadcast (§9) — a fulfillment the guest's phone never hears about is exactly
-    /// the badge that never turns green.
-    /// </summary>
     private async Task AppendAsync(
         Guid guestOrderIdentifier,
         OrderEventType eventType,
@@ -821,7 +663,6 @@
             {
                 _actionNotice = successMessage;
 
-                // Acting on the board is acknowledging it: the cook has plainly seen what arrived.
                 _alerts.Acknowledge();
             }
             else
@@ -833,8 +674,6 @@
         }
         catch (OperationCanceledException)
         {
-            // The circuit went away mid-write. The transaction either committed or did not; either way
-            // there is nobody left to tell.
         }
         finally
         {
@@ -842,11 +681,6 @@
         }
     }
 
-    /// <summary>
-    /// A refusal in plain words. The overwhelmingly likely cause is a race — two cooks on the same line,
-    /// or a guest removing something a second before it was tapped — so the message says what to do
-    /// (nothing; the board has already refreshed) rather than reading like a fault.
-    /// </summary>
     private static string DescribeRefusal(AppendOrderEventResult result)
     {
         if (result.Outcome is AppendOrderEventOutcome.OrderNotFound or AppendOrderEventOutcome.SittingNotFound)
@@ -861,29 +695,9 @@
         return $"Nothing was changed — {reason} The board has been refreshed.";
     }
 
-    /// <summary>
-    /// The id each heading's <c>&lt;ul&gt;</c> points at with <c>aria-labelledby</c>, so a screen reader
-    /// announces which part of the menu a run of rows belongs to. Built from the identifier rather than
-    /// from the name, because a heading called "Sides &amp; extras" would produce an id with a space in it
-    /// and because two headings can never share an identifier where they could share a slug.
-    ///
-    /// <para>The prefix is this page's rather than the record's, which is why the helper is local and not
-    /// on <see cref="MenuHeadingGroup"/>: <c>/table/{id}</c> builds its own ids over the same headings in
-    /// its own document, and the two must not collide if a heading is ever rendered on both.</para>
-    /// </summary>
     private static string HeadingId(MenuHeadingGroup heading)
         => $"kitchen-menu-section-{heading.MenuSectionIdentifier}";
 
-    /// <summary>
-    /// §11.2: "An '86' panel lists menu items with active toggles."
-    ///
-    /// <para>The toggle is per <em>item</em> and there is deliberately no per-heading toggle beside it,
-    /// even though the panel now renders headings. Switching a heading off is a decision about what guests
-    /// can see — §11.4's administrator makes it, from the section editor — where 86ing is a statement about
-    /// what the kitchen has. Putting both on one screen would offer a cook the control that empties a
-    /// quarter of the menu next to the one that removes a dish, and §7 is explicit that the two are
-    /// different requests.</para>
-    /// </summary>
     private async Task ToggleMenuItemAsync(MenuItemSummary item)
     {
         if (_person is not { } person || _busy)
@@ -917,7 +731,6 @@
         }
         catch (OperationCanceledException)
         {
-            // Circuit gone; nothing to update.
         }
         finally
         {
@@ -925,10 +738,6 @@
         }
     }
 
-    /// <summary>
-    /// §10.3's one-tap arm. The browser will only unlock audio inside a user gesture, so this has to be
-    /// a click handler and cannot be done for the cook at page load.
-    /// </summary>
     private async Task ArmSoundAsync()
     {
         bool armed;
@@ -951,7 +760,6 @@
 
         _alerts.Arm(armed);
 
-        // Do not retro-play everything that arrived before the cook found the button.
         _announcedAlertToken = _alerts.AlertToken;
     }
 
@@ -960,13 +768,6 @@
         _alerts.Acknowledge();
     }
 
-    /// <summary>
-    /// §9 lists which notifications the kitchen re-queries on. All five that can change this screen are
-    /// handled with one re-read: the queries are small and a kitchen is not a hot path.
-    ///
-    /// <para>Nothing is filtered by identifier here, unlike the table surface — the board is the whole
-    /// restaurant by definition, so every one of these events is this board's business.</para>
-    /// </summary>
     private void OnDomainNotification(DomainNotification notification)
     {
         bool concernsTheBoard = notification
@@ -990,12 +791,6 @@
                 return;
             }
 
-            // Recorded here rather than on the broadcaster's thread: KitchenAlertState is a plain
-            // counter, and the broadcaster fans out from whichever thread committed the event, so two
-            // sends landing together could lose an increment. The renderer's dispatcher serializes every
-            // mutation of it. It is recorded BEFORE the re-read so an alert still counts if the queries
-            // below fail — a board that missed a query is recoverable, a board that missed an alert is
-            // silent.
             if (alertKind is { } kind)
             {
                 _alerts.Record(kind);
@@ -1008,21 +803,13 @@
             }
             catch (OperationCanceledException)
             {
-                // Disposed between the broadcast and the query; nothing to update.
             }
             catch (ObjectDisposedException)
             {
-                // Same, one layer down.
             }
         });
     }
 
-    /// <summary>
-    /// How long a ticket has been waiting, rendered coarsely. Coarse on purpose: a ticking
-    /// seconds counter on twenty rows is a re-render per second per row and tells a cook nothing that
-    /// "12m" does not. This is a duration, not an instant, so it does not go through
-    /// <see cref="RestaurantTime"/> — there is no zone to render it in.
-    /// </summary>
     private string Waiting(DateTimeOffset since)
     {
         TimeSpan elapsed = Clock.UtcNow - since;

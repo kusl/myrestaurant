@@ -6,17 +6,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Orders;
 
-/// <summary>
-/// Integration tests for <see cref="DapperKitchenBoardReads"/> against a real PostgreSQL 17 container —
-/// the query behind §11.2's "Undo affordance on recently-fulfilled lines".
-///
-/// <para>The interesting cases are all about <em>which</em> fulfillment a line reports. A line can be
-/// fulfilled, reversed, and fulfilled again, and the Undo list must show the last one; a line whose most
-/// recent flip was a reversal must not appear at all, because it is pending again and belongs in the
-/// queue instead. That question cannot be answered by <c>order_current_line.is_fulfilled</c>, which is a
-/// boolean with the instant thrown away — which is exactly why this query exists rather than a sixth
-/// method on the read model.</para>
-/// </summary>
 public sealed class KitchenBoardReadsTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
@@ -112,11 +101,6 @@ public sealed class KitchenBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Empty(await Reads().ListRecentlyFulfilledLinesAsync(_clock.UtcNow - Window, cancellationToken));
     }
 
-    /// <summary>
-    /// Once Undo has been pressed the line is pending again, so it belongs on the queue and must leave
-    /// this list — otherwise a second Undo would be offered for something that is not fulfilled, and
-    /// the transaction would refuse it (§6.5.6) with no way for the cook to know why.
-    /// </summary>
     [Fact]
     public async Task ALineWhoseFulfillmentWasReversed_IsAbsent()
     {
@@ -134,7 +118,6 @@ public sealed class KitchenBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Empty(await Reads().ListRecentlyFulfilledLinesAsync(_clock.UtcNow - Window, cancellationToken));
     }
 
-    /// <summary>A line fulfilled, undone, and fulfilled again reports the <em>second</em> fulfillment.</summary>
     [Fact]
     public async Task ARefulfilledLine_ReportsTheLatestFulfillment()
     {
@@ -168,7 +151,6 @@ public sealed class KitchenBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
         (Guid orderIdentifier, Guid lineIdentifier) = await SendAsync(quantity: 1, note: null, cancellationToken);
         await FulfillAsync(orderIdentifier, lineIdentifier, cancellationToken);
 
-        // Inside the window it is there; an hour later it is not.
         Assert.Single(await Reads().ListRecentlyFulfilledLinesAsync(_clock.UtcNow - Window, cancellationToken));
 
         _clock.UtcNow = _clock.UtcNow.AddHours(1);
@@ -202,10 +184,6 @@ public sealed class KitchenBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Empty(await Reads().ListRecentlyFulfilledLinesAsync(_clock.UtcNow - Window, cancellationToken));
     }
 
-    /// <summary>
-    /// The board is the open restaurant. A settled table's history is the counter's business (§11.3),
-    /// not something the kitchen should still be able to undo.
-    /// </summary>
     [Fact]
     public async Task AClosedSittingsLines_AreAbsent()
     {
@@ -247,7 +225,6 @@ public sealed class KitchenBoardReadsTests : IClassFixture<PostgreSqlFixture>, I
         Assert.Equal(firstLine, lines[1].OrderLineIdentifier);
     }
 
-    /// <summary>A staff account with no display name falls back to its username, like the roster does.</summary>
     [Fact]
     public async Task APersonWithoutADisplayName_IsNamedByTheirUsername()
     {

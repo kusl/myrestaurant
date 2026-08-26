@@ -6,21 +6,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Orders;
 
-/// <summary>
-/// Integration tests for <see cref="DapperOrderMutations"/> — the one transaction every order event goes
-/// through (TECHNICAL_SPECIFICATION §6.1–§6.6, §10.1) — against a real PostgreSQL 17 container.
-///
-/// <para>They pin the properties the rest of M4 is built on: the living order is created lazily and only
-/// once; the server, never the client, decides what a line costs; a rejected event leaves the database
-/// exactly as it found it, right down to the order row the transaction had just created; the kitchen is
-/// told about a send and is not told about a fulfillment; a guest may unmake only their own, still-pending
-/// mistakes; and a closed sitting takes corrections from an administrator and nothing from anyone
-/// else.</para>
-///
-/// <para>Own <see cref="PostgreSqlFixture"/>; every test skips when no container engine is available,
-/// mirroring <see cref="Tables.TableAdministrationTests"/> and
-/// <see cref="Displays.DisplayDevicePairingTests"/>.</para>
-/// </summary>
 public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private const string CountEventsSql = "SELECT count(*)::int FROM order_event;";
@@ -72,7 +57,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
         Scene scene = await ArrangeAsync(cancellationToken);
         Guid lineIdentifier = _identifiers.Create();
 
-        // The client claims the soup costs 999.99. §6.5.4: client-sent prices are ignored.
         AppendOrderEventResult result = await Mutations().AppendToLivingOrderAsync(
             scene.SittingIdentifier,
             scene.Ada,
@@ -87,7 +71,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
         Assert.Equal(1, result.LinesAdded);
         Assert.Equal(0, result.LinesRemoved);
 
-        // §6.1: exactly one guest_order per (sitting, member), created inside this transaction.
         Assert.Equal(1, await World().CountAsync(CountOrdersSql, cancellationToken));
 
         Assert.Equal(
@@ -97,7 +80,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
                 new { LineIdentifier = lineIdentifier },
                 cancellationToken));
 
-        // §7: notes are free text and are never validated — only trimmed, and blank becomes NULL.
         Assert.Equal(
             "extra  hot",
             await World().ScalarAsync<string>(
@@ -105,7 +87,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
                 new { LineIdentifier = lineIdentifier },
                 cancellationToken));
 
-        // The returned projection is the committed state, so a caller re-renders without re-querying.
         Assert.NotNull(result.Projection);
         ProjectedOrderLine line = Assert.Single(result.Projection!.Lines);
         Assert.Equal(lineIdentifier, line.OrderLineIdentifier);
@@ -141,10 +122,8 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
         Assert.Equal(2L, second.SequenceNumber);
         Assert.Equal(first.GuestOrderIdentifier, second.GuestOrderIdentifier);
 
-        // §6.1 again: the second send does NOT create a second order.
         Assert.Equal(1, await World().CountAsync(CountOrdersSql, cancellationToken));
 
-        // §10.1: one `initial` per send, written in the same transaction as its event.
         Assert.Equal(2, await World().CountAsync(CountNotificationsSql, cancellationToken));
         Assert.Equal(
             2,
@@ -171,7 +150,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
                 new LineAddedOperation(_identifiers.Create(), scene.Salad, 1, 0m, null)),
             cancellationToken);
 
-        // §6.5.9, all-or-nothing: the good line goes down with the bad one, and the reason names it.
         Assert.Equal(AppendOrderEventOutcome.Rejected, result.Outcome);
         Assert.Contains(result.Errors, error => error.OperationIndex == 1);
         Assert.DoesNotContain(result.Errors, error => error.OperationIndex == 0);
@@ -180,11 +158,8 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
         Assert.Equal(0, await World().CountAsync(CountAddedSql, cancellationToken));
         Assert.Equal(0, await World().CountAsync(CountNotificationsSql, cancellationToken));
 
-        // The lazily-created guest_order is rolled back with everything else: a rejected first send
-        // leaves no trace at all, so the identifier the result carries names a row that never existed.
         Assert.Equal(0, await World().CountAsync(CountOrdersSql, cancellationToken));
 
-        // §6.5.9 also promises a fresh projection so the client restages rather than re-sends.
         Assert.NotNull(result.Projection);
         Assert.Empty(result.Projection!.Lines);
     }
@@ -204,8 +179,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
             GuestSubmission(stranger, new LineAddedOperation(_identifiers.Create(), scene.Soup, 1, 0m, null)),
             cancellationToken);
 
-        // §6.5.4: the actor must be a member of the sitting. This is an event-level failure, not a
-        // per-operation one, so it is reported against the event.
         Assert.Equal(AppendOrderEventOutcome.Rejected, result.Outcome);
         Assert.Contains(result.Errors, error => error.OperationIndex == OrderMutationValidator.EventLevel);
         Assert.Equal(0, await World().CountAsync(CountOrdersSql, cancellationToken));
@@ -246,7 +219,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
 
         _clock.UtcNow = _clock.UtcNow.AddMinutes(1);
 
-        // §6.5.3: a guest removes only their own, currently-pending lines.
         AppendOrderEventResult refused = await Mutations().AppendToLivingOrderAsync(
             scene.SittingIdentifier,
             scene.Ada,
@@ -265,13 +237,10 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
         Assert.Equal(AppendOrderEventOutcome.Appended, allowed.Outcome);
         Assert.Equal(1, allowed.LinesRemoved);
 
-        // Removal is terminal and the projection drops the line, but the fulfilled one stays.
         ProjectedOrderLine remaining = Assert.Single(allowed.Projection!.Lines);
         Assert.Equal(served, remaining.OrderLineIdentifier);
         Assert.True(remaining.IsFulfilled);
 
-        // §10.1: a pure-removal guest send still alerts. Two committed sends, two notifications —
-        // the fulfillment in the middle is silent and the refused removal wrote nothing at all.
         Assert.Equal(2, await World().CountAsync(CountNotificationsSql, cancellationToken));
     }
 
@@ -307,7 +276,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
         Assert.False(fulfilled.KitchenNotificationWritten);
         Assert.True(Assert.Single(fulfilled.Projection!.Lines).IsFulfilled);
 
-        // Fulfilling twice is refused: §6.5.6 makes fulfilled/reverted alternate per line.
         Assert.Equal(
             AppendOrderEventOutcome.Rejected,
             (await Mutations().AppendToOrderAsync(
@@ -329,7 +297,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
                 [new LineFulfillmentRevertedOperation(lineIdentifier)]),
             cancellationToken);
 
-        // §6.4: roll-forward, not deletion — the line returns to pending and the log keeps both events.
         Assert.Equal(AppendOrderEventOutcome.Appended, reverted.Outcome);
         Assert.Equal(1, reverted.LinesFulfillmentReverted);
         Assert.False(Assert.Single(reverted.Projection!.Lines).IsFulfilled);
@@ -353,7 +320,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
 
         Guid orderIdentifier = sent.GuestOrderIdentifier!.Value;
 
-        // §6.5.7: the reason is required, and a blank one never reaches the DB CHECK.
         AppendOrderEventResult refused = await Mutations().AppendToOrderAsync(
             orderIdentifier,
             new ProposedOrderEvent(
@@ -424,13 +390,10 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
                 [new LineAddedOperation(_identifiers.Create(), scene.Soup, 1, 0m, null)]),
             cancellationToken);
 
-        // §10.1: counter and administrator line changes alert; the kitchen's own do not — it is standing
-        // there. Two notifications: the guest send, and the counter's edit.
         Assert.True(byCounter.KitchenNotificationWritten);
         Assert.False(byKitchen.KitchenNotificationWritten);
         Assert.Equal(2, await World().CountAsync(CountNotificationsSql, cancellationToken));
 
-        // A staff add is priced from the menu too, and the counter's line is now on the guest's bill.
         Assert.Equal(3, byKitchen.Projection!.Lines.Count);
         Assert.Equal(4.50m + 6.00m + 4.50m, byKitchen.Projection.CurrentTotalAmount);
     }
@@ -455,7 +418,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
         _clock.UtcNow = _clock.UtcNow.AddHours(1);
         await World().CloseSittingAsync(scene.SittingIdentifier, scene.Counter, 4.50m, cancellationToken);
 
-        // §6.5.8: never a guest submission into a closed sitting.
         Assert.Equal(
             AppendOrderEventOutcome.Rejected,
             (await Mutations().AppendToLivingOrderAsync(
@@ -464,7 +426,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
                 GuestSubmission(scene.Ada, new LineAddedOperation(_identifiers.Create(), scene.Salad, 1, 0m, null)),
                 cancellationToken)).Outcome);
 
-        // …nor a counter staff edit: post-close is administrators only.
         Assert.Equal(
             AppendOrderEventOutcome.Rejected,
             (await Mutations().AppendToOrderAsync(
@@ -476,7 +437,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
                     [new LineRemovedOperation(lineIdentifier, "comped")]),
                 cancellationToken)).Outcome);
 
-        // §6.7: an administrator's corrective event is appended beside the stamped settled total.
         _clock.UtcNow = _clock.UtcNow.AddMinutes(10);
         AppendOrderEventResult corrected = await Mutations().AppendToOrderAsync(
             orderIdentifier,
@@ -491,7 +451,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
         Assert.Equal(2L, corrected.SequenceNumber);
         Assert.Empty(corrected.Projection!.Lines);
 
-        // The settled total is immutable and stays exactly as it was stamped (§5.3, §6.7).
         Assert.Equal(
             4.50m,
             await World().ScalarAsync<decimal>(
@@ -519,7 +478,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
                 [new LineAddedOperation(_identifiers.Create(), scene.Soup, 1, 0m, null)]),
             cancellationToken);
 
-        // A correction corrects something that happened; it does not open an order after the fact.
         Assert.Equal(AppendOrderEventOutcome.OrderNotFound, result.Outcome);
         Assert.Equal(0, await World().CountAsync(CountOrdersSql, cancellationToken));
     }
@@ -571,7 +529,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
             GuestSubmission(scene.Ada, new LineAddedOperation(adasLine, scene.Soup, 1, 0m, null)),
             cancellationToken);
 
-        // §6.5.1: every event owns at least one operation.
         AppendOrderEventResult empty = await Mutations().AppendToLivingOrderAsync(
             scene.SittingIdentifier,
             scene.Ada,
@@ -581,8 +538,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
         Assert.Equal(AppendOrderEventOutcome.Rejected, empty.Outcome);
         Assert.Contains(empty.Errors, error => error.OperationIndex == OrderMutationValidator.EventLevel);
 
-        // §6.5.2: a referenced line must belong to THIS order. Grace's send cannot touch Ada's line —
-        // and the reason must not leak that the line exists somewhere else.
         AppendOrderEventResult crossOrder = await Mutations().AppendToLivingOrderAsync(
             scene.SittingIdentifier,
             scene.Grace,
@@ -594,8 +549,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
         Assert.Equal(1, await World().CountAsync(CountOrdersSql, cancellationToken));
     }
 
-    // --- helpers -----------------------------------------------------------------------------------
-
     private void SkipIfNoContainer()
         => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
 
@@ -606,10 +559,6 @@ public sealed class OrderMutationsTests : IClassFixture<PostgreSqlFixture>, IAsy
     private static ProposedOrderEvent GuestSubmission(Guid actor, params OrderOperation[] operations)
         => new(OrderEventType.GuestSubmission, actor, OrderActorRole.Guest, operations);
 
-    /// <summary>
-    /// One table with an open sitting, two guests in it, three staff who are not, and a two-item menu.
-    /// Every test starts here so the interesting lines are the ones that differ.
-    /// </summary>
     private async Task<Scene> ArrangeAsync(CancellationToken cancellationToken)
     {
         OrderTestWorld world = World();

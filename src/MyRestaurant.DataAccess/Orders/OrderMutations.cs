@@ -6,44 +6,14 @@ using MyRestaurant.Domain.Time;
 
 namespace MyRestaurant.DataAccess.Orders;
 
-/// <summary>What happened to a proposed order event (TECHNICAL_SPECIFICATION §6.5, §6.6).</summary>
 public enum AppendOrderEventOutcome
 {
-    /// <summary>The event and all of its operations were written and committed.</summary>
     Appended,
-
-    /// <summary>
-    /// No sitting has that identifier, so there is nothing to lock and nothing to append to. Nothing
-    /// was written.
-    /// </summary>
     SittingNotFound,
-
-    /// <summary>
-    /// No living order exists to append to: either the identifier is unknown, or the sitting is closed
-    /// and this person never ordered in it — a post-close correction (§6.7) can only correct something
-    /// that happened. Nothing was written.
-    /// </summary>
     OrderNotFound,
-
-    /// <summary>
-    /// At least one §6.5 invariant failed, so the <b>whole</b> event was rejected and the transaction
-    /// rolled back (§6.5.9, all-or-nothing). <see cref="AppendOrderEventResult.Errors"/> carries a
-    /// reason per failing operation and <see cref="AppendOrderEventResult.Projection"/> a fresh
-    /// projection so the client can restage.
-    /// </summary>
     Rejected,
 }
 
-/// <summary>
-/// The outcome of one attempt to append an event to a living order (TECHNICAL_SPECIFICATION §6.5, §6.6,
-/// §9, §12).
-///
-/// <para>Everything a caller needs after the commit is here, so the web layer never has to re-query to
-/// decide what to broadcast or what to count: the identifiers §9's notifications carry, whether a
-/// <c>kitchen_notification</c> row went in alongside the event (§10.1), the per-kind operation counts
-/// the §12 meters increment, and — on both success and rejection — the order's projection as of the end
-/// of the transaction.</para>
-/// </summary>
 public sealed record AppendOrderEventResult(
     AppendOrderEventOutcome Outcome,
     Guid? SittingIdentifier,
@@ -59,78 +29,25 @@ public sealed record AppendOrderEventResult(
     IReadOnlyList<OrderMutationError> Errors,
     ProjectedOrder? Projection)
 {
-    /// <summary>True when the event was committed — the precondition for every §9 broadcast.</summary>
     public bool IsAppended => Outcome is AppendOrderEventOutcome.Appended;
 }
 
-/// <summary>
-/// The single write path for orders: one method, one transaction, the §6.6 locking protocol exactly as
-/// written (TECHNICAL_SPECIFICATION §6.1–§6.6, §10.1, ADR-0002, ADR-0007).
-///
-/// <para>Every mutation — a guest's batch send, a counter's staff edit, a price adjustment, the
-/// kitchen's fulfillment, a reversal, an administrator's post-close correction — is the same shape: an
-/// event plus its typed operations. There is deliberately no "add a line" or "fulfill a line" method,
-/// because §6.5.9 is all-or-nothing at the granularity of the <em>event</em>, and a per-operation API
-/// would make it impossible to honour that.</para>
-///
-/// <para>The protocol (§6.6, in order): (a) <c>SELECT … FOR SHARE</c> the <c>table_sitting</c> row;
-/// (b) <c>SELECT … FOR UPDATE</c> the <c>guest_order</c> row, creating it first if absent;
-/// (c) read <c>max(sequence_number)</c> and assign +1; (d) validate §6.5 against the projection under
-/// the lock; (e) insert the event, its operations, and a <c>kitchen_notification</c> when §10.1 says so;
-/// (f) commit; (g) broadcast — which is the web layer's job, after this returns.</para>
-/// </summary>
 public interface IOrderMutations
 {
-    /// <summary>
-    /// Appends an event to the living order of <paramref name="orderOwnerPersonIdentifier"/> in
-    /// <paramref name="sittingIdentifier"/>, creating that order inside this transaction if it does not
-    /// exist yet (§6.1). This is the guest send path, and also the staff path when the caller knows the
-    /// person rather than the order identifier.
-    ///
-    /// <para>Lazy creation happens only while the sitting is open. A closed sitting yields
-    /// <see cref="AppendOrderEventOutcome.OrderNotFound"/> if the person never ordered in it: §6.7
-    /// corrections append to history, they do not invent it.</para>
-    /// </summary>
     Task<AppendOrderEventResult> AppendToLivingOrderAsync(
         Guid sittingIdentifier,
         Guid orderOwnerPersonIdentifier,
         ProposedOrderEvent proposed,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Appends an event to an existing order named directly — the kitchen and counter paths, which act
-    /// on an order they are looking at rather than on their own. The sitting is resolved from the order
-    /// and locked first, keeping the §6.6 lock order identical on both entry points.
-    /// </summary>
     Task<AppendOrderEventResult> AppendToOrderAsync(
         Guid guestOrderIdentifier,
         ProposedOrderEvent proposed,
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// The Dapper implementation of <see cref="IOrderMutations"/>. One connection and one transaction per
-/// operation, one <see cref="IClock.UtcNow"/> instant stamped on the event and every row it causes,
-/// UUIDv7 surrogate keys from <see cref="IIdentifierFactory"/> (ADR-0011) — the same shape as
-/// <c>DapperSittingMembership</c> and <c>DapperDisplayDevicePairing</c>.
-///
-/// <para>Two behaviours here are not in the validator and are worth naming. First, <b>the server prices
-/// every added line</b>: §6.5.4 says the unit price is "set server-side from the current menu price
-/// (client-sent prices are ignored)", so whatever <see cref="LineAddedOperation.UnitPriceAmount"/>
-/// arrives with is replaced by the <c>menu_item.price_amount</c> read inside this transaction. The rule
-/// is applied to staff edits as well as guest submissions: the menu is the price authority for an
-/// <em>add</em>, and a counter that means to charge something else has <c>price_adjustment</c>, which
-/// demands a reason and is visible on the bill. Second, <b>free text is trimmed, never rejected</b>:
-/// customization notes and removal reasons are collapsed to <c>null</c> when blank, because §7 is
-/// explicit that notes are never validated against any rules engine — an impossible request is handled
-/// by a human walking to the table.</para>
-/// </summary>
 public sealed class DapperOrderMutations : IOrderMutations
 {
-    // (a) §6.6: FOR SHARE on the sitting. It conflicts with the close transaction's FOR UPDATE (§5.3),
-    // which is exactly what guarantees no event slips past a close and no close totals a half-written
-    // order. Both entry points take this lock before touching guest_order, so the lock order is the
-    // same everywhere and order mutations cannot deadlock against each other.
     private const string LockSittingSql = """
         SELECT table_sitting.table_sitting_identifier AS SittingIdentifier,
                table_sitting.closed_at                AS ClosedAt
@@ -147,9 +64,6 @@ public sealed class DapperOrderMutations : IOrderMutations
         WHERE guest_order.guest_order_identifier = @GuestOrderIdentifier;
         """;
 
-    // §6.1: "Created lazily inside the member's first send transaction; a lost creation race (unique
-    // violation) is re-read and proceeds." ON CONFLICT DO NOTHING is that re-read: the loser's insert
-    // becomes a no-op and the FOR UPDATE select below returns the winner's row.
     private const string CreateOrderIfAbsentSql = """
         INSERT INTO guest_order (
             guest_order_identifier, table_sitting_identifier, person_identifier, created_at)
@@ -176,8 +90,6 @@ public sealed class DapperOrderMutations : IOrderMutations
         FOR UPDATE;
         """;
 
-    // (c) §6.6. Safe under the FOR UPDATE above: no other writer can be assigning a sequence number to
-    // this order at the same time, so the UNIQUE (guest_order_identifier, sequence_number) never fires.
     private const string NextSequenceNumberSql = """
         SELECT coalesce(max(order_event.sequence_number), 0) + 1
         FROM order_event
@@ -192,9 +104,6 @@ public sealed class DapperOrderMutations : IOrderMutations
               AND table_sitting_member.person_identifier = @PersonIdentifier);
         """;
 
-    // §6.5.4: existence and the active flag are re-checked inside this transaction, and the price is
-    // taken from here rather than from the client. `= ANY(@Identifiers)` binds the Guid[] as a single
-    // uuid[] parameter (Dapper passes arrays through for Npgsql rather than expanding them).
     private const string MenuItemsSql = """
         SELECT menu_item.menu_item_identifier AS MenuItemIdentifier,
                menu_item.price_amount         AS PriceAmount,
@@ -255,8 +164,6 @@ public sealed class DapperOrderMutations : IOrderMutations
             @OperationIdentifier, @OrderEventIdentifier, @EventType, @OrderLineIdentifier);
         """;
 
-    // §10.1: written in the SAME transaction as the event it belongs to, so a committed alert can never
-    // point at an event that rolled back and a committed event can never lose its alert.
     private const string InsertKitchenNotificationSql = """
         INSERT INTO kitchen_notification (
             kitchen_notification_identifier, order_event_identifier, event_type, kind, created_at)
@@ -297,7 +204,6 @@ public sealed class DapperOrderMutations : IOrderMutations
         await using DbTransaction transaction = await connection
             .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-        // (a) Lock the sitting first, always.
         SittingLockRow? sitting = await connection.QuerySingleOrDefaultAsync<SittingLockRow>(new CommandDefinition(
             LockSittingSql,
             new { SittingIdentifier = sittingIdentifier },
@@ -310,9 +216,6 @@ public sealed class DapperOrderMutations : IOrderMutations
             return NothingHappened(AppendOrderEventOutcome.SittingNotFound, null, null, proposed.EventType);
         }
 
-        // (b) Create the living order if this is the person's first send (§6.1) — but only while the
-        // sitting is open. Appending to a closed sitting is a §6.7 correction, and a correction to an
-        // order that never existed is a caller mistake, not a new order.
         if (sitting.ClosedAt is null)
         {
             await connection.ExecuteAsync(new CommandDefinition(
@@ -359,9 +262,6 @@ public sealed class DapperOrderMutations : IOrderMutations
         await using DbTransaction transaction = await connection
             .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-        // Which sitting the order belongs to is immutable once the row exists, so reading it without a
-        // lock is safe — and it has to be read first, because §6.6 puts the sitting lock before the
-        // order lock and taking them the other way round on this path would invert the lock order.
         GuestOrderLockRow? located = await connection.QuerySingleOrDefaultAsync<GuestOrderLockRow>(new CommandDefinition(
             ReadOrderSql,
             new { GuestOrderIdentifier = guestOrderIdentifier },
@@ -374,7 +274,6 @@ public sealed class DapperOrderMutations : IOrderMutations
             return NothingHappened(AppendOrderEventOutcome.OrderNotFound, null, null, proposed.EventType);
         }
 
-        // (a) Lock the sitting.
         SittingLockRow? sitting = await connection.QuerySingleOrDefaultAsync<SittingLockRow>(new CommandDefinition(
             LockSittingSql,
             new { SittingIdentifier = located.SittingIdentifier },
@@ -387,7 +286,6 @@ public sealed class DapperOrderMutations : IOrderMutations
             return NothingHappened(AppendOrderEventOutcome.SittingNotFound, null, guestOrderIdentifier, proposed.EventType);
         }
 
-        // (b) Lock the order.
         GuestOrderLockRow? order = await connection.QuerySingleOrDefaultAsync<GuestOrderLockRow>(new CommandDefinition(
             LockOrderByIdentifierSql,
             new { GuestOrderIdentifier = guestOrderIdentifier },
@@ -405,7 +303,6 @@ public sealed class DapperOrderMutations : IOrderMutations
             .ConfigureAwait(false);
     }
 
-    /// <summary>Steps (c) to (f) of §6.6, shared by both entry points once both locks are held.</summary>
     private async Task<AppendOrderEventResult> CompleteAsync(
         DbConnection connection,
         DbTransaction transaction,
@@ -415,16 +312,12 @@ public sealed class DapperOrderMutations : IOrderMutations
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        // (c) The next sequence number, assigned under the order lock.
         long sequenceNumber = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
             NextSequenceNumberSql,
             new { GuestOrderIdentifier = order.GuestOrderIdentifier },
             transaction,
             cancellationToken: cancellationToken)).ConfigureAwait(false);
 
-        // (d) Validate against the projection under the lock. Everything the validator needs is read
-        // here, inside the transaction: the prior log, the sitting's open flag, ownership, membership,
-        // and the menu (§6.5.4's "re-checked in this transaction").
         IReadOnlyList<OrderEvent> priorEvents = await OrderEventReader
             .ReadAsync(connection, transaction, order.GuestOrderIdentifier, cancellationToken)
             .ConfigureAwait(false);
@@ -460,8 +353,6 @@ public sealed class DapperOrderMutations : IOrderMutations
 
         if (!validation.IsValid)
         {
-            // §6.5.9, all-or-nothing: one bad operation rejects the event, and the caller gets a fresh
-            // projection so a stale staging area can be rebuilt rather than re-sent.
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
 
             return new AppendOrderEventResult(
@@ -480,7 +371,6 @@ public sealed class DapperOrderMutations : IOrderMutations
                 OrderProjection.FromEvents(priorEvents));
         }
 
-        // (e) Insert the event, then its operations, then the kitchen notification if §10.1 calls for one.
         Guid orderEventIdentifier = _identifierFactory.Create();
         string eventTypeName = OrderEventVocabulary.ToDatabase(effective.EventType);
 
@@ -523,7 +413,6 @@ public sealed class DapperOrderMutations : IOrderMutations
                 cancellationToken: cancellationToken)).ConfigureAwait(false);
         }
 
-        // (f) Commit. (g) — the broadcast — belongs to the caller, after this returns (§9).
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
         OrderEvent applied = new(
@@ -638,11 +527,6 @@ public sealed class DapperOrderMutations : IOrderMutations
         };
     }
 
-    /// <summary>
-    /// §10.1's alert rule, exactly: every guest submission, and every staff edit by counter or
-    /// administrator that adds or removes lines. The kitchen's own staff edits are silent (it is
-    /// standing there), and price adjustments, fulfillments, and reversals never alert.
-    /// </summary>
     private static bool ShouldNotifyKitchen(ProposedOrderEvent proposed) => proposed.EventType switch
     {
         OrderEventType.GuestSubmission => true,
@@ -678,11 +562,6 @@ public sealed class DapperOrderMutations : IOrderMutations
         return rows.ToDictionary(row => row.MenuItemIdentifier);
     }
 
-    /// <summary>
-    /// Replaces client-supplied prices with the menu's (§6.5.4) and normalizes free text. An unknown
-    /// menu item keeps whatever price it arrived with, because the validator is about to reject the
-    /// whole event for that operation anyway.
-    /// </summary>
     private static IReadOnlyList<OrderOperation> ApplyServerSideValues(
         IReadOnlyList<OrderOperation> operations,
         IReadOnlyDictionary<Guid, MenuItemPricing> menuItems)
@@ -703,8 +582,6 @@ public sealed class DapperOrderMutations : IOrderMutations
                 LineRemovedOperation removed => removed with { Reason = CollapseBlank(removed.Reason) },
                 LinePriceAdjustedOperation adjusted => adjusted with
                 {
-                    // The DB CHECK is btrim(reason) <> '', and the validator rejects a blank reason —
-                    // so a blank one is left exactly as it came and reported, not silently accepted.
                     Reason = string.IsNullOrWhiteSpace(adjusted.Reason) ? adjusted.Reason : adjusted.Reason.Trim(),
                 },
                 _ => operation,
@@ -737,7 +614,6 @@ public sealed class DapperOrderMutations : IOrderMutations
             [],
             Projection: null);
 
-    /// <summary>The menu facts the transaction needs: the active flag §6.5.4 re-checks, and the price it captures.</summary>
     private sealed record MenuItemPricing(Guid MenuItemIdentifier, decimal PriceAmount, bool IsActive);
 
     private sealed record SittingLockRow(Guid SittingIdentifier, DateTime? ClosedAt);

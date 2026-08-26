@@ -8,23 +8,6 @@ using Xunit;
 
 namespace MyRestaurant.DataAccess.Tests.Sittings;
 
-/// <summary>
-/// Integration tests for <see cref="DapperSittingRecordReads"/> against a real PostgreSQL 17 container —
-/// TECHNICAL_SPECIFICATION §11.4's "complete stored record … never projected or truncated", which is what
-/// administration renders and what an administrator reads before appending a §6.7 correction.
-///
-/// <para>Two things are being asserted here and they pull in opposite directions. The first is
-/// <em>completeness</em>: a removed line, an undone fulfillment, and a superseded price must all still be
-/// in the answer, because a projection is exactly what this reader must not be. The second is
-/// <em>legibility</em>: every operation has to name its item and quantity, which the four non-adding
-/// operation tables do not store — they carry only <c>order_line_identifier</c> — so the reader joins back
-/// through <c>order_operation_line_added</c>, whose <c>order_line_identifier</c> is NOT NULL UNIQUE and is
-/// the declared FK target of all four. If that join is wrong the symptom is not an exception: it is a
-/// history that silently loses rows, which is the worst shape of bug an audit trail can have.</para>
-///
-/// <para>Each test truncates first (xUnit builds a fresh instance per test and runs them sequentially).
-/// Own <c>IClassFixture</c>, own container; if no container engine is available, every test skips.</para>
-/// </summary>
 public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private readonly PostgreSqlFixture _fixture;
@@ -38,7 +21,6 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
     private Guid _counterIdentifier;
     private Guid _kitchenIdentifier;
 
-    /// <summary>A kitchen hand with no display name — the actor-name fallback (§5.2's rendering rule).</summary>
     private Guid _namelessKitchenIdentifier;
 
     private Guid _soupIdentifier;
@@ -65,7 +47,6 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         await _world.TruncateAsync(cancellationToken);
 
-        // Three characters minimum: person.username carries CHECK (char_length BETWEEN 3 AND 64) (§8.2).
         _adaIdentifier = await _world.AddPersonAsync("ada", "Ada", cancellationToken);
         _bodeIdentifier = await _world.AddPersonAsync("bode", "Bo", cancellationToken);
         _counterIdentifier = await _world.AddPersonAsync("cass", "Cass Okonkwo", cancellationToken);
@@ -109,16 +90,9 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
 
         Assert.Equal(_bodeIdentifier, records[1].PersonIdentifier);
 
-        // The order rows were created lazily inside each first send (§6.1), so their created_at is the
-        // instant of that send and the list is ordered by it.
         Assert.True(records[0].CreatedAt < records[1].CreatedAt);
     }
 
-    /// <summary>
-    /// The stored words, not an enum. §11.4 renders the record, and the surface labels the five values
-    /// §8.2's CHECK admits while falling back to the raw string — which only works if the raw string is
-    /// what arrives here.
-    /// </summary>
     [Fact]
     public async Task ListOrderRecords_CarriesEveryEventInSequence_WithItsStoredTypeAndActorRole()
     {
@@ -153,11 +127,8 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal("fulfillment", record.Events[2].EventType);
         Assert.Equal("kitchen", record.Events[2].ActorRole);
 
-        // Every event carries the order it belongs to, so a caller flattening several records keeps the
-        // association without re-deriving it.
         Assert.All(record.Events, stored => Assert.Equal(orderIdentifier, stored.GuestOrderIdentifier));
 
-        // Ascending, and monotonic without gaps — the sequence is assigned under the order lock (§6.6).
         Assert.Equal([1L, 2L, 3L], record.Events.Select(stored => stored.SequenceNumber));
     }
 
@@ -179,7 +150,6 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
 
         StoredOrderEvent fulfillment = record.Events.Single(stored => stored.EventType == "fulfillment");
 
-        // A blank display name must not produce a blank line in the history: the record says who did it.
         Assert.Equal("pat", fulfillment.ActorName);
     }
 
@@ -205,12 +175,9 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal("Soup", added.MenuItemName);
         Assert.Equal(3, added.Quantity);
 
-        // The price the transaction captured from the menu under its own lock (§6.5.4), not the zero the
-        // caller sent.
         Assert.Equal(4.50m, added.UnitPriceAmount);
         Assert.Equal("no cream", added.CustomizationNote);
 
-        // Columns that belong to other kinds stay null on this one.
         Assert.Null(added.NewUnitPriceAmount);
         Assert.Null(added.Reason);
     }
@@ -238,18 +205,11 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal(lineIdentifier, removed.OrderLineIdentifier);
         Assert.Equal("sent back", removed.Reason);
 
-        // order_operation_line_removed stores only the line identifier and the reason. Both of these come
-        // from the join back to the adding row, and they are the difference between a readable history and
-        // a column of UUIDs.
         Assert.Equal(_steakIdentifier, removed.MenuItemIdentifier);
         Assert.Equal("Steak", removed.MenuItemName);
         Assert.Equal(2, removed.Quantity);
     }
 
-    /// <summary>
-    /// The whole reason this reader exists beside <see cref="IOrderReadModel"/>. The projection is
-    /// correct to drop a removed line; the record would be wrong to.
-    /// </summary>
     [Fact]
     public async Task ListOrderRecords_ARemovedLine_IsGoneFromTheProjectionAndStillInTheRecord()
     {
@@ -276,8 +236,6 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
             record.Events.SelectMany(stored => stored.Operations),
             operation => operation.OperationKind == "line_removed" && operation.OrderLineIdentifier == lineIdentifier);
 
-        // A removal with no reason is legal (§11.3: "optional reason on removal") and reads as null rather
-        // than as an empty string, so a surface can tell "no reason given" from "the reason was blank".
         StoredOrderOperation removed = record.Events
             .SelectMany(stored => stored.Operations)
             .Single(operation => operation.OperationKind == "line_removed");
@@ -309,9 +267,6 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal("burnt, half off", adjusted.Reason);
         Assert.Equal("Steak", adjusted.MenuItemName);
 
-        // The captured price is not restated on the adjustment row — the record must not invent a number
-        // for a column the table does not have. The original is on the line_added operation above it,
-        // which is exactly where somebody settling a price argument reads it from.
         Assert.Null(adjusted.UnitPriceAmount);
 
         StoredOrderOperation added = record.Events
@@ -349,15 +304,9 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal(lineIdentifier, reverted.OrderLineIdentifier);
         Assert.Equal("Soup", reverted.MenuItemName);
 
-        // The undo does not erase the fulfillment; both are events, and §6.4's line lifecycle is read off
-        // the pair rather than off a flag somebody overwrote.
         Assert.Single(record.Events, stored => stored.EventType == "fulfillment");
     }
 
-    /// <summary>
-    /// One event, several operations — a guest's batch send (§6.3). All of them must land on that event
-    /// and none on a neighbour, which is what the group-by-event step in the reader is for.
-    /// </summary>
     [Fact]
     public async Task ListOrderRecords_OneEventWithSeveralOperations_KeepsThemAllOnThatEvent()
     {
@@ -425,11 +374,6 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Empty(await Reads().ListOrderRecordsForSittingAsync(_identifiers.Create(), cancellationToken));
     }
 
-    /// <summary>
-    /// A table where everybody joined and nobody sent anything has no <c>guest_order</c> row at all (§6.1
-    /// creates it lazily), so the honest answer is an empty record rather than an error — the page above
-    /// already knows the sitting exists from its own header query.
-    /// </summary>
     [Fact]
     public async Task ListOrderRecords_ASittingNobodyOrderedIn_IsEmpty()
     {
@@ -441,11 +385,6 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Empty(await Reads().ListOrderRecordsForSittingAsync(sittingIdentifier, cancellationToken));
     }
 
-    /// <summary>
-    /// §6.7's whole point: after a close, an administrator's corrective event joins the record and the
-    /// stamped total does not move. This is the read the administration surface renders that correction
-    /// from.
-    /// </summary>
     [Fact]
     public async Task ListOrderRecords_AnAdministratorsPostCloseCorrection_IsInTheRecord()
     {
@@ -463,7 +402,6 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal(CloseSittingOutcome.Closed, closed.Outcome);
         Assert.Equal(4.50m, closed.SettledTotalAmount);
 
-        // §6.5.8: after a close only an administrator may append, and never a guest submission.
         Guid correctionLine = _identifiers.Create();
         AppendOrderEventResult correction = await Mutations().AppendToOrderAsync(
             orderIdentifier,
@@ -489,7 +427,6 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
         Assert.Equal("Steak", added.MenuItemName);
         Assert.Equal("billed late", added.CustomizationNote);
 
-        // The stamped total is untouched — the correction lives beside it (§5.3).
         CounterSittingSummary summary =
             (await new DapperCounterBoardReads(_connectionFactory!).GetSittingAsync(sittingIdentifier, cancellationToken))!;
 
@@ -524,8 +461,6 @@ public sealed class SittingRecordReadsTests : IClassFixture<PostgreSqlFixture>, 
     {
         Guid lineIdentifier = _identifiers.Create();
 
-        // The zero unit price is deliberate: §6.5.4 has the transaction price the line from the menu row
-        // it reads under the lock, so anything sent here is discarded.
         AppendOrderEventResult result = await Mutations().AppendToLivingOrderAsync(
             sittingIdentifier,
             guestIdentifier,

@@ -11,17 +11,6 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests;
 
-/// <summary>
-/// Unit tests for <see cref="TableJoinTokens"/> — the application-layer wrapper over the vector-tested
-/// domain <see cref="JoinTokenService"/> (TECHNICAL_SPECIFICATION §4.3–§4.5). No database: the secret
-/// read is faked by a stub <see cref="ITableJoinSecretReader"/>, so these pin the wrapper's own logic —
-/// building the current QR (token, scan URL, inline SVG, next-rotation instant) for an active table,
-/// returning nothing for a table with no secret, and mapping a presented token to the domain validation
-/// result (current, previous, or neither) including the missing-table → invalid case. Options come from
-/// an empty configuration (all §13 defaults: rotation 60 s, origin <c>https://localhost:8443</c>); the
-/// real <see cref="RestaurantMetrics"/> is constructed so the emission call path runs, though the counter
-/// value is not asserted here (integration/wiring cover the plumbing).
-/// </summary>
 public sealed class TableJoinTokensTests : IDisposable
 {
     private const int RotationSeconds = 60;
@@ -63,7 +52,6 @@ public sealed class TableJoinTokensTests : IDisposable
         Assert.Equal(JoinTokenService.NextRotationInstant(_now, RotationSeconds), qr.NextRotationAt);
         Assert.Equal(_now, qr.GeneratedAt);
 
-        // Rendered server-side as a self-contained inline SVG (§4.3), not a client call.
         Assert.StartsWith("<svg", qr.QrCodeSvg, StringComparison.Ordinal);
         Assert.Contains("viewBox", qr.QrCodeSvg, StringComparison.Ordinal);
     }
@@ -116,14 +104,11 @@ public sealed class TableJoinTokensTests : IDisposable
     {
         TableJoinTokens tokens = Build(secretForKnownTable: false);
 
-        // Even a token that *would* be correct against the secret is invalid when the table has none (§4.1).
         string token = JoinTokenService.ComputeCurrentToken(KnownSecret, KnownTable, _now, RotationSeconds);
         JoinTokenValidationResult result = await tokens.ValidateAsync(KnownTable, token, TestContext.Current.CancellationToken);
 
         Assert.Equal(JoinTokenValidationResult.Invalid, result);
     }
-
-    // --- helpers -----------------------------------------------------------------------------------
 
     private TableJoinTokens Build(bool secretForKnownTable)
         => new(
@@ -143,7 +128,6 @@ public sealed class TableJoinTokensTests : IDisposable
         return secret;
     }
 
-    /// <summary>Returns the configured secret only for <see cref="KnownTable"/>; every other table has none.</summary>
     private sealed class StubSecretReader : ITableJoinSecretReader
     {
         private readonly byte[]? _secret;

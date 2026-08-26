@@ -12,30 +12,6 @@
 @inject RestaurantTime RestaurantClock
 @inject NavigationManager Navigation
 
-@* Administration sittings (TECHNICAL_SPECIFICATION §5.4, §11.4, §11.12 — "Sittings (open + recent,
-   end-of-day batch close, post-close corrective actions per §6.7)"). Two lists and one button.
-
-   §5.4 is one sentence: "Administration provides batch close: list open sittings with last-activity
-   timestamps, select, close each via the same §5.3 transaction." The last-activity column is why the
-   page exists — a table whose last event was four hours ago is a table that has gone home, and it is the
-   only signal in the system that distinguishes it from a table still eating.
-
-   Static SSR, like every administration surface. Nothing is ticked by default and there is no select-all:
-   closing twelve tables costs twelve deliberate ticks, and that is the confirmation step rather than a
-   second page. This is the one form in the tree that reads its own POST values instead of binding a
-   [SupplyParameterFromForm] model — a checkbox per row over a list whose length is however many tables
-   are open has no static model to bind to, and the alternative (a select-one picker, as on ManageTable
-   and TableDisplays) is not what §5.4 describes.
-
-   The counter reaches the same §5.3 transaction from /counter, one table at a time, with a guest standing
-   in front of it. This is the deliberate end-of-service pass over what is left.
-
-   Two shared §11.12 record lists and no inline <style>. The tick is the FIRST thing in each card and
-   carries the table's label as its visible text — on a handset a bare checkbox at the top of a card is a
-   control with nothing saying what it closes, and this is the one control on an administration index that
-   charges somebody money. Its 2.75rem row height is the §11.12 minimum rather than this page's own
-   opinion, which is what the old inline `.sittings-tick input { width: 1.35rem }` was. *@
-
 <PageTitle>Administration — sittings</PageTitle>
 
 <section class="panel panel-wide">
@@ -63,7 +39,6 @@
         <p class="status-error" role="alert">@_errorMessage</p>
     }
 
-    @* ---- open sittings: §5.4's end-of-day pass ---------------------------------------------------- *@
     <h2 class="record-heading">Open</h2>
 
     @if (_open is null)
@@ -98,12 +73,7 @@
                         {
                             <tr @key="sitting.SittingIdentifier">
                                 <td class="record-tick" data-label="">
-                                    @* A plain input, not InputCheckbox: every row shares one field name
-                                       and the handler reads the posted values directly. The label is
-                                       visible rather than screen-reader-only, because in the card layout
-                                       this is the first thing in the card and "Close Table 4" is what it
-                                       means; in the table layout the column header says it instead, and
-                                       the label text is what the header cell would have repeated. *@
+
                                     <input type="checkbox"
                                            id="@CheckboxId(sitting)"
                                            name="@SelectedSittingField"
@@ -161,8 +131,6 @@
 
             @if (_pendingAcrossOpenSittings > 0)
             {
-                @* §5.3 puts this warning before the button, and it belongs here too: an end-of-day pass
-                   is the most likely moment for somebody to charge for a plate nobody carried. *@
                 <p class="record-warning" role="alert">
                     <strong>
                         @_pendingAcrossOpenSittings
@@ -186,7 +154,6 @@
         </form>
     }
 
-    @* ---- recently settled -------------------------------------------------------------------------- *@
     <hr class="record-rule" />
 
     <h2 class="record-heading">Settled recently</h2>
@@ -241,9 +208,6 @@
                                 @Money(sitting.SettledTotalAmount ?? 0m)
                                 @if (sitting.HasPostCloseCorrections)
                                 {
-                                    @* §5.3: the stamped total is never rewritten, so when §6.7
-                                       corrections exist both numbers are shown — they answer two
-                                       different questions. *@
                                     <span class="record-corrected">
                                         corrected to @Money(sitting.CurrentTotalAmount)
                                     </span>
@@ -269,18 +233,8 @@
 </section>
 
 @code {
-    /// <summary>
-    /// The one POST field this page reads. Every checkbox shares it, so the browser posts one value per
-    /// ticked row — the standard HTML idiom for "which of these". It must not collide with Blazor's own
-    /// reserved <c>_handler</c> field, and it does not.
-    /// </summary>
     private const string SelectedSittingField = "sitting";
 
-    /// <summary>
-    /// How far back the settled list looks, and how many rows it will draw. Both bounded on purpose:
-    /// §11.4 gives administration the complete record <em>per sitting</em>, not an unbounded index of
-    /// every sitting the restaurant has ever had. This list answers "what did we settle today".
-    /// </summary>
     private const int RecentWindowDays = 7;
 
     private const int RecentCap = 60;
@@ -324,22 +278,10 @@
             HttpContext.RequestAborted);
     }
 
-    /// <summary>
-    /// §5.4's batch close. The chosen identifiers come from the posted form rather than from a bound
-    /// model, because the set of rows is whatever is open right now.
-    ///
-    /// <para><c>ReadFormAsync</c> is not a second read of the request body: the Blazor endpoint has
-    /// already parsed the form to find which handler to invoke, and <c>HttpRequest</c> caches the parsed
-    /// collection, so this returns the same instance the framework used. Awaiting the cached path rather
-    /// than touching <c>Request.Form</c> synchronously keeps the cancellation token honoured.</para>
-    /// </summary>
     private async Task CloseSelectedAsync()
     {
         if (PersonPrincipal.IdentifierFor(HttpContext.User) is not { } administrator)
         {
-            // Endpoint authorization already guarantees an administrator; this is the belt to that brace,
-            // because table_sitting.closed_by_person_identifier is NOT NULL whenever closed_at is set and
-            // has no anonymous option.
             _errorMessage = "Your session could not be identified. Sign in again and retry.";
             await LoadAsync();
             return;
@@ -350,9 +292,6 @@
         List<Guid> chosen = [];
         foreach (string? posted in form[SelectedSittingField])
         {
-            // A value that will not parse is discarded rather than reported: the only way to post one is
-            // to hand-edit the form, and the honest answer to "close sitting 'banana'" is that no such
-            // sitting was closed, which the counts already say.
             if (Guid.TryParse(posted, out Guid sittingIdentifier))
             {
                 chosen.Add(sittingIdentifier);
@@ -369,21 +308,12 @@
         EndOfDayResult result = await Settlement.CloseManyAsync(
             chosen, administrator, HttpContext.RequestAborted);
 
-        // Post/redirect/get, so a refresh does not re-post a close. The counts travel in the query string;
-        // the money does not, because the settled list below re-renders from the database and shows every
-        // stamped total in the restaurant's own currency rather than one reconstructed from a URL.
         Navigation.NavigateTo(
             $"/administration/sittings?closed={result.ClosedCount}" +
             $"&already={result.AlreadyClosedCount}" +
             $"&missing={result.NotFoundCount}");
     }
 
-    /// <summary>
-    /// The sentence after a redirect. Three numbers because three things can happen to a ticked table:
-    /// it closed, somebody had already closed it, or it is not there any more. The second is not a
-    /// failure — a counter settling a table while an administrator was reading this page is the system
-    /// working — so it is reported as fact rather than as a warning.
-    /// </summary>
     private static string? FlashFor(int? closed, int? already, int? missing)
     {
         if (closed is null && already is null && missing is null)
@@ -418,19 +348,12 @@
         return string.Join(" ", parts);
     }
 
-    /// <summary>
-    /// How long ago, in words, so the last-activity column can be read at a glance. Deliberately coarse:
-    /// the question §5.4 is asking is "has this table gone home", and the exact instant is in the cell
-    /// beside it.
-    /// </summary>
     private string AgeOf(DateTimeOffset instant)
     {
         TimeSpan elapsed = Clock.UtcNow - instant;
 
         if (elapsed < TimeSpan.Zero)
         {
-            // Only reachable if the database clock is ahead of this process's. Say nothing rather than
-            // "-3 minutes ago".
             return string.Empty;
         }
 

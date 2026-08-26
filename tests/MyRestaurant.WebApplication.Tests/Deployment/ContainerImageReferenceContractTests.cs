@@ -2,101 +2,21 @@ using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Deployment;
 
-/// <summary>
-/// Every container image reference in this repository is fully qualified, and every image name
-/// resolves to exactly one reference (TECHNICAL_SPECIFICATION §14.1, §16.4, <b>F-60</b>).
-///
-/// <para><b>Why this exists, and why it is not a reversal of F-51's ruling.</b> F-51 was the canonical
-/// stack refusing to start on a stock Debian because <c>compose.yaml</c> named its images by short
-/// name. §14.1 states the rule that came out of it. F-51's row then declined to make that rule
-/// executable, and gave the reason: a check for "no <c>image:</c> value lacks a registry component" is
-/// a text assertion about a file whose real contract is behavioural, and it would pass on a tree where
-/// the images are qualified and the stack still cannot start for the next reason. That reasoning
-/// stands, the open item it names — a CI job running the canonical stack on the canonical engine —
-/// stays open, and this test is not a substitute for it.</para>
-///
-/// <para>What this test asserts is a different property, and one that is entirely a property of the
-/// tree: that a rule stated for the whole repository is applied at every place in the repository it
-/// applies to. It was not. §14.1 said it about <c>compose.yaml</c>, <c>scripts/restore_drill.sh</c>
-/// had been doing it since Slice 16, and four other references — both Testcontainers fixtures and both
-/// of CI's — were short names. That is F-46's shape for the third time: a rule stated generally and
-/// enforced against the examples that prompted it.</para>
-///
-/// <para><b>What the short names cost, which is the part worth reading.</b> Testcontainers hands the
-/// reference to the engine verbatim; its <c>MatchImage.Match</c> records a registry only when the
-/// first slash-separated segment contains a <c>.</c> or a <c>:</c>, and the comment beside that line
-/// says it "does not resolve or set the default domain and repository prefix". So on a host whose
-/// <c>unqualified-search-registries</c> is unpopulated the pull fails — and both fixtures catch every
-/// startup failure and turn it into a skip, by design and correctly. The result is not a red suite. It
-/// is a green one in which the data-access integration tests and every §16.3 scenario declined
-/// to run, reported through a message whose headline said the container engine was unreachable when it
-/// was not.</para>
-///
-/// <para><b>The three positions a reference may occupy</b>, and the reason the set is closed: a
-/// reference this scan cannot see is a reference no gate in this project has an opinion about. A YAML
-/// <c>image:</c> key, a <c>Containerfile</c> <c>FROM</c> operand, or a value assigned to a name ending
-/// in <c>_IMAGE</c> (shell, YAML) or <c>Image</c> (C#). Two references were outside all three when
-/// this was written — one spelled into a <c>podman run</c> command line in
-/// <c>scripts/quick_tunnel.sh</c>, one passed inline to <c>new PostgreSqlBuilder(…)</c> — and both
-/// moved into named constants in the same slice, because naming them is what puts them in scope rather
-/// than tidiness.</para>
-///
-/// <para><b>What it deliberately does not assert.</b> That a reference resolves, that a registry is
-/// reachable, or that a tag exists: all three are properties of a host and a network at a moment, and a
-/// test that guessed at them would report findings on correct trees (F-41). It also has no opinion
-/// about anything under <c>docs/</c>. Those files quote both the correct and the incorrect form on
-/// purpose — the whole of F-51's ledger row is about the difference — and a gate that failed on prose
-/// describing a defect would be the same mistake in a new place.</para>
-///
-/// <para>Pure: reads text files off the disk it was built from. No server, no container, no engine.</para>
-/// </summary>
 public sealed class ContainerImageReferenceContractTests
 {
     private const string SolutionFileName = "MyRestaurant.slnx";
 
-    /// <summary>
-    /// The YAML key whose value is an image reference.
-    ///
-    /// <para>Note the identifier: not one constant in this file is named with a trailing
-    /// <c>Image</c>, and that is deliberate rather than stylistic. The scan reads every <c>.cs</c>
-    /// file outside the skipped directories, which includes this one, so a constant named for what it
-    /// holds — an image key — would be read back as an image reference called "image", which is a
-    /// short name and a failure of the fact below. The check being inside its own subject is a
-    /// property worth keeping; it just has to be written for.</para>
-    /// </summary>
     private const string YamlImageKeyName = "image";
 
-    /// <summary>
-    /// The suffix that marks a shell or YAML variable as holding an image reference —
-    /// <c>DRILL_POSTGRES_IMAGE</c>, <c>CLOUDFLARED_IMAGE</c>. A convention rather than a list, so a
-    /// reference added tomorrow is in scope without this file being edited.
-    /// </summary>
     private const string ShellVariableSuffix = "_IMAGE";
 
-    /// <summary>The same convention in C#: <c>PostgreSqlImage</c>.</summary>
     private const string ManagedConstantSuffix = "Image";
 
-    /// <summary>
-    /// Directory names never descended into. <c>docs</c> is here for the reason in the class remarks;
-    /// the rest are build output and version control. Matched by name at any depth, which would also
-    /// skip a <c>src/docs</c> — there is none, and the wider match is the safer error.
-    /// </summary>
     private static readonly string[] UnreadDirectoryNames =
         [".git", ".vs", "bin", "obj", "docs", "node_modules"];
 
-    /// <summary>
-    /// The one registry component that is a bare word rather than a hostname. Podman and Docker both
-    /// treat <c>localhost</c> as a registry rather than as a Docker Hub namespace, so a reference
-    /// beginning with it is qualified. Nothing in this tree uses it; it is here because the rule being
-    /// asserted is the reference grammar's rule, not a spelling preference.
-    /// </summary>
     private const string BareWordRegistry = "localhost";
 
-    /// <summary>
-    /// The scan reads every position it knows about. Asserted first and on its own, because both facts
-    /// below it are satisfied by an empty set (<b>F-41</b>) — and a renamed constant, a re-indented
-    /// workflow, or a <c>Containerfile</c> that grows a stage would produce exactly that in silence.
-    /// </summary>
     [Fact]
     public void TheScanFindsImageReferencesInEveryPositionItReads()
     {
@@ -121,12 +41,6 @@ public sealed class ContainerImageReferenceContractTests
         }
     }
 
-    /// <summary>
-    /// <b>This is F-60.</b> Every reference names its registry. A reference that does not is resolved
-    /// through <c>unqualified-search-registries</c>, which is a per-host file, so a short name means
-    /// this repository does not decide which registry it pulls from — and on the canonical host it
-    /// decides nothing at all, because a stock Debian ships that setting commented out.
-    /// </summary>
     [Fact]
     public void EveryImageReferenceIsFullyQualified()
     {
@@ -149,18 +63,6 @@ public sealed class ContainerImageReferenceContractTests
             + " explicit.");
     }
 
-    /// <summary>
-    /// One image name, one reference. This is the fact that would have caught F-60 as the drift it
-    /// was: the two Testcontainers fixtures were pulling <c>postgres:17-alpine</c> while
-    /// <c>compose.yaml</c> ran <c>docker.io/library/postgres:17-alpine</c>, so the integration suite
-    /// and the canonical stack disagreed about which registry the database came from — and would have
-    /// gone on to disagree about the version, which is the same drift with worse consequences and no
-    /// symptom at all.
-    ///
-    /// <para>It is the F-50 pattern with no designated authority, because there is nothing to
-    /// nominate: six references to PostgreSQL across a compose file, a workflow, two shell scripts and
-    /// two fixtures are all restatements of one another. What the rule can say is that they agree.</para>
-    /// </summary>
     [Fact]
     public void EveryImageNameResolvesToExactlyOneReference()
     {
@@ -187,11 +89,6 @@ public sealed class ContainerImageReferenceContractTests
             + " pass against a database the canonical stack does not run (F-60).");
     }
 
-    // ---------------------------------------------------------------------------------------------
-    // Reading the tree. Plain string work, no parser and no regular expressions — the same choice the
-    // other Deployment tests make about these same files, and for the same reason.
-    // ---------------------------------------------------------------------------------------------
-
     private static readonly string[] KnownPositions =
     [
         "a YAML image: key",
@@ -200,7 +97,6 @@ public sealed class ContainerImageReferenceContractTests
         "a C# *Image constant",
     ];
 
-    /// <summary>One image reference, and enough about where it is to fix it without searching.</summary>
     private sealed record ImageReference(string RelativePath, int LineNumber, string Position, string Value)
     {
         public string Describe() => $"{Value}  ({RelativePath}:{LineNumber}, {Position})";
@@ -265,7 +161,6 @@ public sealed class ContainerImageReferenceContractTests
         return references;
     }
 
-    /// <summary>Every file the scan reads, by extension or by the one name that has none.</summary>
     private static IEnumerable<string> EnumerateReadableFiles(string directory)
     {
         foreach (string path in Directory.EnumerateFiles(directory))
@@ -301,7 +196,6 @@ public sealed class ContainerImageReferenceContractTests
         }
     }
 
-    /// <summary>The operand of a <c>FROM</c> instruction, ignoring any <c>AS stage</c> that follows.</summary>
     private static string? ReadFromOperand(string line)
     {
         if (line.StartsWith('#') || !line.StartsWith("FROM ", StringComparison.Ordinal))
@@ -312,13 +206,6 @@ public sealed class ContainerImageReferenceContractTests
         return line["FROM ".Length..].Trim();
     }
 
-    /// <summary>
-    /// The value of a mapping whose key is <c>image</c> or ends in <c>_IMAGE</c>. A leading <c>- </c>
-    /// is stripped so a sequence entry is read the same way. Anything whose key is not a plain
-    /// identifier is not a mapping this cares about, which is what keeps a URL in a comment or a
-    /// <c>images:</c> plural out of the results — and what keeps <c>release.yml</c>'s job called
-    /// <c>image</c> out of them, since a key with nothing after the colon yields no value.
-    /// </summary>
     private static string? ReadYamlImageValue(string line)
     {
         if (line.StartsWith('#'))
@@ -347,7 +234,6 @@ public sealed class ContainerImageReferenceContractTests
         return interesting ? body[(colon + 1)..].Trim() : null;
     }
 
-    /// <summary>The right-hand side of <c>NAME=…</c> where <c>NAME</c> ends in <c>_IMAGE</c>.</summary>
     private static string? ReadShellImageAssignment(string line)
     {
         if (line.StartsWith('#'))
@@ -370,11 +256,6 @@ public sealed class ContainerImageReferenceContractTests
         return line[(equals + 1)..].Trim();
     }
 
-    /// <summary>
-    /// The string literal assigned to an identifier ending in <c>Image</c>. Comment lines are skipped
-    /// first, because this file's own remarks name references on purpose and counting them would make
-    /// the non-vacuity guard above pass on prose.
-    /// </summary>
     private static string? ReadManagedImageConstant(string line)
     {
         if (line.StartsWith("//", StringComparison.Ordinal) || line.StartsWith('*'))
@@ -389,7 +270,6 @@ public sealed class ContainerImageReferenceContractTests
                 continue;
             }
 
-            // Skip ==, !=, <=, >=, += and friends: neither side of a comparison is a declaration.
             if (index + 1 < line.Length && line[index + 1] == '=')
             {
                 continue;
@@ -443,13 +323,6 @@ public sealed class ContainerImageReferenceContractTests
         return null;
     }
 
-    /// <summary>
-    /// One raw right-hand side reduced to the reference it names, or <c>null</c> when it names none.
-    /// Handles a trailing comment, surrounding quotes, and the <c>${NAME:-default}</c> form every
-    /// overridable value in <c>scripts/</c> is written in. Anything still carrying an unexpanded
-    /// variable or a workflow template is not a literal this repository decided, so it is not
-    /// reported — that is the same one-direction rule §13's configuration table runs under.
-    /// </summary>
     private static string? Unwrap(string raw)
     {
         string value = raw.Trim();
@@ -501,12 +374,6 @@ public sealed class ContainerImageReferenceContractTests
         return trimmed.Trim('"').Trim('\'').Trim();
     }
 
-    /// <summary>
-    /// The reference grammar's own rule, which is also the one Testcontainers implements: the first
-    /// slash-separated segment is a registry when it contains a <c>.</c> or a <c>:</c>, or when it is
-    /// literally <c>localhost</c>. Everything else is a Docker Hub namespace, which is to say a short
-    /// name.
-    /// </summary>
     private static bool IsFullyQualified(string reference)
     {
         int slash = reference.IndexOf('/', StringComparison.Ordinal);
@@ -522,11 +389,6 @@ public sealed class ContainerImageReferenceContractTests
             || string.Equals(first, BareWordRegistry, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// The image's own name: the last path segment, with any tag or digest removed.
-    /// <c>docker.io/library/postgres:17-alpine</c> and <c>postgres:17-alpine</c> both give
-    /// <c>postgres</c>, which is what makes them comparable.
-    /// </summary>
     private static string ImageNameOf(string reference)
     {
         string lastSegment = reference[(reference.LastIndexOf('/') + 1)..];
@@ -559,17 +421,12 @@ public sealed class ContainerImageReferenceContractTests
         return char.IsAsciiLetter(candidate[0]) || candidate[0] == '_';
     }
 
-    /// <summary>What the scan did find, appended to a failure so the next reader is not left guessing.</summary>
     private static string FoundHere(IReadOnlyList<ImageReference> references)
         => references.Count == 0
             ? "\n\nThe scan found nothing at all."
             : "\n\nWhat it did find:\n"
               + string.Join("\n", references.Select(reference => "  " + reference.Describe()));
 
-    /// <summary>
-    /// The same walk up to <c>MyRestaurant.slnx</c> the other contract tests use, and it fails rather
-    /// than skips for the same reason: a check that quietly declines to run is worse than none.
-    /// </summary>
     private static DirectoryInfo FindRepositoryRoot()
     {
         for (DirectoryInfo? candidate = new(AppContext.BaseDirectory);

@@ -2,20 +2,9 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace MyRestaurant.Domain.Security;
 
-/// <summary>
-/// Encoding, parsing, and the rehash decision for the Argon2id PHC string stored in
-/// <c>person.password_hash</c> (TECHNICAL_SPECIFICATION §3.2):
-/// <code>$argon2id$v=19$m=65536,t=3,p=1$&lt;base64-no-pad(salt)&gt;$&lt;base64-no-pad(tag)&gt;</code>
-/// This type is intentionally pure string/Base64 work — it does NOT compute Argon2. The
-/// custom <c>IPasswordHasher</c> (M2, in the web layer over Konscious.Security.Cryptography)
-/// computes the raw tag, encodes it here, and on verify parses the STORED parameters,
-/// recomputes, compares with <c>CryptographicOperations.FixedTimeEquals</c>, and rehashes
-/// when <see cref="NeedsRehash"/> is true. Argon2 encoded hashes use the standard Base64
-/// alphabet (not URL-safe), without padding.
-/// </summary>
 public static class Argon2PhcString
 {
-    public const int Version = 19; // Argon2 version 1.3 (0x13)
+    public const int Version = 19;
     private const string AlgorithmLabel = "argon2id";
 
     public static string Encode(Argon2Parameters parameters)
@@ -43,7 +32,6 @@ public static class Argon2PhcString
             return false;
         }
 
-        // Leading '$' yields an empty first segment: ["", "argon2id", "v=19", "m=..,t=..,p=..", salt, tag]
         string[] segments = phcString.Split('$');
         if (segments.Length != 6 || segments[0].Length != 0)
         {
@@ -79,11 +67,6 @@ public static class Argon2PhcString
         return true;
     }
 
-    /// <summary>
-    /// True when the stored cost parameters differ from the currently configured ones, so
-    /// the verifier should transparently rehash at sign-in (Identity's SuccessRehashNeeded).
-    /// The salt and tag never enter this decision.
-    /// </summary>
     public static bool NeedsRehash(Argon2Parameters stored, int configuredMemoryKibibytes, int configuredIterations, int configuredParallelism)
     {
         ArgumentNullException.ThrowIfNull(stored);
@@ -114,7 +97,7 @@ public static class Argon2PhcString
         {
             2 => text + "==",
             3 => text + "=",
-            1 => text, // invalid; Convert will reject
+            1 => text,
             _ => text,
         };
 
@@ -130,5 +113,4 @@ public static class Argon2PhcString
     }
 }
 
-/// <summary>The parsed contents of an Argon2id PHC string.</summary>
 public sealed record Argon2Parameters(int MemoryKibibytes, int Iterations, int Parallelism, byte[] Salt, byte[] Tag);

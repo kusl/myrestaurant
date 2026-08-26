@@ -3,10 +3,6 @@ using Xunit;
 
 namespace MyRestaurant.Domain.Tests;
 
-/// <summary>
-/// Confirms SHA-256 hashing of stored secrets (TECHNICAL_SPECIFICATION §3.4, §4.2) against a known
-/// digest, and that comparison against a stored hash is by value (constant-time under the hood).
-/// </summary>
 public sealed class Sha256HashingTests
 {
     [Fact]

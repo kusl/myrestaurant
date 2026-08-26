@@ -9,13 +9,6 @@
 @inject IIdentifierFactory IdentifierFactory
 @inject NavigationManager Navigation
 
-@* Create a staff account (TECHNICAL_SPECIFICATION §3.7). Administrator only (endpoint authorization,
-   like every account/administration surface). Static SSR: the whole thing is a full-page form post, and
-   the "temporary password" is written into the response once and never stored in the clear — the
-   account is created with `must_change_password`, so the obligations pipeline forces a real password on
-   the staff member's first sign-in (§3.5). Roles are granted in the same transaction that creates the
-   account, each recording this administrator as grantor. Nothing is written until the form is submitted. *@
-
 <PageTitle>Create staff account</PageTitle>
 
 @if (_created)
@@ -36,11 +29,7 @@
         </p>
 
         <p class="totp-secret-label">Give this temporary password to the new staff member — it is shown only once.</p>
-        @* .staff-temporary-password beside .totp-secret, which keeps all the styling. This element holds
-           a password, not a TOTP secret; it borrowed that class for the monospaced, letter-spaced
-           treatment and there was then no way to address it as the thing it actually is. Additive, and
-           worth having before the day this page grows an authenticator panel of its own and the older
-           class stops being unambiguous. *@
+
         <p class="totp-secret staff-temporary-password">@_temporaryPassword</p>
         <p class="lede">
             They will be asked to choose their own password the first time they sign in. If they hold the
@@ -84,11 +73,6 @@ else
                 <ValidationMessage For="@(() => Input.DisplayName)" />
             </div>
 
-            @* Option rows use the shared .choice-fieldset / .choice-list / .choice vocabulary in
-               app.css. The fieldset deliberately does NOT carry .form-field: that class's
-               `input { width: 100% }` stretched each checkbox across the panel, and its
-               `label { display: block }` outranked a single-class .role-option and pushed the text
-               under the box — which is why these never lined up with anything. *@
             <fieldset class="choice-fieldset">
                 <legend>Roles</legend>
                 <div class="choice-list">
@@ -144,7 +128,7 @@ else
     private CreateStaffInputModel Input { get; set; } = default!;
 
     protected override void OnInitialized()
-        // BL0008: a form POST binds Input itself and may assign null, so the default lives here.
+
         => Input ??= new();
 
     private async Task CreateAsync()
@@ -159,7 +143,6 @@ else
         string username = Input.Username.Trim();
         string? displayName = string.IsNullOrWhiteSpace(Input.DisplayName) ? null : Input.DisplayName.Trim();
 
-        // Best-effort duplicate check; the person UNIQUE constraint inside the transaction is authoritative.
         if (await UserManager.FindByNameAsync(username) is not null)
         {
             _errorMessage = "That username is already taken. Please choose another.";
@@ -184,9 +167,6 @@ else
 
         Guid personIdentifier = IdentifierFactory.Create();
 
-        // A generated temporary password, hashed immediately so the plaintext is only ever held for the
-        // one response that shows it. 12 random bytes render to a 16-character URL-safe string — well
-        // over the 12-character policy floor (§3.2), which the forced change re-checks anyway.
         string temporaryPassword = SecretGenerator.GenerateBase64UrlSecret(12);
         string passwordHash = PasswordHasher.HashPassword(
             new Person { PersonIdentifier = personIdentifier, Username = username },

@@ -2,41 +2,18 @@
 #
 # Restore a recovery set (TECHNICAL_SPECIFICATION §15, OPERATIONS §6).
 #
-#   scripts/restore.sh <path-to-.dump>              interactive; confirms before overwriting
-#   scripts/restore.sh --yes <path-to-.dump>        no confirmation prompt (scripted recovery)
-#   scripts/restore.sh --no-keys <path-to-.dump>    database only; leave the key ring alone
-#   scripts/restore.sh --help                       this text
+#   scripts/restore.sh <path-to-.dump>           interactive; confirms before overwriting
+#   scripts/restore.sh --yes <path-to-.dump>     no confirmation prompt (scripted recovery)
+#   scripts/restore.sh --no-keys <path-to-.dump> database only; leave the key ring alone
+#   scripts/restore.sh --help                    this text
 #
-# What it does, in order: verify the archive is a custom-format dump; stop `web`; `pg_restore --clean
-# --if-exists` into the postgres container; put the Data Protection key ring back from the sibling
-# `-dataprotection.tar` written by `scripts/backup.sh`; start `web` again (DbUp verifies the schema at
-# startup and rolls an older dump forward); wait for /healthz/ready.
+# In order: verify the archive is a custom-format dump; stop `web`; `pg_restore --clean --if-exists`
+# into the postgres container; put the key ring back from the sibling `-dataprotection.tar`; start
+# `web` again (DbUp rolls an older dump forward at startup); wait for /healthz/ready.
 #
-# THE WEB APPLICATION IS ALWAYS STARTED AGAIN. That sentence used to be false and it is the whole
-# reason this script was rewritten (F-38). `pg_restore` exits 1 whenever it ignored ANY error — that
-# is its documented contract, `exit_code = AH->n_errors ? 1 : 0` in `pg_restore.c` — and `--clean
-# --if-exists` ignores errors routinely. Under `set -e` the old script therefore died on the
-# `pg_restore` line, which sat BEFORE the `up -d web` line, with `web` already stopped. The single
-# most likely outcome of the documented recovery procedure was a database that came back and an
-# application that stayed down, silently. Starting `web` again now happens in an EXIT trap, so it
-# happens on every path out of this script including the ones nobody planned.
+# THE WEB APPLICATION IS ALWAYS STARTED AGAIN. `pg_restore` exits 1 whenever it ignored any error,
+# so under `set -e` that sentence used to be false; see DOCUMENTATION_REVIEW.md F-38.
 #
-# Ignored errors are reported rather than fatal, and turn the exit code into 2. On a healthy set the
-# count is zero — `scripts/backup.sh` passes `--no-owner` at dump time precisely so that this number
-# stays worth reading — so a non-zero count is news even though it is usually benign.
-#
-# Exit codes:
-#   0   restored, key ring in place, web healthy
-#   1   nothing was restored (bad arguments, unusable archive, no container)
-#   2   restored, but with reservations: pg_restore ignored errors, or the key ring was not put back
-#
-# Environment:
-#   POSTGRES_USER / POSTGRES_DB     database credentials (default myrestaurant / myrestaurant)
-#   POSTGRES_CONTAINER              skip discovery and use this container for pg_restore
-#   WEB_CONTAINER                   skip discovery and use this container for the key ring
-#   DATA_PROTECTION_KEYS_DIRECTORY  the key-ring path inside the web container
-#                                   (default /var/lib/myrestaurant/dataprotection)
-#   RESTORE_HEALTH_URL              readiness probe (default http://127.0.0.1:8080/healthz/ready)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -81,9 +58,6 @@ info() { printf '[restore] %s\n' "$*"; }
 warn() { printf '[restore] warning: %s\n' "$*" >&2; }
 die()  { printf '[restore] error: %s\n' "$*" >&2; exit 1; }
 
-# ---------------------------------------------------------------------------------------------------
-# 1. The archive. Checked before anything is stopped, so a typo costs nothing.
-# ---------------------------------------------------------------------------------------------------
 [[ -n "$DUMP" ]] || die "usage: scripts/restore.sh [--yes] [--no-keys] <path-to-.dump>"
 [[ -f "$DUMP" ]] || die "'$DUMP' is not a file."
 [[ -s "$DUMP" ]] || die "'$DUMP' is empty."
@@ -94,9 +68,6 @@ fi
 
 KEYS_ARCHIVE="${DUMP%.dump}-dataprotection.tar"
 
-# ---------------------------------------------------------------------------------------------------
-# 2. Engine and compose command (mirrors run.sh and scripts/quick_tunnel.sh).
-# ---------------------------------------------------------------------------------------------------
 if command -v podman-compose >/dev/null 2>&1; then
     COMPOSE=(podman-compose); ENGINE="podman"
 elif command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
@@ -107,9 +78,6 @@ else
     die "need podman-compose, 'podman compose', or 'docker compose' on PATH."
 fi
 
-# One container name or a refusal — never whichever one the engine listed first. See the same comment
-# in scripts/backup.sh: scripts/restore_drill.sh creates a second postgres container on purpose, and
-# restoring into it instead of the real one would look exactly like success.
 discover_container() {
     local fragment="$1" label="$2"
     local -a names=()
@@ -143,8 +111,6 @@ if ! "$ENGINE" exec "$DATABASE_CONTAINER" pg_isready --username "$PGUSER" --dbna
     die "'$DATABASE_CONTAINER' did not answer pg_isready for user '$PGUSER' database '$PGDB'."
 fi
 
-# The web container is discovered while it is still running, because that is the only time discovery
-# by name works — one step from here it will be stopped.
 APPLICATION_CONTAINER=""
 if (( WITH_KEYS )); then
     if [[ -n "${WEB_CONTAINER:-}" ]]; then
@@ -154,9 +120,6 @@ if (( WITH_KEYS )); then
     fi
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# 3. Confirm.
-# ---------------------------------------------------------------------------------------------------
 echo
 info "about to restore:"
 info "  dump         $DUMP"
@@ -176,9 +139,6 @@ if (( ! ASSUME_YES )); then
     [[ "$confirm" == "restore" ]] || { info "aborted."; exit 1; }
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# 4. Stop web, and arrange for it to come back no matter what happens next.
-# ---------------------------------------------------------------------------------------------------
 WEB_STOPPED=0
 RESERVATIONS=0
 
@@ -244,9 +204,6 @@ info "stopping the web application…"
 "${COMPOSE[@]}" stop web || warn "'${COMPOSE[*]} stop web' reported a problem; continuing."
 WEB_STOPPED=1
 
-# ---------------------------------------------------------------------------------------------------
-# 5. The database.
-# ---------------------------------------------------------------------------------------------------
 echo
 info "restoring $DUMP into '$PGDB'…"
 
@@ -264,10 +221,6 @@ else
     info "pg_restore reported no errors."
 fi
 
-# ---------------------------------------------------------------------------------------------------
-# 6. The key ring (§3.4). Put back while `web` is stopped, so the application reads it at startup
-#    rather than after it has already created a fresh ring of its own.
-# ---------------------------------------------------------------------------------------------------
 echo
 if (( ! WITH_KEYS )); then
     info "skipping the key ring (--no-keys)."
@@ -288,6 +241,3 @@ elif ! "$ENGINE" cp - "$APPLICATION_CONTAINER:$KEYS_DIRECTORY" < "$KEYS_ARCHIVE"
 else
     info "key ring restored into '$APPLICATION_CONTAINER:$KEYS_DIRECTORY'."
 fi
-
-# `web` is started by the EXIT trap — deliberately, so that every path out of this script starts it,
-# including the ones that got here by failing.
