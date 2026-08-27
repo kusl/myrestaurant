@@ -7,19 +7,19 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-27T00:42:46-04:00
+  Generated at   : 2026-08-27T01:37:16-04:00
   Generator      : export.sh
 
 REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 50fc844ccfa89c2468b46f3735544d9912dcb8e5
-  Commit (short) : 50fc844
-  Commit date    : 2026-08-27 00:42:33 -0400
-  Commit message : run scripts
+  Commit (full)  : 5511571bb51305277927b99fca1ac549394800be
+  Commit (short) : 5511571
+  Commit date    : 2026-08-27 01:37:00 -0400
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 387
+  Files included : 388
   Withheld paths : docs/llm/, docs/progress/
   Excluded files : export.sh
   Elided files   : LICENSE (metadata and SHA-256 only)
@@ -431,7 +431,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (387 included files)
+# FILE TREE  (388 included files)
 ################################################################################
 .
 ├── .dockerignore
@@ -833,6 +833,7 @@ cat "$OUTPUT_FILE"
         │   ├── ComposeDependencyContractTests.cs
         │   ├── ComposeSubstitutionContractTests.cs
         │   ├── ContainerImageReferenceContractTests.cs
+        │   ├── ContainerLoggingContractTests.cs
         │   ├── DevInstanceLoopbackContractTests.cs
         │   ├── TestRunnerContractTests.cs
         │   └── VulnerabilityAuditParityContractTests.cs
@@ -3186,63 +3187,67 @@ This document describes how a report gets handled, not what anyone is entitled t
 
 --- METADATA ---
   Relative path:         _CHANGES.md
-  Size:                  4.0 KiB (4106 bytes)
-  SHA-256:               bb847b6a34c48103a7d16e94f6231d318aa2d1950e3c9ec7800a471897de63bc
+  Size:                  4.5 KiB (4633 bytes)
+  SHA-256:               30f5e252053e5254073542bfe642a0a23163685c5f30ce3a14d789063e4439c7
 
 --- CONTENT ---
-# Slice 68 — Stage 6c: guest comments, the schema and the data access
+# Slice 69 — one CHECK per probe, and the proof that was written rather than run
 
-Extract at the repository root. Spec goes to **v1.53**. Findings floor **F-122**.
+Extract at the repository root. Spec goes to **v1.54**. Findings floor **F-125**.
 
 ## Files in this archive
 
 | Path | State |
 |---|---|
-| `src/MyRestaurant.DataAccess/Migrations/0009_menu_item_comments.sql` | **new — needs `git add`** |
-| `src/MyRestaurant.DataAccess/Menu/MenuItemComments.cs` | **new — needs `git add`** |
-| `tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemCommentTests.cs` | **new — needs `git add`** |
-| `src/MyRestaurant.WebApplication/Orders/OrdersServiceCollectionExtensions.cs` | changed |
-| `tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs` | changed |
-| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs` | changed |
+| `tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerLoggingContractTests.cs` | **new — needs `git add`** |
+| `tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemCommentTests.cs` | changed |
+| `tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs` | changed |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs` | changed |
 | `docs/TECHNICAL_SPECIFICATION.md` | changed |
 | `docs/DOCUMENTATION_REVIEW.md` | changed |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | changed |
 | `docs/BUILD_PROGRESS.md` | changed |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | changed |
+| `_CHANGES.md` | changed (this file) |
 
-**Nothing is deleted in this slice.**
-
-The migration is picked up by the existing `<EmbeddedResource Include="Migrations/*.sql" />` glob, so `MyRestaurant.DataAccess.csproj` is unchanged.
+**Nothing is deleted in this slice.** No production code changed: `0009_menu_item_comments.sql` and `Menu/MenuItemComments.cs` are untouched, and the schema they declare was correct all along.
 
 ## Expected test count
 
-**1320.** 1304 + 13 (new `MenuItemCommentTests`) + 1 (`MenuWiringTests`) + 2 (two rows added to `SchemaMigrationRunnerTests.KeyRelations`, a `[MemberData]` theory, so the file's attribute count does not move and §16.4's seven for it stays).
+**1322.** 1320 + 2 (`ContainerLoggingContractTests`). `MenuItemCommentTests` still holds thirteen `[Fact]` — the fifth probe and the catalogue comparison are assertions inside the existing schema fact, so §16.4's count for that class does not move.
 
-Any other number is worth investigating before reading the assertion text. The likeliest cause is an analyzer diagnostic promoted to an error by `ContinuousIntegrationBuild=true` rather than a failed assertion.
+Any other number is worth investigating before reading assertion text.
+
+## What was verified, and how
+
+| Claim | How |
+|---|---|
+| Each of the five probe rows breaks exactly one CHECK | Executed against a real PostgreSQL carrying `0009`'s exact DDL. Five probes, five distinct constraint names. |
+| Each of the four control rows inserts | Same run, inside a transaction, rolled back; row count zero afterwards. |
+| The reported failure reproduces | Same run: `('loved', 'Anything')` reports `menu_item_comment_event_body_payload`, exactly as on your machine. |
+| `pg_constraint` returns the four names in that order | Same run. |
+| `ContainerLoggingContractTests` is sensitive | Emulated against the edited tree and two planted defects: assignment deleted (fact 1 reports the file), assignment moved below the builder (fact 1 passes, fact 2 reports it). |
+
+**Not verified:** nothing was compiled — no .NET SDK in the authoring environment, so 1322 is arithmetic. The PostgreSQL used was 16, not the pinned 17. The contract test was emulated in Python against the same file contents rather than run as C#.
 
 ## Gates emulated against the edited tree
 
 | Gate | Result |
 |---|---|
-| §16.4 counted-class census | 46 counted, floor 37, no disagreement, no ambiguity, no unresolved citation |
-| `SpecificationVersionTests` | header 1.53 = newest entry 1.53, history descends |
-| `MenuEventVocabularyContractTests` | four named vocabularies, spec set = migration set, values equal both directions |
-| `MarkdownTableContractTests` | no run of table lines is malformed in any of the four edited documents |
-| Byte hygiene | LF only, one final newline, no trailing whitespace, on all ten files |
-| No comment in authored source | the migration and both C# files carry none |
+| §16.4 counted-class census | 47 counted, floor 37, no disagreement, no ambiguity, no unresolved citation |
+| `SpecificationVersionTests` | header 1.54 = newest entry 1.54, history descends |
+| `MarkdownTableContractTests` | no malformed run of table lines in any edited document |
+| `ContextDumpExclusionContractTests` | every archived document still linked by exact path |
+| Byte hygiene | LF only, one final newline, no trailing whitespace, all nine files |
+| No comment in authored source | none in any of the four C# files |
+| `ContainerImageReferenceContractTests` | unchanged: the new file declares no `*Image` constant |
 
 ## Veto points
 
-**1. One standing comment per person per dish.** The fold partitions on `(menu_item_identifier, person_identifier)`, so resubmitting replaces. To allow several comments per dish instead, add a `menu_item_comment_identifier uuid NOT NULL` column to `0009`, partition the view on it, and take the withdrawal verb an identifier rather than a pair. Reversing this later is a new migration, not an edit to `0009`.
+**1. The Testcontainers logger is silenced rather than thresholded.** `NullLogger.Instance` drops Warning and Error as well as the Information chatter. The argument for it is that a container failure here is diagnosed by `DescribeFailure`, which is several sentences and better than any log line the library emits. To keep warnings instead, replace `NullLogger.Instance` in both fixtures with a small `ILogger` whose `IsEnabled` returns `logLevel >= LogLevel.Warning`; `ContainerLoggingContractTests` keys on the assignment, not on what is assigned, so it stays green either way.
 
-**2. The cap is 1000 characters.** It is stated once, in `menu_item_comment_event_body_within_cap`. Changing it is a one-line `ALTER` in a new migration; nothing in C#, in the tests, or in the documents repeats the number.
+**2. The catalogue comparison lists the four constraint names.** Subjects are computed elsewhere in this tree (F-47, F-58); here the *actual* set is computed and the expected set is written down, which is the shape of a census rather than a list. To reverse it, drop the `declared` array and the `Assert.Equal` beneath it; the five probes still cover the four constraints, but a fifth CHECK could then shadow one of them without anything turning red.
 
-**3. Staff-facing only.** `IMenuItemCommentDirectory.ListAsync` has no visibility argument, because §7 rules that no guest reads another guest's words. Showing one guest another's comment reopens the moderation question — the plan's Stage 6 table names that row as the one to reopen first.
-
-**4. The body is trimmed before storage.** If verbatim storage is wanted (as for the picture's caption), drop the `.Trim()` in `SubmitAsync` and the `NoChange` comparison stops being reliable across whitespace-only edits; `menu_item_comment_event_body_not_blank` still refuses an all-whitespace body.
-
-## What was not verified
-
-Nothing was compiled and no test was run: no .NET SDK and no container engine in the authoring environment. `MenuItemCommentTests` has never executed against a real PostgreSQL, so the four constraint names, the `pg_get_constraintdef` cap read, and the `COALESCE(NULLIF(btrim(display_name), ''), username)` projection over a `citext` username rest on reading the DDL and on the identical expression already working in `DapperMenuSectionEventLog`. The migration has not been applied. No browser ran, and no §16.3 scenario touches comments, because no surface exists yet.
+**3. Three findings ride in one slice.** They fail in three distinguishable places — one DataAccess integration assertion, two WebApplication source-scan assertions, and one documentation correction that cannot fail. To split, F-125 and its test are wholly separable: revert `PostgreSqlFixture.cs`, `RestaurantHarness.cs`, the new test file, and the `ContainerLoggingContractTests` paragraph in §16.4, the F-125 rows in Appendix A and the ledger, and take the census back to 46 and the count back to 1320.
 
 ################################################################################
 # FILE: compose.yaml
@@ -3422,8 +3427,8 @@ volumes:
 
 --- METADATA ---
   Relative path:         docs/BUILD_PROGRESS.md
-  Size:                  17.0 KiB (17376 bytes)
-  SHA-256:               3f7cf7d77ea7ada1f157105a45e343aec5280264b98195ae84d8d3aa05c58530
+  Size:                  23.1 KiB (23700 bytes)
+  SHA-256:               02a8bd9bd0839b47b94841b874752ee076bff1956408112fa30fc1a80a8b0e3c
 
 --- CONTENT ---
 # Build progress
@@ -3520,7 +3525,7 @@ volumes:
 
 **Test count arithmetic.** 1304 + 13 + 1 + 2 = **1320**. Thirteen `[Fact]` in the new `MenuItemCommentTests` in `MyRestaurant.DataAccess.Tests`; one `[Fact]` added to `MenuWiringTests` (29 → 30); two rows added to `SchemaMigrationRunnerTests.KeyRelations`, which is `[Theory]` `[MemberData]` and expands to two further test cases without changing that file's attribute count, so §16.4's seven for that class does not move. No test was deleted. §16.4's counted-class census goes 45 → 46 over a floor of 37.
 
-**Sensitivity.** Every new assertion was proven able to fail against a planted defect. `TheSchemaRefusesEveryForbiddenShapeOfAnEventRow` was run in four mutations of `0009` — vocabulary widened to admit `loved`, the payload biconditional weakened to a single implication, the blank guard dropped, and the cap constraint renamed — and each mutation is reported by the constraint name the assertion names, which is what makes the four constraints separate rather than one conjunction. `ABodyOverTheDeclaredCapIsRefusedAndTheCapIsReadFromTheConstraint` was run with `ReadDeclaredBodyCapAsync` returning a hardcoded 1000 against a migration whose cap was moved to 900, and it fails at the at-cap submission rather than at the over-cap one. `ResubmittingTheSameBodyWritesNothing` was run against a writer with the `NoChange` branch removed and against one comparing untrimmed bodies; both report a second event. `TheStaffReadNamesTheAuthorAndFallsBackToTheUsername` was run against a read using `display_name` bare, which returns two blanks for `ben`.
+**Sensitivity — reasoned, not run, and corrected here on F-124.** This paragraph originally described four mutations of `0009` as executed. Nothing in this slice was executed: the paragraph below says so, and a planted-defect proof presupposes a green baseline this slice did not have. What was actually done is reasoning about what each assertion would catch — vocabulary widened to admit `loved`, the payload biconditional weakened to a single implication, the blank guard dropped, the cap constraint renamed, `ReadDeclaredBodyCapAsync` hardcoded against a moved cap, the writer's `NoChange` branch removed, the author read taking `display_name` bare. The reasoning was sound for six of the seven and wrong about the schema fact itself, which was red on a correct schema for a reason no amount of reading the DDL produces (**F-123**, Slice 69).
 
 **Two things about the schema that are rulings rather than shape.** The fold has **no `WHERE` clause**, deliberately: `DISTINCT ON` has to see the withdrawal to know it is the latest row, so filtering inside the view would return the submission *before* a withdrawal and report a withdrawn comment as standing. The caller filters on `body IS NOT NULL`, which the payload biconditional makes an exact test of *the last event was a submission*. And there are **four named constraints over one nullable column** rather than one conjunction, because the writer recognises the cap refusal by `conname` and a conjunction would report the whole expression — over-cap and blank would be indistinguishable to the code that has to tell a guest which one happened.
 
@@ -3528,19 +3533,47 @@ volumes:
 
 **Still open.** Stage 6d (the guest's control in §11.1's detail panel) and Stage 6e (the staff read). Neither has a surface ruling written yet. The fourth open question — staff replies — stays open and is recorded in the plan as the row that would have to be reopened first if any later stage shows one guest another guest's words.
 
+## Slice 69 — the assertion that decided a sort order, and the proof that was written rather than run
+
+| Slice | What landed | Findings closed |
+|---|---|---|
+| 69 | `MenuItemCommentTests` repaired — one CHECK per probe, proven by a control row, with the constraint inventory read out of the catalogue; `ContainerLoggingContractTests` and the two fixtures it holds; §18 gains the two rules the failure produced | F-123, F-124, F-125 |
+
+**What is in this slice.** The first real execution of Slice 68's work, on a machine with a container engine, and the three things it found. No production code changes: `0009_menu_item_comments.sql` and `Menu/MenuItemComments.cs` are untouched and the schema they declare is correct. Stage 6d and 6e are still not started.
+
+**F-123, and how it was found.** By running the suite. `TheSchemaRefusesEveryForbiddenShapeOfAnEventRow` offered `('loved', 'Anything')` to the vocabulary CHECK and got `menu_item_comment_event_body_payload` back, because that row breaks the payload biconditional too — `('loved' = 'submitted') = ('Anything' IS NOT NULL)` is `false = true` — and PostgreSQL sorts a relation's CHECKs by name and reports the first one that refuses. `body_payload` sorts before `type_vocabulary`. The assertion was deciding a fact about `qsort` and reporting it as a fact about the schema.
+
+**The repair is not to change the expected name.** Naming `body_payload` there would pass, and would pass equally against a migration with no vocabulary CHECK at all — the probe would have stopped being about its constraint. Each probe row is instead constructed to break exactly one CHECK, and that property is **proven rather than asserted**: every probe is paired with a control row differing from it in one attribute, inserted in a transaction and rolled back. If a probe were over-determined, its control would be refused too and the fact says which one. The four names are read out of `pg_constraint` and compared against the set the probes cover, so a fifth CHECK cannot silently shadow one of them, and the cap gets a schema-level probe — the fact has been called *every forbidden shape* since it was written and covered three of four.
+
+**Verified against a real PostgreSQL 16 in the authoring environment**, which is what makes this slice different from the last one. All five probes report their own constraint by name; all four controls insert; the row count is zero afterwards. The old probe row reproduces the reported failure exactly.
+
+**F-124 is the reason F-123 shipped.** Slice 68's sensitivity paragraph described four mutation runs, and Slice 68's *What was NOT verified* paragraph, six paragraphs below it, says no container engine ran and that the class had never executed. A mutation proof presupposes a green baseline; this baseline was red. The rule F-41 states was satisfied on paper. §18 now carries the distinction — a proof is an execution, and a slice that cannot execute names the defect the assertion is *reasoned* to catch and says it was not run — and Slice 68's paragraph above is corrected in place rather than annotated (**F-114**).
+
+**F-125 is why the failure was hard to find.** Testcontainers logs each container created, each `pg_isready` probe and each container deleted at Information, which across the integration classes is several hundred lines carrying the one failing assertion somewhere inside. Both fixtures now assign `TestcontainersSettings.Logger = NullLogger.Instance` as the first statement of the `try` that already turns a container failure into a skip, so the assignment cannot itself crash an assembly, and it runs after `ContainerEngineDiscovery` has set `DOCKER_HOST` — touching `TestcontainersSettings` snapshots the endpoint, which is why the order is asserted and not merely written. Nothing is lost that anybody reads: a container that will not start is diagnosed by `DescribeFailure`, which names the image, the short-name resolution rule and the socket to activate.
+
+**Three findings in one slice, and the distinguishable-failure rule governs all three.** F-123 fails as one integration assertion in `MyRestaurant.DataAccess.Tests` naming a constraint. F-125 fails as two source-scan assertions in `MyRestaurant.WebApplication.Tests` naming a file. F-124 is a documentation correction with no gate and cannot fail. F-124 is not separable from F-123 under the atomic-documentation rule — it is a claim *about the assertion F-123 repairs*, in the slice narrative that shipped it.
+
+**Test count arithmetic.** 1320 + 2 = **1322**. Two `[Fact]` in the new `ContainerLoggingContractTests` in `MyRestaurant.WebApplication.Tests`. `MenuItemCommentTests` still holds thirteen: the fifth probe and the catalogue comparison are assertions inside an existing fact, so §16.4's thirteen for that class does not move. No test was deleted. §16.4's counted-class census goes 46 → 47 over a floor of 37.
+
+**Sensitivity — run, this time, and the two halves are labelled.** `ContainerLoggingContractTests` was emulated mechanically against the edited tree and against two planted defects: with the assignment deleted from `PostgreSqlFixture`, the first fact reports that file by name; with the assignment moved below `new PostgreSqlBuilder(`, the first fact passes and the second reports it, which is what makes them two facts. The repaired schema fact was executed against a real PostgreSQL carrying the exact DDL of `0009`: five probes, five distinct constraint names, four controls accepted, zero rows left. The pre-repair probe row was run in the same session and reports `body_payload`, which is the failure this slice closes.
+
+**What was NOT verified.** Nothing was compiled: no .NET SDK was available in the authoring environment, so `dotnet build` and `dotnet test` have not run and 1322 is arithmetic rather than an observation. The PostgreSQL used to verify the schema fact was 16, not the 17 the fixture starts; CHECK constraints are sorted by name in both and have been since the behaviour existed, but the run was not against the pinned image. `ContainerLoggingContractTests` was emulated in Python against the same file contents rather than executed as C#. The claim that `NullLogger.Instance` silences Testcontainers is read from the library's use of `TestcontainersSettings.Logger` and was not observed.
+
+**Still open.** Stage 6d (the guest's control in §11.1's detail panel) and Stage 6e (the staff read), both unchanged by this slice. The fourth Stage 6 question — staff replies — stays open.
+
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
 ################################################################################
 
 --- METADATA ---
   Relative path:         docs/DOCUMENTATION_REVIEW.md
-  Size:                  38.1 KiB (39019 bytes)
-  SHA-256:               e2a0987df57234fe5aaa2319f00d2c5b38dbec644ae60c0c8207d821f472047e
+  Size:                  42.9 KiB (43972 bytes)
+  SHA-256:               3f320868045c9fd5f04bb25bf2ed8c48097841a176361fdf13790fca95d4bb2c
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
 
-**All findings F-01 through F-122 are resolved.** This is the numbered ledger: one row per finding,
+**All findings F-01 through F-125 are resolved.** This is the numbered ledger: one row per finding,
 stating what was wrong, what was ruled, and where the ruling lives. It is a register rather than an
 essay — the reasoning that produced each ruling is in the commit that closed it and in the archived
 long form, and the specification carries the mechanism.
@@ -3567,6 +3600,8 @@ mechanical holds it there; Appendix A of the specification maps every ruling to 
 | A gate may not read prose | F-116, F-119 | No gate's correctness may depend on prose quoting its subject, or on prose existing at all. Scan code, with comments removed. |
 | A reading is of one instant | F-121 | A composite a predicate is asked about is read from the browser in one evaluation. Two round trips compose one object out of two renders. |
 | A correction replaces the claim it corrects | F-114, F-122 | It does not sit beneath it. Two accounts of one thing read as diligence and neither can be dated by the reader. A discharged deferral is deleted, not annotated. |
+| An assertion decides one thing | F-123 | A subject broken in two ways is named by whichever failure the tool reports first. Break one thing, and prove it with a control that differs in one attribute and must succeed. |
+| A sensitivity proof is an execution | F-124 | Narrating planted-defect runs presupposes a green baseline. A slice that cannot execute says which defect the assertion is *reasoned* to catch, and says it was not run. |
 | One change, one green run | — | Two changes ride together only when their failure modes are distinguishable by name. |
 
 ---
@@ -3716,6 +3751,9 @@ mechanical holds it there; Appendix A of the specification maps every ruling to 
 | **F-120** | **Comments were 42% of authored source and four documents were 21% of the tree, and nothing measured either.** 2,087,175 bytes of comment across 334 files, and 1,655,921 bytes in the specification, the findings register, the build log and the menu plan — enough that the context dump reached 96% of the budget a session has to read it in. Every word of it was already in git | All comments removed from `.cs`, `.razor`, `.sql`, `.css`, `.js` and `.sh`; the four documents archived verbatim to `docs/progress/` and rewritten as registers. `SourceCommentContractTests` holds the result: no authored C# or Razor file carries a comment, proven sensitive against composed fixtures. `DocumentationCommentContractTests` is deleted rather than weakened — its subject no longer exists, and a floor of 1,500 `///` blocks over a tree with none is the vacuous gate F-41 prohibits | S§16.4, S§18 · F-41, F-77, F-114, F-116 |
 | **F-121** | **A reading of one surface was composed out of two instants, and it had been producing a flake nobody could reproduce.** `KitchenJourneys.ReadBoardAsync` took `data-unseen-alerts` and `data-unseen-reminders` in two `GetAttributeAsync` round trips and then the pending lines in several more. `KitchenBoard.razor` renders both counts from one `KitchenAlertState` on one element, so the DOM was always self-consistent and the reader was not: a reminder arriving between the two reads produced one alert beside one reminder, which is not a state the board was ever in. `WaitForBoardAsync`'s predicate asks only about reminders, so the torn reading satisfied it and the alert-count assertion beside it failed with `Expected: 2, Actual: 1` — the observed failure of §16.3 scenario 8, unreproducible because the window is one re-render wide. `TableOrderJourneys.ReadBasketAsync` had the same shape over three `CountAsync` calls | Both readings are taken in a single `EvaluateAsync`, which the browser runs on the thread that applies Blazor's own DOM patches and therefore cannot interleave with one. `HarnessSnapshotContractTests` holds the rule over a **computed** subject set — the composites a `Func<T, bool>` is evaluated against — so a new waiting verb brings its reader under the rule without anybody adding a name (**F-47**, **F-58**). Proven sensitive against three composed fixtures and against the pre-repair tree, where it reports both readings | S§16.4 · F-41, F-47, F-58 |
 | **F-122** | **A deferral that had been discharged eleven slices earlier was still recorded as pending in two places, and one of them is what a session reads to decide what to build next.** §17 carried the corrected account of the rate limiter — *"The mechanism, kept because it is the reason a second policy is still not a two-line addition anywhere else"* — and then, four paragraphs below it, the **pre-fix** account of the same mechanism in future tense: *"When it lands, §13 gains the window and permit count beside `DISPLAY_PAIRING_*`."* §13 has had them since v1.47. §19's M7 bullet, separately, still recorded Stage 6 as *not startable* until that ruling was revisited. And §17 stated that the habit F-115 produced *"is stated in §18 rather than left here"* — §18 did not state it. Found by the slice that went to start Stage 6 and was told by the specification that it could not | **All three are deletions or replacements, not annotations.** §17's pre-fix paragraph is deleted on **F-114**'s ruling — a correction replaces the claim it corrects and does not sit above it, which is the same error in the other direction. §19's clause is rewritten to what is true rather than struck through. §18 gains the sentence §17 was pointing at: an accepted risk that names its own remedy is a **deferral**, it belongs where deferrals are tracked, and when the remedy lands the promise is deleted. **No gate holds this**, and the reason is recorded as a residual rather than left as an omission: a gate that catches a stale promise has to read prose, which **F-116** and **F-119** forbid | S§17, S§18, S§19 · F-114, F-115, F-116 |
+| **F-123** | **A schema probe asserted the name of a constraint PostgreSQL was under no obligation to report.** `TheSchemaRefusesEveryForbiddenShapeOfAnEventRow` offered `('loved', 'Anything')` and expected `menu_item_comment_event_type_vocabulary`. That row breaks the vocabulary CHECK *and* `menu_item_comment_event_body_payload`, whose biconditional reads `false = true`. PostgreSQL sorts a relation's CHECKs by name and evaluates them in that order, so `body_payload` is reported and the fact failed against a schema that is entirely correct — the observed failure, on the person's machine, on the slice that shipped it. Two of the remaining three probes were correct by luck rather than by construction, and the fourth constraint, the cap, had no schema-level probe at all despite the fact being named *every forbidden shape* | **The probe row is constructed so that exactly one thing about it is wrong, and that is proven rather than assumed.** Each of the five probes is now paired with a **control** row differing from it in one attribute, inserted inside a transaction and rolled back; if the probe were over-determined the control would be refused too, and the fact says so by name. The four constraint names are read out of `pg_constraint` and compared against the set the probes cover, so a fifth CHECK cannot silently shadow one of them, and the cap gets the probe the fact's name had been promising. §18 states the general rule: an assertion may not depend on which of several simultaneous failures a tool reports first | S§16.4, S§18 · F-41 |
+| **F-124** | **A sensitivity proof was recorded for assertions that had never been executed, in the same slice whose own verification paragraph said no container ran.** Slice 68's narrative describes `TheSchemaRefusesEveryForbiddenShapeOfAnEventRow` run against four mutations of `0009` and reports what each one named. Six paragraphs later the same slice states that no container engine was available and that the class *has never executed against a real PostgreSQL*. Both cannot be true, and the second is: a mutation proof presupposes a green baseline, and this baseline was red — F-123 was in the file the whole time and the first real run found it. The rule F-41 states, *every assertion is proven able to fail against a planted defect*, had been satisfied on paper | **The paragraph is corrected in place** rather than annotated (**F-114**), and §18 gains the distinction it was missing: a sensitivity proof is a record of an **execution**, and where the authoring environment cannot execute the assertion, the paragraph names the defect the assertion is *reasoned* to catch and says it was not run. The two are different claims and only one is evidence. **No gate holds this** — telling a described run from a performed one means reading prose for a tense, which **F-116** and **F-119** forbid | S§18 · F-41, F-114, F-116 |
+| **F-125** | **The suite's own output buried the assertion that failed.** Testcontainers logs every container created, every `pg_isready` probe and every container deleted at Information through its console logger. Across the integration classes that is several hundred lines per run, interleaved with the runner's own output, and the single line reporting the F-123 failure sat inside it. The fixtures already turn a container problem into a skip carrying several sentences of diagnosis — `DescribeFailure` names the image, the resolution rule and the socket to activate — so the log lines were not what anybody would read to fix a container either | Both fixtures assign `TestcontainersSettings.Logger = NullLogger.Instance` as the first statement of the `try` that already converts a container failure into a skip reason, so the assignment cannot itself turn a skip into a crashed assembly, and it runs after `ContainerEngineDiscovery` has set `DOCKER_HOST` — touching `TestcontainersSettings` snapshots the endpoint, so the order is load-bearing. `ContainerLoggingContractTests` holds both halves over a subject set **computed** from the files that construct a builder (**F-47**), with the scanner excluding its own source by `nameof` | S§16.4 · F-41, F-47 |
 ---
 
 ## Open residuals
@@ -3728,6 +3766,7 @@ These are stated rather than closed, because each is a limit of what text can de
 | A gate walking `src/` for `*.cs` also reaches `obj/**/*.g.cs` | F-120 | Generated code is not authored and carries generated comments. `SourceCommentContractTests` excludes `bin` and `obj` by path segment; the older walks are unaffected because their assertions are floors on files, or absences of patterns generated code does not contain. |
 | A predicate over a **collection** is not brought under the atomic-reading rule | F-121 | `Func<IReadOnlyList<T>, bool>` is excluded because a list read is a count followed by one read per row, and making it one evaluation is a larger change than this rule. The excluded readers poll a surface that has already stopped changing, which is why none of them has produced a flake. |
 | `HarnessSnapshotContractTests` delimits a method body by matching braces, which a stray brace inside a string literal would truncate | F-121 | A truncated body contains no browser read and therefore passes. The floor on total body bytes is what reports it; the failure direction is a loud floor rather than a silent pass. |
+| A described sensitivity proof cannot be told from a performed one | F-124 | Distinguishing them means reading prose for a tense, which F-116 and F-119 forbid. What replaces the gate is the §18 habit and the arithmetic: a slice states its predicted test count, and the first run that disagrees is where the paper proof is found out. |
 | A stale promise about work that has landed is held by nothing | F-122 | Catching one mechanically means reading prose for a tense, which F-116 and F-119 forbid — and a lint on future-tense sentences would fire on every legitimate one in §19's build order. What replaces the gate is the §18 habit: the promise is deleted by the slice that discharges it, in the same slice, under the atomic-documentation rule. |
 | LAN ordering depends on WAN health | F-06 | One origin, hairpinned through Cloudflare. Accepted risk, recorded in S§17. |
 | Counter carries no grant-time credential mandate | F-05 | Accepted as literally written. Recorded in S§3.7 and S§17. |
@@ -3738,8 +3777,8 @@ These are stated rather than closed, because each is a limit of what text can de
 
 --- METADATA ---
   Relative path:         docs/MENU_AND_HANDHELD_PLAN.md
-  Size:                  7.2 KiB (7384 bytes)
-  SHA-256:               a5a597efb012098be7dded177ff75b708a6f4a022f44b4109096e6d766f5a3ad
+  Size:                  7.6 KiB (7784 bytes)
+  SHA-256:               72ed4346dc2727594d5ade1d004c67437232366af4f97557ab1d6f4764e70d4d
 
 --- CONTENT ---
 # Menu modernization and the handheld contract — staged plan
@@ -3826,6 +3865,8 @@ These are the parts of the plan worth keeping after the stage landed. Each is em
 | What does moderation mean for an append-only log? | the question does not arise | Nothing a guest writes is rendered to another guest, so there is nobody to moderate on behalf of. Should Stage 6d or a later stage ever show one guest another's words, this row is what has to be reopened first — and it is the reason that surface is not in 6c. |
 
 **What is left.** Stage 6d is the guest's own control, in §11.1's detail panel beside the like, on the same reasoning that put the like there. Stage 6e is the staff read. Neither is startable from `docs/TECHNICAL_SPECIFICATION.md` alone until the surface rulings are written, and both are ordinary stage work rather than blocked work.
+
+**Stage 6c was executed for the first time in Slice 69**, and the schema it declares is correct: the five things `menu_item_comment_event` refuses, it refuses by the name the writer recognises. What was wrong was one probe in the test, which offered a row breaking two CHECKs at once and asserted the name of the one PostgreSQL happens not to report (**F-123**). No ruling in the table above moved.
 
 ################################################################################
 # FILE: docs/OPERATIONS.md
@@ -4546,13 +4587,13 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
 
 --- METADATA ---
   Relative path:         docs/TECHNICAL_SPECIFICATION.md
-  Size:                  175.7 KiB (179886 bytes)
-  SHA-256:               84741674f8549937ca613b365d3faf3a9099568a7b2458256fd504b453e61c5f
+  Size:                  178.9 KiB (183159 bytes)
+  SHA-256:               2e160b7f422a0837b372af1671437bf18e638444ed98a0d0bf23a9adb70bdfbd
 
 --- CONTENT ---
 # myrestaurant — Technical Specification
 
-**Version 1.53 — 2026-08-26 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
+**Version 1.54 — 2026-08-27 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
 
 This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md`. It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. Appendix A maps every ruling to its embodiment.
 
@@ -5788,7 +5829,7 @@ CI builds with `-p:ContinuousIntegrationBuild=true`, which flips `TreatWarningsA
 
 `tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemReactionTests.cs` — 9 assertions: a like is an event rather than a row per person, `liked`/`unliked` is idempotent per person per item, and liking requires no prior order.
 
-`tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemCommentTests.cs` — 13 assertions: a comment is an event rather than a row per person, resubmission and withdrawal are both appends, the stored body is trimmed, and each of the four named constraints refuses its own forbidden shape by its own name — including the cap, which is read out of the constraint rather than written down (**F-107**).
+`tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemCommentTests.cs` — 13 assertions: a comment is an event rather than a row per person, resubmission and withdrawal are both appends, the stored body is trimmed, and each of the four named constraints refuses its own forbidden shape by its own name — including the cap, which is read out of the constraint rather than written down (**F-107**). The four are read out of `pg_constraint` rather than listed, and every probe row is paired with a **control** that differs from it in one attribute and must insert, which is what proves the probe broke one CHECK rather than two (**F-123**).
 
 `tests/MyRestaurant.DataAccess.Tests/Menu/MenuAvailabilityTests.cs` — 7 assertions: a deactivated item stays in history and in every settled order that already names it — deactivation is not deletion (**F-10b**).
 
@@ -5797,6 +5838,8 @@ CI builds with `-p:ContinuousIntegrationBuild=true`, which flips `TreatWarningsA
 `tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs` — 7 assertions: migration is idempotent, `citext` is installed, every relation and column §8.2 declares exists afterwards, and every constraint the newest migration names is present.
 
 `tests/MyRestaurant.Domain.Tests/UuidV7IdentifierFactoryTests.cs` — 7 assertions: identifiers are monotonic within a millisecond, which `Guid.CreateVersion7()` alone does not give, and order is compared big-endian because `Guid.CompareTo` disagrees with PostgreSQL (**F-45**).
+
+`tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerLoggingContractTests.cs` — 2 assertions: every fixture that builds a container silences the Testcontainers logger, and silences it before it builds, over a subject set computed from the sources that construct a builder (**F-125**).
 
 `tests/MyRestaurant.WebApplication.Tests/Deployment/ComposeDependencyContractTests.cs` — 3 assertions: every service the canonical stack needs is declared with the dependency ordering that lets it start.
 
@@ -5847,6 +5890,10 @@ Accepted, by ruling or by design: token replay within ≤120 s (bounded by membe
 **History is archived rather than deleted.** The long form of every document that has one is under `docs/progress/`, withheld from the context dump by `export.sh` and still tracked, still hygiene-checked, and still linked by path from a document the dump contains — asserted by `ContextDumpExclusionContractTests`, because a session working from the dump cannot see these files and has no way to learn they exist.
 
 **Every gate is proven able to fail** before it ships, against a planted defect (F-41). A gate whose subject ceases to exist is **deleted rather than weakened**: a floor over a set that can no longer be non-empty is the vacuous gate this rule exists to forbid.
+
+**A sensitivity proof is a record of an execution, and a slice that could not execute says so instead of describing runs.** A planted-defect proof presupposes a green baseline, so a slice narrating four mutations of a file it never ran is narrating four runs of a red suite. Where the authoring environment cannot execute the assertion, the paragraph states which defect the assertion is *reasoned* to catch and says it was not run — the two are different claims and only one of them is evidence (**F-124**).
+
+**An assertion may not depend on which of several simultaneous failures a tool reports first.** A row breaking two CHECKs is named by whichever constraint sorts first, because PostgreSQL evaluates them in name order; the assertion then decides a fact about a sort rather than about the schema. Construct the subject so exactly one thing about it is wrong, and prove that by a **control** differing in one attribute that must succeed (**F-123**).
 
 **No file in this tree asserts a platform setting it cannot check** (F-42, F-46). A sentence about a checkbox on a settings page was false for as long as it was written down, and nothing in the tree could have known, because a grep cannot see a checkbox. State the policy instead: "issues are not triaged" says what the project will do, is true wherever it is read, and survives somebody toggling the tab. `scripts/check_repository.sh` holds the rule, and the files whose job is to record what this tree used to say are exempt by name.
 
@@ -5997,6 +6044,9 @@ One row per ruling: what was decided, and where in this document or which ADR ca
 | Menu Stage 1d (enhancement, not a finding) | §16.3 scenario 21's guest is seated in a handheld context and the scenario closes with the barrier | R§1 · S§11.12, §16.3, §16.4 |
 | Menu comments, Stage 6c (enhancement, not a finding) | Six rulings in §7, and the two that make the rest small are *filed against the item, never an order line* and *staff-facing, a guest sees only their own* — the second of which is what removes the moderation question rather than answering it | §7, §8.2, §8.3, §16.4 |
 | F-122 | The pre-fix paragraph is **deleted rather than left beneath the account of the landing** (F-114), §19's *not startable* clause is rewritten to what is true, and §18 gains the deferral habit §17 had been pointing at | §17, §18, §19 |
+| F-123 | Every probe row breaks exactly one CHECK, and a **control** row differing in one attribute proves it; the four constraint names are read out of `pg_constraint` rather than listed, so a fifth cannot silently shadow a probe. §18 gains the general rule | §16.4, §18 |
+| F-124 | Slice 68's sensitivity paragraph is **corrected in place** on F-114's ruling, and §18 gains the distinction it was missing: a proof is an execution, and a slice that could not execute says *reasoned, not run* | §18 · BUILD_PROGRESS M6 Slice 68 |
+| F-125 | Both fixtures assign `TestcontainersSettings.Logger` before they build, inside the `try` that already turns a container failure into a skip; `ContainerLoggingContractTests` holds it over a computed subject set | §16.4 |
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
 | Claude judgment calls (owner-vetoable, recorded) | Reminder = once at threshold iff no line of the send fulfilled/removed; counter/admin line-changing staff edits also alert loudly; reset forces TOTP… | §10.1–10.2, §3.5, §3.7, §4.5 |
@@ -6005,6 +6055,7 @@ One row per ruling: what was decided, and where in this document or which ADR ca
 
 **The full changelog through v1.50 is archived** in [`docs/progress/TECHNICAL_SPECIFICATION_THROUGH_V1_50.md`](progress/TECHNICAL_SPECIFICATION_THROUGH_V1_50.md), and every entry it holds is also a commit. The most recent are kept here because `SpecificationVersionTests` reads the newest one as this document's current version and asserts the header agrees with it. How many is not written down: nothing can check it, and it had already drifted by one (**F-77**).
 
+- **v1.54 — 2026-08-27.** An assertion that decided a fact about a sort order, and the proof that was recorded rather than run. `TheSchemaRefusesEveryForbiddenShapeOfAnEventRow` probed the vocabulary CHECK with a row that broke the payload CHECK as well; PostgreSQL evaluates CHECKs in name order, so it named the one that sorts first and the fact failed on a correct schema (**F-123**). Every probe now breaks one CHECK and carries a control row that proves it, the constraint inventory is read out of `pg_constraint`, and the cap gets the fifth probe the fact's name had been promising. **§18** gains two rules: an assertion may not depend on which of several simultaneous failures is reported first, and a sensitivity proof is a record of an execution — which Slice 68's was not (**F-124**). **§16.4** gains `ContainerLoggingContractTests`; both container fixtures silence the Testcontainers logger, whose several hundred Information lines per run were what buried the failing assertion (**F-125**).
 - **v1.53 — 2026-08-26.** The last stage the menu plan carried, started, and the two documents that still said it could not be. **§7** gains the six comment rulings, **§8.2** gains `menu_item_comment_event` with four named constraints over one nullable column, and **§8.3** gains the fold that has no `WHERE` clause on purpose. **§17 loses the paragraph that promised the rate limiter it already had** and **§19 loses the clause that called Stage 6 unstartable** — both eleven slices stale, both deleted rather than annotated (**F-122**); **§18** gains the habit §17 had been claiming was stated there. **§16.4** gains `MenuItemCommentTests`.
 - **v1.52 — 2026-08-26.** A reading composed out of two instants, and the flake it had been producing since the harness was written. **§16.4** gains `HarnessSnapshotContractTests`: a composite that a `Func<T, bool>` is evaluated against is read in one `EvaluateAsync`, over a subject set computed from the harness rather than listed. `KitchenJourneys.ReadBoardAsync` and `TableOrderJourneys.ReadBasketAsync` are rewritten to one evaluation each (**F-121**). No production code changed.
 - **v1.51 — 2026-08-26.** House-cleaning slice. Every comment removed from authored `.cs`, `.razor`, `.sql`, `.css`, `.js` and `.sh` — 2,087,175 bytes, 42% of all code — and §18 now states the rule that keeps it that way, held by `SourceCommentContractTests`. `DocumentationCommentContractTests` deleted: its subject no longer exists (**F-120**). `ConfigurationSurfaceTests` no longer terminates its scan on a documentation comment (**F-119**). The long form of this document, of the findings register, of the build log and of the menu plan archived to `docs/progress/`; §7, §11, §14, §16, §18, Appendix A and this changelog rewritten as registers. No behaviour changed.
@@ -52966,8 +53017,8 @@ public sealed class MenuEventLogTests : IClassFixture<PostgreSqlFixture>, IAsync
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemCommentTests.cs
-  Size:                  16.6 KiB (16956 bytes)
-  SHA-256:               2143cf9050c0fba75c14442a6cacaf236bfa34b663dafa15adcf095b55cad8bd
+  Size:                  19.7 KiB (20142 bytes)
+  SHA-256:               93c4efff6af407da3b47cf99d1ac6f7dde466ef830fea11b1368f593778c146c
 
 --- CONTENT ---
 using Dapper;
@@ -52993,6 +53044,14 @@ public sealed class MenuItemCommentTests : IClassFixture<PostgreSqlFixture>, IAs
         VALUES (
             @MenuItemCommentEventIdentifier, @MenuItemIdentifier,
             @PersonIdentifier, @EventType, @Body::text, @OccurredAt);
+        """;
+
+    private const string CheckConstraintNamesSql = """
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'menu_item_comment_event'::regclass
+          AND contype = 'c'
+        ORDER BY conname;
         """;
 
     private readonly PostgreSqlFixture _fixture;
@@ -53272,21 +53331,56 @@ public sealed class MenuItemCommentTests : IClassFixture<PostgreSqlFixture>, IAs
 
         Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
 
-        Assert.Equal(
-            "menu_item_comment_event_type_vocabulary",
-            await RefusedConstraintAsync(salmon, "loved", "Anything", cancellationToken));
+        int? cap = await Directory().ReadDeclaredBodyCapAsync(cancellationToken);
 
-        Assert.Equal(
-            "menu_item_comment_event_body_payload",
-            await RefusedConstraintAsync(salmon, "submitted", null, cancellationToken));
+        Assert.NotNull(cap);
 
-        Assert.Equal(
-            "menu_item_comment_event_body_payload",
-            await RefusedConstraintAsync(salmon, "withdrawn", "Anything", cancellationToken));
-
-        Assert.Equal(
+        string[] declared =
+        [
             "menu_item_comment_event_body_not_blank",
-            await RefusedConstraintAsync(salmon, "submitted", "   ", cancellationToken));
+            "menu_item_comment_event_body_payload",
+            "menu_item_comment_event_body_within_cap",
+            "menu_item_comment_event_type_vocabulary",
+        ];
+
+        Assert.Equal<string>(
+            declared,
+            await World().QueryAsync<string>(CheckConstraintNamesSql, null, cancellationToken));
+
+        await RefusesOnlyAsync(
+            salmon,
+            "menu_item_comment_event_type_vocabulary",
+            ("loved", null),
+            ("withdrawn", null),
+            cancellationToken);
+
+        await RefusesOnlyAsync(
+            salmon,
+            "menu_item_comment_event_body_payload",
+            ("submitted", null),
+            ("submitted", "Anything"),
+            cancellationToken);
+
+        await RefusesOnlyAsync(
+            salmon,
+            "menu_item_comment_event_body_payload",
+            ("withdrawn", "Anything"),
+            ("withdrawn", null),
+            cancellationToken);
+
+        await RefusesOnlyAsync(
+            salmon,
+            "menu_item_comment_event_body_not_blank",
+            ("submitted", "   "),
+            ("submitted", " Anything "),
+            cancellationToken);
+
+        await RefusesOnlyAsync(
+            salmon,
+            "menu_item_comment_event_body_within_cap",
+            ("submitted", new string('a', cap.Value + 1)),
+            ("submitted", new string('a', cap.Value)),
+            cancellationToken);
 
         Assert.Equal(0, await World().CountAsync(CountCommentEventsSql, cancellationToken));
     }
@@ -53360,6 +53454,29 @@ public sealed class MenuItemCommentTests : IClassFixture<PostgreSqlFixture>, IAs
         Assert.Equal("Second", standing.Body);
     }
 
+    private async Task RefusesOnlyAsync(
+        Guid menuItemIdentifier,
+        string constraintName,
+        (string EventType, string? Body) refused,
+        (string EventType, string? Body) accepted,
+        CancellationToken cancellationToken)
+    {
+        Assert.Equal(
+            constraintName,
+            await RefusedConstraintAsync(
+                menuItemIdentifier, refused.EventType, refused.Body, cancellationToken));
+
+        Exception? control = await RolledBackInsertAsync(
+            menuItemIdentifier, accepted.EventType, accepted.Body, cancellationToken);
+
+        Assert.True(
+            control is null,
+            $"The control row for {constraintName} differs from the refused row in one attribute and"
+                + " has to be accepted; it was refused instead. That means the refused row broke more"
+                + " than one CHECK, and PostgreSQL evaluates them in name order, so the name asserted"
+                + $" above is whichever sorts first rather than the one under test (F-123). {control}");
+    }
+
     private async Task<string?> RefusedConstraintAsync(
         Guid menuItemIdentifier,
         string eventType,
@@ -53372,21 +53489,48 @@ public sealed class MenuItemCommentTests : IClassFixture<PostgreSqlFixture>, IAs
         PostgresException refusal = await Assert.ThrowsAsync<PostgresException>(
             async () => await connection.ExecuteAsync(new CommandDefinition(
                 InsertCommentEventSql,
-                new
-                {
-                    MenuItemCommentEventIdentifier = _identifiers.Create(),
-                    MenuItemIdentifier = menuItemIdentifier,
-                    PersonIdentifier = _adaIdentifier,
-                    EventType = eventType,
-                    Body = body,
-                    OccurredAt = _clock.UtcNow,
-                },
+                EventRow(menuItemIdentifier, eventType, body),
                 cancellationToken: cancellationToken)));
 
         Assert.Equal(PostgresErrorCodes.CheckViolation, refusal.SqlState);
 
         return refusal.ConstraintName;
     }
+
+    private async Task<Exception?> RolledBackInsertAsync(
+        Guid menuItemIdentifier,
+        string eventType,
+        string? body,
+        CancellationToken cancellationToken)
+    {
+        await using NpgsqlConnection connection = new(_fixture.ConnectionString!);
+        await connection.OpenAsync(cancellationToken);
+
+        await using NpgsqlTransaction transaction =
+            await connection.BeginTransactionAsync(cancellationToken);
+
+        Exception? refusal = await Record.ExceptionAsync(
+            async () => await connection.ExecuteAsync(new CommandDefinition(
+                InsertCommentEventSql,
+                EventRow(menuItemIdentifier, eventType, body),
+                transaction,
+                cancellationToken: cancellationToken)));
+
+        await transaction.RollbackAsync(cancellationToken);
+
+        return refusal;
+    }
+
+    private object EventRow(Guid menuItemIdentifier, string eventType, string? body)
+        => new
+        {
+            MenuItemCommentEventIdentifier = _identifiers.Create(),
+            MenuItemIdentifier = menuItemIdentifier,
+            PersonIdentifier = _adaIdentifier,
+            EventType = eventType,
+            Body = body,
+            OccurredAt = _clock.UtcNow,
+        };
 
     private void SkipIfNoContainer()
         => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
@@ -59469,10 +59613,12 @@ public sealed class OrderVisibilityTests : IClassFixture<PostgreSqlFixture>, IAs
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs
-  Size:                  3.3 KiB (3384 bytes)
-  SHA-256:               870ef4f45d66c1a87fa9120212461e49803f9fb632fb299c8159de34fb9f7505
+  Size:                  3.5 KiB (3543 bytes)
+  SHA-256:               010c3844f2f6a4a73e75121304afa5a3af4463911918c20f4171f54ae4f05080
 
 --- CONTENT ---
+using DotNet.Testcontainers.Configurations;
+using Microsoft.Extensions.Logging.Abstractions;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -59499,6 +59645,8 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
     {
         try
         {
+            TestcontainersSettings.Logger = NullLogger.Instance;
+
             _container = new PostgreSqlBuilder(PostgreSqlImage)
                 .WithDatabase("myrestaurant")
                 .WithUsername("myrestaurant")
@@ -70989,10 +71137,12 @@ internal static class PictureFixtures
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs
-  Size:                  6.9 KiB (7019 bytes)
-  SHA-256:               a1941a3f8d887cad05e54626a972fd5b20ae4043baa56d57a96851d50a437e02
+  Size:                  7.0 KiB (7178 bytes)
+  SHA-256:               e1465bef19097310da8671339965f5642e7e6442cb0ea3f5e5053031507b21fe
 
 --- CONTENT ---
+using DotNet.Testcontainers.Configurations;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Playwright;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -71069,6 +71219,8 @@ public sealed class RestaurantHarness : IAsyncLifetime
 
         try
         {
+            TestcontainersSettings.Logger = NullLogger.Instance;
+
             _container = new PostgreSqlBuilder(PostgreSqlImage)
                 .WithDatabase("postgres")
                 .WithUsername("myrestaurant")
@@ -77383,6 +77535,156 @@ public sealed class ContainerImageReferenceContractTests
             ? "\n\nThe scan found nothing at all."
             : "\n\nWhat it did find:\n"
               + string.Join("\n", references.Select(reference => "  " + reference.Describe()));
+
+    private static DirectoryInfo FindRepositoryRoot()
+    {
+        for (DirectoryInfo? candidate = new(AppContext.BaseDirectory);
+             candidate is not null;
+             candidate = candidate.Parent)
+        {
+            if (File.Exists(Path.Combine(candidate.FullName, SolutionFileName)))
+            {
+                return candidate;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Walked up from '{AppContext.BaseDirectory}' without finding {SolutionFileName}.");
+    }
+}
+
+################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerLoggingContractTests.cs
+################################################################################
+
+--- METADATA ---
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerLoggingContractTests.cs
+  Size:                  5.1 KiB (5251 bytes)
+  SHA-256:               117765f9006daa8b33e5e87746e8ea7b89fcfc2d7087923aed30f2e000046a2b
+
+--- CONTENT ---
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests.Deployment;
+
+public sealed class ContainerLoggingContractTests
+{
+    private const string SolutionFileName = "MyRestaurant.slnx";
+    private const string TestsRelativePath = "tests";
+
+    private const string BuilderConstruction = "new PostgreSqlBuilder(";
+    private const string LoggerInstallation = "TestcontainersSettings.Logger =";
+
+    private const int MinimumFixtures = 2;
+
+    [Fact]
+    public void EveryFixtureThatBuildsAContainerSilencesTheContainerLogger()
+    {
+        IReadOnlyList<string> fixtures = FixtureSources();
+
+        Assert.True(
+            fixtures.Count >= MinimumFixtures,
+            $"Only {fixtures.Count} source file(s) under {TestsRelativePath}/ construct a"
+                + $" Testcontainers builder, and this tree has {MinimumFixtures}: the DataAccess"
+                + " fixture and the end-to-end harness. The walk is not reading the files it is"
+                + " about, so every fact below would pass on nothing (F-41).");
+
+        List<string> loud = fixtures
+            .Where(path => !File.ReadAllText(path).Contains(LoggerInstallation, StringComparison.Ordinal))
+            .Select(Relative)
+            .ToList();
+
+        Assert.True(
+            loud.Count == 0,
+            $"These fixture(s) build a container without assigning '{LoggerInstallation}':"
+                + $" {Format(loud)}. Testcontainers logs every create, every readiness probe and"
+                + " every delete at Information through its own console logger, which on this suite"
+                + " is several hundred lines per run and buries the one assertion that failed. What"
+                + " diagnoses a container that will not start here is the fixture's own"
+                + " DescribeFailure prose, not those lines (F-124).");
+    }
+
+    [Fact]
+    public void TheLoggerIsSilencedBeforeTheFirstContainerIsBuilt()
+    {
+        List<string> late = [];
+
+        foreach (string path in FixtureSources())
+        {
+            string source = File.ReadAllText(path);
+
+            int installed = source.IndexOf(LoggerInstallation, StringComparison.Ordinal);
+            int built = source.IndexOf(BuilderConstruction, StringComparison.Ordinal);
+
+            if (installed < 0 || built < 0 || installed < built)
+            {
+                continue;
+            }
+
+            late.Add(Relative(path));
+        }
+
+        Assert.True(
+            late.Count == 0,
+            $"These fixture(s) assign '{LoggerInstallation}' after they construct a builder:"
+                + $" {Format(late)}. The setting is read when a container is created, so a container"
+                + " built above the assignment logs anyway and the first run of a session is the"
+                + " noisy one — which is the run somebody is reading.");
+    }
+
+    private static IReadOnlyList<string> FixtureSources()
+    {
+        string ownFileName = nameof(ContainerLoggingContractTests) + ".cs";
+
+        return Directory
+            .EnumerateFiles(PathTo(TestsRelativePath), "*.cs", SearchOption.AllDirectories)
+            .Where(path => !IsUnderGeneratedDirectory(path))
+            .Where(path => !string.Equals(Path.GetFileName(path), ownFileName, StringComparison.Ordinal))
+            .Where(path => File.ReadAllText(path).Contains(BuilderConstruction, StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static bool IsUnderGeneratedDirectory(string path)
+    {
+        foreach (string segment in path.Split(Path.DirectorySeparatorChar))
+        {
+            if (string.Equals(segment, "bin", StringComparison.Ordinal)
+                || string.Equals(segment, "obj", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string Relative(string path)
+        => Path
+            .GetRelativePath(FindRepositoryRoot().FullName, path)
+            .Replace(Path.DirectorySeparatorChar, '/');
+
+    private static string Format(IEnumerable<string> values)
+    {
+        string joined = string.Join("; ", values);
+        return joined.Length == 0 ? "(none)" : joined;
+    }
+
+    private static string PathTo(string relativePath)
+    {
+        string path = Path.Combine(
+            FindRepositoryRoot().FullName,
+            relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+        if (!File.Exists(path) && !Directory.Exists(path))
+        {
+            throw new InvalidOperationException(
+                $"'{path}' does not exist. The repository root was found but its layout is not the one"
+                    + " §2 describes.");
+        }
+
+        return path;
+    }
 
     private static DirectoryInfo FindRepositoryRoot()
     {
@@ -89419,10 +89721,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 387
-  Total size     : 3.3 MiB (3505822 bytes)
+  Files dumped   : 388
+  Total size     : 3.4 MiB (3530054 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-27T00:42:52-04:00
+  Completed at   : 2026-08-27T01:37:21-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
