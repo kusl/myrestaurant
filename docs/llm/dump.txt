@@ -7,19 +7,19 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-27T08:35:34-04:00
+  Generated at   : 2026-08-27T09:34:24-04:00
   Generator      : export.sh
 
 REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : bbd22e92604e14106222c01722917953dd65ca60
-  Commit (short) : bbd22e9
-  Commit date    : 2026-08-27 08:35:25 -0400
+  Commit (full)  : 553aebe3965032bd51f5344ddd87d5e6ab5eb201
+  Commit (short) : 553aebe
+  Commit date    : 2026-08-27 09:34:08 -0400
   Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 388
+  Files included : 389
   Withheld paths : docs/llm/, docs/progress/
   Excluded files : export.sh
   Elided files   : LICENSE (metadata and SHA-256 only)
@@ -431,7 +431,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (388 included files)
+# FILE TREE  (389 included files)
 ################################################################################
 .
 ├── .dockerignore
@@ -866,6 +866,7 @@ cat "$OUTPUT_FILE"
         │   └── WebAuthnOriginPolicyTests.cs
         ├── Menu
         │   ├── MenuGroupingTests.cs
+        │   ├── MenuItemCommentSurfaceContractTests.cs
         │   ├── MenuItemImageContentTypeContractTests.cs
         │   ├── MenuItemImageSurfaceContractTests.cs
         │   ├── MenuItemReactionSurfaceContractTests.cs
@@ -3196,83 +3197,66 @@ This document describes how a report gets handled, not what anyone is entitled t
 
 --- METADATA ---
   Relative path:         _CHANGES.md
-  Size:                  6.7 KiB (6876 bytes)
-  SHA-256:               3fc918eb118a16c2dd794fa3f447b1e5106b4784bc59d378f7c5005433346626
+  Size:                  8.0 KiB (8184 bytes)
+  SHA-256:               51c5fd86f109c8fb0ebc789a6560b1473a989d46d9079b0e8a6cf851485ec7be
 
 --- CONTENT ---
-# Slice 70 — the gate that named an API the pinned package does not have
+# Slice 71 — Stage 6d: the sentence a guest can finally leave
 
-Extract at the repository root. Spec goes to **v1.55**. Findings floor **F-126**.
+Extract at the repository root. Spec goes to **v1.56**. Findings floor **F-127**.
 
 ## Files in this archive
 
 | Path | State |
 |---|---|
-| `tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerLoggingContractTests.cs` | changed — one fact instead of two |
-| `tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs` | changed — unused import dropped |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs` | changed — unused import dropped |
-| `Directory.Packages.props` | changed |
-| `docs/TECHNICAL_SPECIFICATION.md` | changed |
-| `docs/DOCUMENTATION_REVIEW.md` | changed |
-| `docs/BUILD_PROGRESS.md` | changed |
+| `src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor` | changed — the comment box, two verbs, one status line |
+| `src/MyRestaurant.WebApplication/wwwroot/app.css` | changed — the box joins four existing selector lists; four new rules; the like's text size |
+| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemCommentSurfaceContractTests.cs` | **NEW — needs `git add`** |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/HandheldReach.cs` | changed — six barrier selectors |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs` | changed — one reader, two verbs, two private helpers |
+| `tests/MyRestaurant.EndToEnd.Tests/MenuReactionScenarios.cs` | changed — six comment claims in scenario 21; the test method renamed |
+| `docs/TECHNICAL_SPECIFICATION.md` | changed — §7, §11.1, §11.12, §16.3 scenario 21, §16.4, Appendix A, changelog |
+| `docs/DOCUMENTATION_REVIEW.md` | changed — F-127, one standing rule, one residual |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | changed — Stage 6d lands, five rulings recorded |
+| `docs/BUILD_PROGRESS.md` | changed — the Slice 71 row and narrative |
 | `_CHANGES.md` | changed (this file) |
 
-**Nothing is deleted in this slice.** No file is added and no file is removed, so nothing needs `git add` and nothing needs `git rm`. `docs/MENU_AND_HANDHELD_PLAN.md` is deliberately untouched: no stage moved and no menu ruling moved.
-
-Your two fixture edits are kept exactly as you made them — `.WithLogger(NullLogger.Instance)` on the builder chain — with one further change each: `using DotNet.Testcontainers.Configurations;` is dropped, because `TestcontainersSettings` was the only thing either file took from that namespace.
+**Nothing is deleted in this slice.** One file is added, so `git add tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemCommentSurfaceContractTests.cs` — no new directory, and nothing needs `git rm`. `check_tree.sh` reads `git ls-files`, so an unstaged new file is invisible to tree hygiene.
 
 ## Expected test count
 
-**1321.** 1322 observed on your machine, one of them failing. `TheLoggerIsSilencedBeforeTheFirstContainerIsBuilt` is deleted and nothing is added, so one `[Fact]` leaves and none arrives. §16.4's paragraph for the class moves from 2 assertions to 1 in the same slice, which is the gate your removal tripped.
+**1327.** 1321 observed + six `[Fact]` in the new contract class. Nothing was deleted and no existing count moved: scenario 21 is one `[Fact]` before and after, and the harness additions carry no attributes. §16.4's counted-class census goes 47 → 48 over a floor of 37, emulated at 48 with no paragraph disagreeing with its file.
 
 Any other number is worth investigating before reading assertion text.
 
-## What the failure was
+## What landed
 
-`Testcontainers` moved logger configuration off the static `TestcontainersSettings.Logger` and onto the builder before 4.14.0, the version `Directory.Packages.props` pins. Your diagnosis and your fix were both right. What was left was the gate, which asserted the assignment your fix had to delete — and its second fact asserted the *position* of that assignment, which has no meaning once the logger is a per-builder value rather than a global setting.
+Stage 6d, the last buildable row of the menu plan bar the staff read. One `<textarea>` and two buttons in the panel that already holds the like, over Slice 68's data access. No schema change, no endpoint, no rate-limit policy: the write rides the circuit as the like's does.
 
-So the ordering fact is **deleted, not reworded**: a rule whose subject has ceased to exist is deleted rather than weakened into something that cannot fail (F-41). That was your instinct too; what stopped it being the fix was the §16.4 arithmetic, which this slice moves in the same commit.
+Five rulings, in §7. The box is **in the detail panel and never on the card** — a `<button>` may not contain interactive content, so a box there is markup the parser takes apart rather than markup that reads badly. **A blank body is a refusal and never a withdrawal**, because clearing the box and pressing Save is what somebody will do and reading it as a withdrawal puts a second authority on withdrawal inside a component whose write service already refuses a blank body by name. **The client's cap is an optimisation and every refusal is the server's** — `maxlength` is whatever `ReadDeclaredBodyCapAsync` read out of the constraint, and where the read cannot answer no attribute is rendered at all. **The draft belongs to the chosen dish**, keyed to it and reset when it changes, and `LoadMenuAsync` deliberately leaves it alone so a broadcast cannot take somebody's half-typed sentence away. **The outcome is declared beside the sentence**, so the barrier reads a verdict rather than the copywriting.
 
-## What the surviving fact now says
+## F-127, and why it rides along
 
-One `[Fact]`. Every `new PostgreSqlBuilder(` under `tests/` is walked forward to its `.Build()`, and a `.WithLogger(` must appear on that chain. Three consequences:
+F-93 makes a new control kind bring its barrier selectors in the same slice. Writing them raised the only question that mattered — what type size do these get — and the answer, `1rem`, would have put two sizes in one panel, because `.order-menu-like` has declared `0.95rem` (15.2px) since Slice 58. §11.12's 16px floor carries no tolerance, and what enforces it is `FontFloorSelectors`, both of whose entries were `input[type=…]`. A **button** had never been measured for text at all. The remedy is a selector set rather than a rule, exactly as F-118's was: the like goes to `1rem`, and the box, the panel's button row and the comment row become named subjects.
 
-- A fixture with two builders and one silencer now **fails**. The old file-level `Contains` passed it.
-- A builder with no `.Build()` after it is **reported** rather than treated as satisfied — the scan says it cannot decide instead of deciding permissively.
-- It keys on the call, not on the value, so Slice 69's veto point 1 survives: swap `NullLogger.Instance` for a warning-threshold `ILogger` and this stays green.
-
-## What was verified, and how
-
-| Claim | How |
-|---|---|
-| `TestcontainersSettings` has no `Logger` at 4.14.0 | Read `src/Testcontainers/Configurations/TestcontainersSettings.cs` at tag `4.14.0`. Also absent at 4.13.0 and 4.12.0. |
-| `WithLogger` is callable on `PostgreSqlBuilder` | `public TBuilderEntity WithLogger(ILogger logger)` on `AbstractBuilder`, implicit implementation of `IAbstractBuilder`, so no using directive beyond what the fixtures already carry. |
-| An explicit `WithLogger` actually displaces something | `AbstractBuilder.Init()` seeds every builder with `ConsoleLogger.Instance`. That is the noise. |
-| The rewritten gate passes the delivered tree | Emulated in Python over the same walk and the same markers. |
-| It is sensitive | Five planted defects, all reported: silencer deleted from the fixture; deleted from the harness instead; a second unsilenced builder added beside the silenced one; `.Build()` renamed away; and the pre-slice tree with the static assignment in both files, which reproduces your failure. |
-| The second-builder defect is one the old shape missed | Checked directly: a file-level `Contains` passes that tree. |
-
-**Not verified:** nothing was compiled — no .NET SDK here, so 1321 is arithmetic off your observed 1322 and the rewritten gate has not run as C#. The API facts were read from the library's source at tag 4.14.0, not by compiling against the restored package.
-
-## Gates emulated against the edited tree
-
-| Gate | Result |
-|---|---|
-| §16.4 counted-class census | 47 counted, floor 37, no disagreement, no ambiguity, no unresolved citation |
-| `SpecificationVersionTests` | header 1.55 = newest entry 1.55, history descends |
-| `MarkdownTableContractTests` | no malformed run of table lines in any edited document |
-| `ContextDumpExclusionContractTests` | every archived document still linked by exact path |
-| `SourceCommentContractTests` | no comment in any of the three C# files |
-| Byte hygiene | LF only, one final newline, no trailing whitespace, all eight files |
-| `Directory.Packages.props` | parses as XML; no doubled hyphen inside a comment |
+The two changes are not separable — F-127 exists because Stage 6d brought the selectors, and shipping the selectors without moving the like's declaration leaves the barrier red — and they fail in ways nothing could confuse: six source-scan assertions naming a Razor file, against one `UndersizedText` verdict naming a selector and a pixel size.
 
 ## Veto points
 
-**1. The ordering fact is gone rather than reformulated.** A per-chain formulation of it does exist — `.WithLogger(` must precede `.Build()` — but that is now *inside* the surviving fact rather than beside it, because the two cannot fail independently: a chain with the call after `Build` is the same string as a chain without the call before it. To have two facts again you would need a defect shape that satisfies one and not the other, and there isn't one. To reverse, split the walk into presence and position and take §16.4 back to 2 assertions and the count to 1322.
+1. **`data-comment-outcome` on the status line.** A machine-readable verdict beside the human sentence, so the scenario asserts `"NoChange"` rather than a sentence somebody may reword. Precedent is `data-live`, `data-loaded` and `data-picture-byte-budget`. To reverse: delete the attribute, and have `TableOrderJourneys` read the notice's text instead — the scenario then asserts copywriting, which is what F-113 ruled against one register up.
+2. **The like's `0.95rem` → `1rem`.** The visible change is 0.8px on one control. To reverse: put `0.95rem` back and drop `#table-order-surface .order-menu-detail-actions button` from `FontFloorSelectors` — F-127 then reverts to a residual saying the floor has no button subjects, which is a weaker document and an unmeasured control.
+3. **Scenario 21 rather than a scenario 22.** Sixth application of *the arrangement already exists*: a panel open on a chosen dish with a like in it is exactly what a comment needs, and a 22nd scenario buys a second container, a second passkey registration and a second join to arrange it. To reverse: lift the six claims into a new class and renumber; §16.3's *all twenty-one scenarios* in §16.4 moves with it.
+4. **`MenuReactionScenarios.cs` keeps its filename** while its one scenario now covers two subjects. The method is renamed, which is what a failing run prints; the file is not, because a rename is a delete plus an add for a name no gate reads.
 
-**2. `Directory.Packages.props` loses its resolution date.** The file opened by claiming every pin was the latest stable release as resolved on 2026-08-02, and three annotations further down already contradicted it. Deleted on F-77 rather than re-dated, since the next bump falsifies any date written there. To keep a date instead, restore the sentence and add the bump date to the release procedure in `docs/OPERATIONS.md` §14 so something moves it.
+## Sensitivity — emulated against the edited tree and eight planted defects, not executed
 
-**3. The gate's marker is still a string the compiler does not hold.** Referencing `Testcontainers.PostgreSql` from `MyRestaurant.WebApplication.Tests` would let the marker be `nameof(PostgreSqlBuilder.WithLogger)`, and this exact failure could then not recur. Rejected: it fails in the same build as the fixtures already do, so it buys a redundant check rather than an earlier one, and it puts Docker.DotNet and SSH.NET into an assembly that starts no container. Recorded as an open residual instead, with the §18 habit in its place. To reverse, add the package reference and build the marker from `nameof`.
+The delivered tree passes all six facts. A copy of the box inside the card's `<button>`: reported. A second copy inside the panel: reported at two. `ListForPersonAsync` swapped for `ListAsync` on the injected directory: reported — and the same prohibition written as a bare `ListAsync(` marker was confirmed to fire on the menu read and the picture read that §11.1 requires, which is why the receiver is in the marker. `maxlength` written as the literal `1000`: reported twice. `ReadDeclaredBodyCapAsync` deleted: reported. The `BodyBlank` arm made to call `WithdrawAsync`, with the prose *press Withdraw* left in place: reported, so the fact keys on the call and not the word. `IMenuItemComments` added to `MenuWorkflow`: reported. The whole block deleted, which is the pre-slice tree: reported by four of the six.
+
+Also emulated green: §16.4's counted-assertion gate (48 paragraphs, none disagreeing), `SpecificationVersionTests` (1.56 header, 1.56 newest, descending), the seven text-decidable halves of `HandheldLayoutContractTests` this slice can move (no undeclared property, no colour literal outside `:root`, no fallback, one width breakpoint, no `min-height` literal under 44px, `overflow-wrap` once, no shared-prefix redeclaration), `HarnessSnapshotContractTests` (20 files, three subjects, six readers, none multi-read — the new readers return `string` and are not subjects), and byte hygiene on all ten changed files.
+
+## What was NOT verified
+
+Nothing was compiled: no .NET SDK here, so 1327 is arithmetic and the six new assertions have never executed as C#. No browser: scenario 21's six new claims are unverified, the six new barrier selectors have never matched anything, and *`1rem` computes to 16.0px against a floor with no tolerance* is read off `app.css` rather than measured. No container engine: nothing exercised `SubmitAsync` or `WithdrawAsync` against a real database in this slice. Two Blazor behaviours are read rather than observed — that a null `int?` renders no `maxlength`, and that `@key` on the box makes the value follow the chosen dish rather than the element, which is the whole reason the key is there.
 
 ################################################################################
 # FILE: compose.yaml
@@ -3452,8 +3436,8 @@ volumes:
 
 --- METADATA ---
   Relative path:         docs/BUILD_PROGRESS.md
-  Size:                  29.4 KiB (30079 bytes)
-  SHA-256:               2ecc053906d38c633f0814667d454d21b1f9ae34093d2120400b7a87ee0f8caa
+  Size:                  36.4 KiB (37236 bytes)
+  SHA-256:               5dfe8cb441ab157b2a824d3c7cc7149a0196ea1c41cd26b442811592495131e6
 
 --- CONTENT ---
 # Build progress
@@ -3609,6 +3593,27 @@ volumes:
 **What was NOT verified.** Nothing was compiled: no .NET SDK in the authoring environment, so 1321 is arithmetic off an observed 1322 rather than an observation of its own, and the rewritten gate has not executed as C#. The API facts above were read from the library's source at tag 4.14.0 over the network, not from the restored package on the person's machine, and not by compiling against it. No container engine and no browser ran here.
 
 **Still open.** Stage 6d (the guest's control in §11.1's detail panel) and Stage 6e (the staff read), both unchanged. The fourth Stage 6 question — staff replies — stays open.
+## Slice 71 — the sentence a guest can finally leave, and the control beside it nothing had measured
+
+| Slice | What landed | Findings closed |
+|---|---|---|
+| 71 | Stage 6d — §11.1's detail panel gains the guest's comment box, with five surface rulings in §7; `MenuItemCommentSurfaceContractTests`; §16.3 scenario 21 gains six comment claims and the barrier selectors for the controls that carry them; the like's text size and §11.12's floor subjects | F-127 |
+
+**What is in this slice.** Stage 6d. One `<textarea>`, two verbs and a status line in the panel that already holds the like, over the data access Slice 68 built and Slice 69 repaired. No schema change, no migration, no new service, no endpoint and no rate-limit policy: the write rides the circuit exactly as the like's does, and §11.11's limiter is per endpoint and has nothing to attach to here. Stage 6e, the staff read, is still not started.
+
+**The five rulings, and which of them is load-bearing.** The box is **in the detail panel and never on the card**, which is the like's ruling with a stronger reason — a `<button>` may not contain interactive content, so a `<textarea>` there is not markup that reads badly but markup the parser takes apart. **A blank body is a refusal and never a withdrawal**: clearing the box and pressing Save is what somebody will actually do, and reading it as a withdrawal would put a second authority on what withdrawal means inside a component whose write service already refuses a blank body by name — so the refusal names the control that does withdraw, and the withdraw control renders only where something stands to be withdrawn. **The client's cap is an optimisation and every refusal is the server's**, which is §7's picture ruling applied to text: `maxlength` is whatever `ReadDeclaredBodyCapAsync` read out of `menu_item_comment_event_body_within_cap`, and where that read cannot answer, no attribute is rendered rather than a number nobody checked. **The draft belongs to the chosen dish** — keyed to the item, reset when the chosen item changes, and refreshed by nothing: `LoadMenuAsync` re-reads the standing set and deliberately leaves the draft alone, because a `MenuChanged` broadcast arriving while somebody is typing must not take their sentence away. **The outcome is declared beside the sentence**, so the scenario reads a verdict rather than the copywriting (**F-113** one register up, `data-live` two).
+
+**F-127, and how it was found.** Not by looking for it. F-93 requires a new control kind to bring its barrier selectors in the same slice, so the comment box and its two buttons were written into `HandheldSurface.GuestOrder` — and the question *what font size do they get* had only one honest answer, `1rem`, because §11.12's floor is 16px with no tolerance. That would have put two text sizes in one panel, since `.order-menu-like` has declared `0.95rem` since Slice 58. Asking why produced the finding: the floor's enforcement is `FontFloorSelectors`, both of whose entries were `input[type=…]`, so a **button** had never been measured for text at all. Thirteen slices of barrier runs over that exact control, measuring its reach and its height, and never its type size. The remedy is a selector set rather than a rule — F-118's remedy, in the other direction: there the rule could not reach the control, here the barrier could not.
+
+**Two changes in one slice, and the distinguishable-failure rule governs both.** Stage 6d fails as six source-scan assertions in `MyRestaurant.WebApplication.Tests` naming `TableOrderSurface.razor`, or as a comment that does not survive a reload in the browser. F-127 fails as a `UndersizedText` verdict from the barrier naming a selector and a computed pixel size. They are also not separable: F-127 exists *because* Stage 6d brought the selectors, and shipping the selectors without moving the like's declaration would leave the barrier red.
+
+**Test count arithmetic.** 1321 + 6 = **1327**. Six `[Fact]` in the new `MenuItemCommentSurfaceContractTests` in `MyRestaurant.WebApplication.Tests`. No test was deleted and no existing count moved: §16.3 scenario 21 is one `[Fact]` before and after, and the harness additions carry no attributes. §16.4's counted-class census goes 47 → 48 over a floor of 37. Any other number is the first thing to investigate.
+
+**Sensitivity — emulated against the edited tree and nine planted defects, not executed.** The delivered tree passes all six facts. A copy of the box inside the card's `<button>`: reported by the nesting fact, and by the count fact and the cap fact as well, because the planted element is the first one the box scan meets. A second copy inside the panel: reported by the count fact at two. `ListForPersonAsync` swapped for `ListAsync` on the injected directory: reported by the receiver-qualified fact — and the same prohibition written as a bare `ListAsync(` marker was confirmed to fire on the two reads §11.1 requires — the menu's and the pictures' — which is why the receiver is in the marker. That is recorded in §16.4 rather than as a finding, because nothing in the tree was wrong; it is a constraint on how the gate could be written at all. `maxlength` rewritten as the literal `1000`: reported twice, once as a non-expression and once as the bound restated. `ReadDeclaredBodyCapAsync` deleted: reported. The `BodyBlank` arm rewritten to call `WithdrawAsync`: reported by the body walk, with the prose *press Withdraw* left in place to confirm the fact keys on the call and not the word. `IMenuItemComments` added to `MenuWorkflow`: reported. The whole comment block deleted: reported by four of the six facts, which is the state the tree was in before this slice.
+
+**What was NOT verified.** Nothing was compiled: no .NET SDK in the authoring environment, so `dotnet build` and `dotnet test` have not run, 1327 is arithmetic rather than an observation, and the six new assertions have never executed as C#. No browser ran, so scenario 21's six new claims are unverified, the barrier's six new selectors have never matched anything, and every claim about computed type size — that `1rem` renders as 16.0px and clears a floor with no tolerance — rests on reading `app.css` and on `.order-picker-quantity input` already passing at `max(1rem, 1em)`. No container engine ran, so nothing exercised `SubmitAsync` or `WithdrawAsync` against a real database in this slice. Two Blazor behaviours are read rather than observed: that a null `int?` renders no `maxlength` attribute, and that `@key` on the box makes the value follow the chosen dish rather than the element — the second is why the key is there, since without it a re-render whose previously-rendered value already matched would leave typed text in the DOM.
+
+**Still open.** Stage 6e, the staff read: no surface rulings written, and it is the last row of the menu enhancement plan. The fourth Stage 6 question — staff replies — stays open. The residual F-127 brought with it is recorded in `docs/DOCUMENTATION_REVIEW.md`: the comment cap has no tree-wide restatement scan, because `1000` is not a distinctive number in this tree.
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -3616,13 +3621,13 @@ volumes:
 
 --- METADATA ---
   Relative path:         docs/DOCUMENTATION_REVIEW.md
-  Size:                  45.4 KiB (46458 bytes)
-  SHA-256:               d7eff683d9fe6ade86eb85e7b8aff612193f028c8fdf2b5b0b4850c7f8ea3cdf
+  Size:                  47.7 KiB (48863 bytes)
+  SHA-256:               bbcbff3b57d9b6f748e3c4d626eb26dc25a79d1cb565685d2131168e561ae0e9
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
 
-**All findings F-01 through F-126 are resolved.** This is the numbered ledger: one row per finding,
+**All findings F-01 through F-127 are resolved.** This is the numbered ledger: one row per finding,
 stating what was wrong, what was ruled, and where the ruling lives. It is a register rather than an
 essay — the reasoning that produced each ruling is in the commit that closed it and in the archived
 long form, and the specification carries the mechanism.
@@ -3652,6 +3657,7 @@ mechanical holds it there; Appendix A of the specification maps every ruling to 
 | An assertion decides one thing | F-123 | A subject broken in two ways is named by whichever failure the tool reports first. Break one thing, and prove it with a control that differs in one attribute and must succeed. |
 | A sensitivity proof is an execution | F-124 | Narrating planted-defect runs presupposes a green baseline. A slice that cannot execute says which defect the assertion is *reasoned* to catch, and says it was not run. |
 | An emulated proof is not a compilation | F-126 | A tree-scan gate's marker is a second copy of the code it scans for, and only the compiler holds them together. A slice that cannot build reads the API surface at the pinned version and says which version it read. |
+| A floor reaches the subjects a barrier names | F-118, F-127 | A rule stated over *every* control is enforced over the selectors the barrier lists. A control outside them is unmeasured — whether because the rule cannot reach it or because the barrier cannot. |
 | One change, one green run | — | Two changes ride together only when their failure modes are distinguishable by name. |
 
 ---
@@ -3804,6 +3810,7 @@ mechanical holds it there; Appendix A of the specification maps every ruling to 
 | **F-123** | **A schema probe asserted the name of a constraint PostgreSQL was under no obligation to report.** `TheSchemaRefusesEveryForbiddenShapeOfAnEventRow` offered `('loved', 'Anything')` and expected `menu_item_comment_event_type_vocabulary`. That row breaks the vocabulary CHECK *and* `menu_item_comment_event_body_payload`, whose biconditional reads `false = true`. PostgreSQL sorts a relation's CHECKs by name and evaluates them in that order, so `body_payload` is reported and the fact failed against a schema that is entirely correct — the observed failure, on the person's machine, on the slice that shipped it. Two of the remaining three probes were correct by luck rather than by construction, and the fourth constraint, the cap, had no schema-level probe at all despite the fact being named *every forbidden shape* | **The probe row is constructed so that exactly one thing about it is wrong, and that is proven rather than assumed.** Each of the five probes is now paired with a **control** row differing from it in one attribute, inserted inside a transaction and rolled back; if the probe were over-determined the control would be refused too, and the fact says so by name. The four constraint names are read out of `pg_constraint` and compared against the set the probes cover, so a fifth CHECK cannot silently shadow one of them, and the cap gets the probe the fact's name had been promising. §18 states the general rule: an assertion may not depend on which of several simultaneous failures a tool reports first | S§16.4, S§18 · F-41 |
 | **F-124** | **A sensitivity proof was recorded for assertions that had never been executed, in the same slice whose own verification paragraph said no container ran.** Slice 68's narrative describes `TheSchemaRefusesEveryForbiddenShapeOfAnEventRow` run against four mutations of `0009` and reports what each one named. Six paragraphs later the same slice states that no container engine was available and that the class *has never executed against a real PostgreSQL*. Both cannot be true, and the second is: a mutation proof presupposes a green baseline, and this baseline was red — F-123 was in the file the whole time and the first real run found it. The rule F-41 states, *every assertion is proven able to fail against a planted defect*, had been satisfied on paper | **The paragraph is corrected in place** rather than annotated (**F-114**), and §18 gains the distinction it was missing: a sensitivity proof is a record of an **execution**, and where the authoring environment cannot execute the assertion, the paragraph names the defect the assertion is *reasoned* to catch and says it was not run. The two are different claims and only one is evidence. **No gate holds this** — telling a described run from a performed one means reading prose for a tense, which **F-116** and **F-119** forbid | S§18 · F-41, F-114, F-116 |
 | **F-125** | **The suite's own output buried the assertion that failed.** Testcontainers logs every container created, every `pg_isready` probe and every container deleted at Information through its console logger. Across the integration classes that is several hundred lines per run, interleaved with the runner's own output, and the single line reporting the F-123 failure sat inside it. The fixtures already turn a container problem into a skip carrying several sentences of diagnosis — `DescribeFailure` names the image, the resolution rule and the socket to activate — so the log lines were not what anybody would read to fix a container either | Both fixtures install `WithLogger(NullLogger.Instance)` on the builder chain that reaches `Build`, inside the `try` that already converts a container failure into a skip reason, so the call cannot itself turn a skip into a crashed assembly. `ContainerLoggingContractTests` holds the rule over a subject set **computed** from the files that construct a builder (**F-47**), with the scanner excluding its own source by `nameof`. The mechanism was first written as an assignment to a static setting the pinned version does not have, and the two facts it was first written as are now one (**F-126**) | S§16.4 · F-41, F-47, F-126 |
+| **F-127** | **§11.12's 16px control floor had `<input>` subjects only, and the control the stage before this one shipped was under it.** The floor is stated over *every control a person presses* and carries no layout tolerance, which Slice 64 wrote into the specification after finding a 15px field. What enforces it is `HandheldSurface.GuestOrder`'s `FontFloorSelectors`, and both of its entries were `input[type=…]` — so `.order-menu-like`, declared `font-size: 0.95rem` (15.2px) in Slice 58 and measured for reach and height by the barrier ever since, was never measured for text. Found by Stage 6d while adding barrier selectors for its own controls in the same slice (**F-93**): writing the comment controls at `1rem` and the like at `0.95rem` would have put two sizes in one panel, and asking why produced the finding rather than a style choice. Same species as **F-118** in the other direction — there the rule could not reach the control, here the barrier could not | **The remedy is a selector set, not a rule**, exactly as F-118's was. The like's declaration goes to `1rem`; the comment box, both comment controls and the panel's own button row join `FontFloorSelectors`, so the floor has button and textarea subjects and not fields alone. §11.12 states that the floor is enforced over the selectors the barrier names, which is the sentence that would have made the gap readable without a browser | R§1 · S§11.12, S§16.3 scenario 21 |
 | **F-126** | **A gate and the two fixtures it holds were written against a Testcontainers API the pinned version does not have, and the proof of the gate could not have noticed.** Testcontainers moved logger configuration off the static `TestcontainersSettings.Logger` and onto the builder before 4.14.0, the version `Directory.Packages.props` pins. Both fixtures assigned the static property, so neither test assembly compiled; repairing them to `WithLogger` on the builder chain then turned `ContainerLoggingContractTests` red, because the gate asserted the assignment it had just been necessary to delete — one build error and one failing gate, from one remembered API. F-124's rule was followed: the gate's sensitivity was labelled as an emulation over file text rather than as a run. That is exactly what the emulation cannot decide. A string can name a member that does not exist, and only a compiler says so | **The fixtures keep the mechanism and change the call**, and the gate's second fact is **deleted rather than reworded**: an ordering assertion over a global assignment has no subject once the logger is a per-builder value, and a rule that can no longer fail is the vacuous gate **F-41** forbids. The one fact that remains is *stronger* than the fact it replaces — every `new PostgreSqlBuilder(` must reach its `.Build()` through a `.WithLogger(`, rather than merely share a file with one, so a second builder cannot arrive unsilenced. §18 states the general rule, and the residual below records why no gate holds it | S§16.4, S§18 · F-41, F-47, F-77, F-124, F-125 |
 ---
 
@@ -3817,6 +3824,7 @@ These are stated rather than closed, because each is a limit of what text can de
 | A gate walking `src/` for `*.cs` also reaches `obj/**/*.g.cs` | F-120 | Generated code is not authored and carries generated comments. `SourceCommentContractTests` excludes `bin` and `obj` by path segment; the older walks are unaffected because their assertions are floors on files, or absences of patterns generated code does not contain. |
 | A predicate over a **collection** is not brought under the atomic-reading rule | F-121 | `Func<IReadOnlyList<T>, bool>` is excluded because a list read is a count followed by one read per row, and making it one evaluation is a larger change than this rule. The excluded readers poll a surface that has already stopped changing, which is why none of them has produced a flake. |
 | `HarnessSnapshotContractTests` delimits a method body by matching braces, which a stray brace inside a string literal would truncate | F-121 | A truncated body contains no browser read and therefore passes. The floor on total body bytes is what reports it; the failure direction is a loud floor rather than a silent pass. |
+| §8.2's comment cap has no tree-wide restatement scan | F-107, F-127 | The picture cap's third fact walks every file under `src/` for the literal the constraint declares, which works because that bound is a distinctive seven-digit number. The comment cap is `1000`, and two files under `wwwroot/js` write it as a millisecond count — so the same walk would report a correct tree (the F-123 species). What replaces it is narrower and still decidable: the surface calls `ReadDeclaredBodyCapAsync`, its `maxlength` is an expression rather than a literal, and the one file that renders the attribute does not contain the bound. A copy written in a third file is caught by nothing. |
 | A gate's marker can name a member that does not exist | F-126 | The marker and the code it scans for are two copies of one fact, held together by the compiler and by nothing in this tree. A gate in `MyRestaurant.WebApplication.Tests` cannot type-check a file in another assembly, and referencing Testcontainers there to hold the name in a `nameof` buys nothing the fixtures' own compilation does not already buy — both fail in the same build, so the second check is redundant rather than earlier. What replaces the gate is the §18 habit: read the API at the pinned version, and say which version was read. |
 | A described sensitivity proof cannot be told from a performed one | F-124 | Distinguishing them means reading prose for a tense, which F-116 and F-119 forbid. What replaces the gate is the §18 habit and the arithmetic: a slice states its predicted test count, and the first run that disagrees is where the paper proof is found out. |
 | A stale promise about work that has landed is held by nothing | F-122 | Catching one mechanically means reading prose for a tense, which F-116 and F-119 forbid — and a lint on future-tense sentences would fire on every legitimate one in §19's build order. What replaces the gate is the §18 habit: the promise is deleted by the slice that discharges it, in the same slice, under the atomic-documentation rule. |
@@ -3829,8 +3837,8 @@ These are stated rather than closed, because each is a limit of what text can de
 
 --- METADATA ---
   Relative path:         docs/MENU_AND_HANDHELD_PLAN.md
-  Size:                  7.6 KiB (7784 bytes)
-  SHA-256:               72ed4346dc2727594d5ade1d004c67437232366af4f97557ab1d6f4764e70d4d
+  Size:                  8.3 KiB (8539 bytes)
+  SHA-256:               3421bf5a51b73a3afb5977c107369d91ed4859b567419a4fd8a28e926c2d288e
 
 --- CONTENT ---
 # Menu modernization and the handheld contract — staged plan
@@ -3868,11 +3876,11 @@ A menu with headings, a description under each dish, a photograph beside it, and
 | **5a** | likes: the schema and the data access | landed, M6 Slice 57 |
 | **5b** | likes: the guest's control | landed, M6 Slice 58 |
 | **5c** | likes: a dish that is off tonight | landed, M6 Slice 60 |
-| **6** | guest comments | open (in progress) |
+| **6** | guest comments | open (its staff read is all that is left) |
 | **6a** | the rate limiter takes a second policy | landed, M6 Slice 62 (prerequisite 1) |
 | **6b** | the rendering rule stops being a sentence | landed, M6 Slice 63 (prerequisite 2) |
 | **6c** | comments: the schema and the data access | landed, M6 Slice 68 |
-| **6d** | comments: the guest's control | open |
+| **6d** | comments: the guest's control | landed, M6 Slice 71 |
 | **6e** | comments: the staff read | open |
 
 ## The rulings that outlive their stages
@@ -3899,6 +3907,11 @@ These are the parts of the plan worth keeping after the stage landed. Each is em
 | One standing comment per person per dish; editing is resubmission and every version is kept | §7, §8.2 |
 | A withdrawn comment stops being rendered and stays in the log | §7, §8.3 |
 | The comment length cap is the schema's and is stated once | §7, §8.2 |
+| The comment box is in the item's detail panel, never on its card — a textarea inside a button is markup a parser takes apart | §7, §11.1 |
+| A blank body is a refusal and never a withdrawal; the refusal names the control that does withdraw | §7, §11.1 |
+| The client's cap is an optimisation and every refusal is the server's, exactly as for a picture's bytes | §7, §11.1 |
+| The draft belongs to the chosen dish, and a menu re-read never overwrites what somebody is typing | §11.1 |
+| The surface declares the outcome beside the sentence, so a barrier never asserts the copywriting | §11.1, §16.3 |
 
 ## Stage 6 — guest comments, and what is settled
 
@@ -3914,9 +3927,9 @@ These are the parts of the plan worth keeping after the stage landed. Each is em
 | Attached to an item or to an order line? | the item | An opinion needs no purchase, which the like already settled; and an order line's log carries §6.7's correction rules a comment has no business inheriting. |
 | Who may read it, and for how long? | staff, and for as long as the log | §11.4's like-count ruling applied to text. Retention is the order log's, because inventing one policy for one table is how two policies start. |
 | May staff reply? | not built | A reply makes a thread, a thread makes a conversation, and a conversation needs a role, a notification and a moderation rule. Deferred, and named as deferred. |
-| What does moderation mean for an append-only log? | the question does not arise | Nothing a guest writes is rendered to another guest, so there is nobody to moderate on behalf of. Should Stage 6d or a later stage ever show one guest another's words, this row is what has to be reopened first — and it is the reason that surface is not in 6c. |
+| What does moderation mean for an append-only log? | the question does not arise | Nothing a guest writes is rendered to another guest, so there is nobody to moderate on behalf of. Stage 6d shipped a guest their own comment and nobody else's, so the question still does not arise; should any later stage ever show one guest another's words, this row is what has to be reopened first. |
 
-**What is left.** Stage 6d is the guest's own control, in §11.1's detail panel beside the like, on the same reasoning that put the like there. Stage 6e is the staff read. Neither is startable from `docs/TECHNICAL_SPECIFICATION.md` alone until the surface rulings are written, and both are ordinary stage work rather than blocked work.
+**What is left.** Stage 6e, the staff read. Stage 6d landed in Slice 71 with its five surface rulings in §7 and its six end-to-end claims on §16.3 scenario 21's arrangement; 6e is ordinary stage work whose surface rulings are not written yet, and the moderation row above is what has to be reopened first if it ever shows one guest another's words — which the staff read, by definition, does not.
 
 **Stage 6c was executed for the first time in Slice 69**, and the schema it declares is correct: the five things `menu_item_comment_event` refuses, it refuses by the name the writer recognises. What was wrong was one probe in the test, which offered a row breaking two CHECKs at once and asserted the name of the one PostgreSQL happens not to report (**F-123**). No ruling in the table above moved.
 
@@ -4639,13 +4652,13 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
 
 --- METADATA ---
   Relative path:         docs/TECHNICAL_SPECIFICATION.md
-  Size:                  181.2 KiB (185538 bytes)
-  SHA-256:               8a201dc9bda4c3d77c12ee94b0598f0857cc159961fb38e20979bb6f5188572d
+  Size:                  187.5 KiB (192045 bytes)
+  SHA-256:               47ccc2622a928a8e32375acb7993422caf62675efd1a55b338e2b01b8c4c0747
 
 --- CONTENT ---
 # myrestaurant — Technical Specification
 
-**Version 1.55 — 2026-08-27 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
+**Version 1.56 — 2026-08-27 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
 
 This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md`. It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. Appendix A maps every ruling to its embodiment.
 
@@ -4879,6 +4892,8 @@ The picture is served on its own route and attached from the item's own page. `0
 **Comments.** A person may say what they thought of a dish. `menu_item_comment_event` is an event table on `menu_item_reaction_event`'s shape and `submitted`/`withdrawn` is its vocabulary. Six rulings, and the first two are what make the rest small. *A comment is filed against the item and never against an order line*, because `order_current_line` records what was eaten and a comment records an opinion — the same argument the like already settled — and because an order line lives in an append-only log whose settled total is a snapshot, so a comment hanging off one would inherit §6.7's correction rules for no reason anybody asked for. *A comment is staff-facing and a guest sees only their own*, which is §11.4's ruling for the like count applied to text: nothing a guest writes is rendered to another guest, so there is no moderation question to answer and none is invented here. *One standing comment per person per dish*, which is why the fold partitions on `(menu_item_identifier, person_identifier)` exactly as the reaction's does — a thread per person per dish is a conversation, and a conversation needs staff replies, which this stage does not build. *Editing is resubmission and withdrawal is an event*: every version is kept and a withdrawn comment stops being rendered without leaving the log, because a comment cannot be edited out of history any more than an order line can (F-10b, §6.7). *The stored body is trimmed*, and the reason is mechanical rather than tidiness — HTML collapses leading and trailing whitespace, so storing it stores a difference nobody can see, and two bodies that render identically would then compare unequal and defeat the no-op rule this verb shares with every other menu verb. *The length cap is the schema's and is stated once*: `menu_item_comment_event_body_within_cap` is the only place in this repository that says how long a comment may be, `ReadDeclaredBodyCapAsync` asks `pg_get_constraintdef` for the bound, and the writer recognises the refusal by constraint name (**F-107**).
 
 A comment publishes nothing, for the reaction's reason: §9's `MenuChanged` means *re-read the menu* and an opinion has not changed the menu.
+
+**The guest's control.** It is in the item's detail panel beside the like, on the reasoning that put the like there and one step further: a `<textarea>` is interactive content and a `<button>` may hold none, so a box on a card is markup the parser takes apart rather than markup that merely reads badly. Five rulings. *The client's cap is an optimisation and every refusal is the server's* — the same ruling the picture already carries: `maxlength` states whatever `ReadDeclaredBodyCapAsync` read out of the constraint, and where that read cannot answer, no attribute is rendered at all rather than a number nobody checked. *A blank body is a refusal and never a withdrawal*, because clearing the box and pressing Save is what somebody will do, and reading it as a withdrawal would make the surface a second authority on what withdrawal means when the write service already refuses a blank body by name; the refusal names the control that does withdraw instead. *The withdraw control is rendered only where a standing comment exists*, since the verb refuses when there is nothing to withdraw. *The draft belongs to the chosen dish* — it is keyed to the item and reset whenever the chosen item changes, and a menu re-read refreshes the standing set without overwriting it, because a broadcast arriving while somebody is typing must not take their sentence away. *The outcome is declared beside the sentence*, on §11.10's reasoning for `data-live`: a barrier that reads the sentence is asserting the copywriting.
 
 **Two rules survive every menu rewrite.** A deactivated item stays in history and in every settled order that already names it — deactivation is not deletion (F-10b). And a price change is an event beside the order lines that already carry the old price; it never rewrites them (§6.7).
 
@@ -5632,7 +5647,7 @@ Browsers block autoplay: the kitchen surface shows a one-tap "enable sound" arm 
 
 ### 11.1 `/table`
 
-The guest ordering surface. An **interactive island inside a static-SSR page**: `/table/{id}` is `[ExcludeFromInteractiveRouting]` because the join flow writes the grant cookie and issues redirects, and a Blazor circuit can do neither. The island carries the picker, the basket, the totals and the roster; everything that responds to a press is inside it. The menu renders grouped under its headings, each item showing its description, a thumbnail beside the name where a picture is stored, and — in the item's detail panel only — the like control. Staging is client-side; a Send is one batch and produces exactly one kitchen alert. A guest may remove only their own pending lines. Closed orders may be hidden from the guest's own history and from nobody else's (§6.8).
+The guest ordering surface. An **interactive island inside a static-SSR page**: `/table/{id}` is `[ExcludeFromInteractiveRouting]` because the join flow writes the grant cookie and issues redirects, and a Blazor circuit can do neither. The island carries the picker, the basket, the totals and the roster; everything that responds to a press is inside it. The menu renders grouped under its headings, each item showing its description, a thumbnail beside the name where a picture is stored, and — in the item's detail panel only — the like control and the guest's own comment box. Staging is client-side; a Send is one batch and produces exactly one kitchen alert. A guest may remove only their own pending lines. Closed orders may be hidden from the guest's own history and from nobody else's (§6.8).
 
 ### 11.2 `/kitchen`
 
@@ -5686,7 +5701,7 @@ Rate limiting is opt-in per endpoint and every policy is registered once. A surf
 - **`min-width`, never `max-width`.** A max-width query says the wide layout is the default and the handset is the exception, which is the arrangement the defect was found in.
 - **48rem, stated once.** A custom property cannot be used in a media query, so the value is a literal in that one query. The primary target is a 375px handset.
 
-**Touch targets are 2.75rem** (`--touch-target`, 44px at the default root size) on every control a person presses. **The number is written once, as the property; a literal beside it is a finding (F-65).** **Text in a control is at least 16px**, because iOS Safari zooms a smaller one — and that floor carries **no layout tolerance**, so a 15px control fails even though it is within a pixel (Slice 64).
+**Touch targets are 2.75rem** (`--touch-target`, 44px at the default root size) on every control a person presses. **The number is written once, as the property; a literal beside it is a finding (F-65).** **Text in a control is at least 16px**, because iOS Safari zooms a smaller one — and that floor carries **no layout tolerance**, so a 15px control fails even though it is within a pixel (Slice 64). **The floor is enforced over the selectors the §16.3 barrier names, and until Slice 71 every one of them was an `<input>`** — so §11.1's like control declared 15.2px for thirteen slices with nothing able to say so (**F-127**). The detail panel's buttons are named subjects now, and the floor is a floor on controls rather than on fields.
 
 **A record list is the shape every index takes.** Below the breakpoint each row is a card; above it the same markup is a table with a header row, and **every cell states its own label** from a `data-label` attribute. **A row's action is never a right-hand column**: it is the last thing in the card and the full width of it, and the row's primary cell is also a link, so the way in is at x=0 whatever the viewport.
 
@@ -5809,7 +5824,7 @@ Either file alone is insufficient, and the second is the one that gets forgotten
 18. Admin attaches a photograph to a dish → the redirected page **renders**, the thumbnail decodes in the browser, §11.4's picture history carries the attach, and the caption editor writes one. The second clause is the scenario: attaching worked before Slice 55 — the row committed and the redirect was issued — and what did not work was the page the redirect landed on, because a `ValidationMessage` sat outside its `EditForm` inside `@if (_picture is not null)` and threw on the first render in which a picture existed (**F-106**). Every assertion here is a render of that block. The thumbnail is required to have *decoded* rather than merely to be in the markup, which is the only way to assert in one place that §7's route answered, that the stored content type suits the stored bytes, and that §11.11's `img-src` admitted it.
 19. Admin chooses a picture **over §8.2's cap** → the browser reduces it and the server stores the smaller one. The whole of Stage 4e, and not assertable anywhere else in this repository: the resizing happens in a `<canvas>` in a real browser, on a file chosen through a real `<input type="file">`, and what proves it worked is not that a smaller file exists but that §11.4's panel reports a JPEG of fewer bytes than were chosen. **The cap is never written in the scenario** — it is read off the rendered `data-picture-byte-budget`, and what is asserted is the pair of inequalities that hold whatever the cap is.
 20. Admin uploads a picture the browser **cannot name** — no extension, `application/octet-stream` — and the server stores it as what its **bytes** are. The open item this feature carried for six slices (**F-109**): `IFormFile.ContentType` is the operating system's extension map rather than a fact about the file, so a genuine PNG from a system with no mapping was refused for a format that was not its own. The picture is deliberately **under** §8.2's cap, which is what makes the scenario about F-109 and nothing else — Stage 4e narrowed this defect without closing it, because anything the downscaler touches returns from `canvas.toBlob` as `image/jpeg` whatever it was labelled, and a file that already fits is left completely alone. The closing assertion is that the stored format is `image/png` and is **not** the declared one, because accepting the upload alone would also be satisfied by a server that believed the label and then handed it back as a response header on this origin for a year.
-21. A guest at a table **likes a dish, and the opinion is still there after the page is reloaded**. The reload is the scenario. Everything before it — the control renders, it reports unpressed, pressing it reports pressed — is satisfied exactly as well by a `bool` field on a Blazor component that no database ever hears about, and that implementation is not a straw man: it is what *make the heart fill in when you tap it* produces, it is smaller than the real one, and every unit fact and every other scenario stays green against it. Reloading destroys the circuit and every field on it, so the second reading can only have come from `menu_item_reaction_current`. Four further claims ride on the same arrangement, each refusing an implementation that passes the ones before it: there is **nothing to press until an item is chosen**, which is where §7 puts the control and is what keeps the card a single element; the *other* dish, chosen straight after, reports **unpressed**, so the opinion is about a dish rather than about the surface or about whether this person has liked anything; and the press is then **withdrawn and reloaded again**, because a verb that only ever appended `'liked'` rows passes every step above — the fold would answer from the last row it wrote. **A sixth claim closes the feature and is the only place in this repository where §11.1's write and §11.4's read meet:** while the press stands, the administrator's index reports **one** like against that dish and **none** against the other; once it is withdrawn, it reports none against either. Two different queries against the same rows, written for two different people, and nothing but a browser can say they describe the same event — a count over `'liked'` *events* rather than over current opinions passes every step before it, and *the count is 1* is also what a page hard-wired to report 1 would say, which is why the second dish is asserted alongside. **No count is on the guest's screen to read**, which is Stage 5a's ruling and is held as a unit fact over the whole guest directory rather than here, in two seconds rather than in a browser. **A seventh claim is Stage 5c's and it is the only thing in this repository that can make it:** the kitchen 86s the dish, the guest's open menu marks the card unavailable, and the panel is reached through the second control beside that card — where the like reports unpressed, is pressed, and is read back as **one** by §11.4's index. Before that control existed the panel never opened for a refused card, so *the salmon is off tonight and it is still the best thing here* was an opinion this surface could not record. The pudding is chosen first, deliberately: the salmon's panel is still open from the step before and going off the menu does not close it, so without that the claim would be satisfied by a panel that had simply never gone away. The panel's *Available* row is read by the term the markup **declares** rather than the one the stylesheet paints, and this step is the first caller `ChosenItemDetail.Facts` has ever had (**F-113**). It ships in the slice that built the control rather than a slice later: this project deferred a picture scenario four times with a recorded reason each time and the cost was **F-106**, so a control with the identical profile — an interactive island, a circuit event, a toggle that looks right in source — gets its scenario on the way in (**F-109**). **And the guest has been on a 375×667 phone since the join, because this scenario now closes with §11.12's barrier over §11.1** (Stage 1d). That is a second subject in one scenario and it is here rather than in a scenario 22 for the reason Slices 59, 60 and 61 each gave: *the arrangement already exists*. A barrier over the guest's menu wants an available dish and a refused one, the way-in control beside the refused card, a panel open on it with a like inside, and a staged line so the basket has controls and Send has something to send — which is this scenario's closing state plus one staging. A scenario 22 would have bought a second container, a second passkey registration and a second join to arrange what is already standing, and the two subjects fail in ways nothing could confuse: an opinion that does not survive a reload is a fold reading the wrong row, and a control under 44px is a stylesheet. **Everything before the barrier is a DOM read or a click**, and Playwright scrolls an element into view before pressing it, so no assertion above can tell what width the context was laid out at — which is what makes the viewport one boolean rather than a rewrite. The barrier is the last thing in the enhancement's own title to be honoured: Stage 1 is *the handheld contract*, R§1 justifies the whole of §11.12 with a sentence about the phone in a **guest's** hand, and every slice of Stage 1 measured the surfaces **staff** use, because F-59 was found there. Meanwhile this surface acquired headings, descriptions, a photograph, a detail panel, a like and a second control beside a refused card, and not one of them was ever laid out at the width it is read at. **It is measured where it stands rather than navigated to**, which is the one structural difference from scenario 16's ten: those are static-SSR pages and arriving at one is a navigation, while the chosen dish, the open panel and the staged line here are circuit state that a navigation would destroy in order to look at. **Every selector in the guest set is required to match**, so a renamed class or an arrangement that did not build fails by name rather than by a total floor that a group going quiet cannot move — which is the residual scenario 16 recorded and could not close. **And a computed font size is asserted, which is F-118**: §11.12's 16px floor is declared in `app.css` against `.form-field input`, §11.1's basket declares its quantity box as a bare `<input>` inside a `<label class="order-basket-quantity">`, and whether a page put its control inside the arrangement that carries the rule is a fact about markup that no reading of a stylesheet produces. **And one dish carries a photograph** (Stage 1e), which is arrangement rather than a further claim and is what the barrier was measuring the surface without. A dish with a picture renders a *different card* — `.order-menu-item.has-picture .order-menu-choice` is two columns where every other card is one — and its open panel renders the whole frame uncropped under `max-width: 100%`. Six stages of the menu plan built both and nothing had laid either out at 375px, because this scenario put a picture on nothing. **On one dish and not both**, deliberately: a menu where every card is two columns is a menu where the one-column card is untested, and both shapes stand on this surface at once in any dining room. It goes on the dish that is later 86'd, so the card carrying the picture is also the card carrying the unavailable mark with a way-in control beneath it, which is the busiest box model §11.1 can produce. **The fixture is intrinsically wider than the screen and inside §8.2's cap**, and both halves are load-bearing: `.order-menu-detail-picture`'s `max-width: 100%` acts on nothing when the picture already fits, so a small fixture would let that rule be deleted with the barrier still green; and a fixture over the cap would hand the stored dimensions to the browser's downscaler, making the step about a ladder instead of about a layout. The cap is not written in the scenario — §8.2's constraint stays the only place in this repository that says how large a picture may be. **Both pictures are required to have DECODED before anything is measured**, which is a gate rather than tidiness: an `<img>` whose bytes have not arrived has no intrinsic size, so its box is `0×0`, which lies inside every viewport there is and appears in the census as a one — the barrier would report a placeholder reachable and the required-selector refusal would pass. The decoded width is also asserted on the *guest's* page, which is a different claim from the same assertion on §11.4's panel: that route answered for an administrator, this one answers for a table member holding a join grant. **The upload journey is the harness's** (`MenuPictureJourneys`), extracted in the slice that needed it from a second scenario class rather than pasted, on the ruling `TableJourneys.SeatGuestAsync` moved under one slice earlier.
+21. A guest at a table **likes a dish, and the opinion is still there after the page is reloaded**. The reload is the scenario. Everything before it — the control renders, it reports unpressed, pressing it reports pressed — is satisfied exactly as well by a `bool` field on a Blazor component that no database ever hears about, and that implementation is not a straw man: it is what *make the heart fill in when you tap it* produces, it is smaller than the real one, and every unit fact and every other scenario stays green against it. Reloading destroys the circuit and every field on it, so the second reading can only have come from `menu_item_reaction_current`. Four further claims ride on the same arrangement, each refusing an implementation that passes the ones before it: there is **nothing to press until an item is chosen**, which is where §7 puts the control and is what keeps the card a single element; the *other* dish, chosen straight after, reports **unpressed**, so the opinion is about a dish rather than about the surface or about whether this person has liked anything; and the press is then **withdrawn and reloaded again**, because a verb that only ever appended `'liked'` rows passes every step above — the fold would answer from the last row it wrote. **A sixth claim closes the feature and is the only place in this repository where §11.1's write and §11.4's read meet:** while the press stands, the administrator's index reports **one** like against that dish and **none** against the other; once it is withdrawn, it reports none against either. Two different queries against the same rows, written for two different people, and nothing but a browser can say they describe the same event — a count over `'liked'` *events* rather than over current opinions passes every step before it, and *the count is 1* is also what a page hard-wired to report 1 would say, which is why the second dish is asserted alongside. **No count is on the guest's screen to read**, which is Stage 5a's ruling and is held as a unit fact over the whole guest directory rather than here, in two seconds rather than in a browser. **A seventh claim is Stage 5c's and it is the only thing in this repository that can make it:** the kitchen 86s the dish, the guest's open menu marks the card unavailable, and the panel is reached through the second control beside that card — where the like reports unpressed, is pressed, and is read back as **one** by §11.4's index. Before that control existed the panel never opened for a refused card, so *the salmon is off tonight and it is still the best thing here* was an opinion this surface could not record. The pudding is chosen first, deliberately: the salmon's panel is still open from the step before and going off the menu does not close it, so without that the claim would be satisfied by a panel that had simply never gone away. The panel's *Available* row is read by the term the markup **declares** rather than the one the stylesheet paints, and this step is the first caller `ChosenItemDetail.Facts` has ever had (**F-113**). It ships in the slice that built the control rather than a slice later: this project deferred a picture scenario four times with a recorded reason each time and the cost was **F-106**, so a control with the identical profile — an interactive island, a circuit event, a toggle that looks right in source — gets its scenario on the way in (**F-109**). **And the guest has been on a 375×667 phone since the join, because this scenario now closes with §11.12's barrier over §11.1** (Stage 1d). That is a second subject in one scenario and it is here rather than in a scenario 22 for the reason Slices 59, 60 and 61 each gave: *the arrangement already exists*. A barrier over the guest's menu wants an available dish and a refused one, the way-in control beside the refused card, a panel open on it with a like inside, and a staged line so the basket has controls and Send has something to send — which is this scenario's closing state plus one staging. A scenario 22 would have bought a second container, a second passkey registration and a second join to arrange what is already standing, and the two subjects fail in ways nothing could confuse: an opinion that does not survive a reload is a fold reading the wrong row, and a control under 44px is a stylesheet. **Everything before the barrier is a DOM read or a click**, and Playwright scrolls an element into view before pressing it, so no assertion above can tell what width the context was laid out at — which is what makes the viewport one boolean rather than a rewrite. The barrier is the last thing in the enhancement's own title to be honoured: Stage 1 is *the handheld contract*, R§1 justifies the whole of §11.12 with a sentence about the phone in a **guest's** hand, and every slice of Stage 1 measured the surfaces **staff** use, because F-59 was found there. Meanwhile this surface acquired headings, descriptions, a photograph, a detail panel, a like and a second control beside a refused card, and not one of them was ever laid out at the width it is read at. **It is measured where it stands rather than navigated to**, which is the one structural difference from scenario 16's ten: those are static-SSR pages and arriving at one is a navigation, while the chosen dish, the open panel and the staged line here are circuit state that a navigation would destroy in order to look at. **Every selector in the guest set is required to match**, so a renamed class or an arrangement that did not build fails by name rather than by a total floor that a group going quiet cannot move — which is the residual scenario 16 recorded and could not close. **And a computed font size is asserted, which is F-118**: §11.12's 16px floor is declared in `app.css` against `.form-field input`, §11.1's basket declares its quantity box as a bare `<input>` inside a `<label class="order-basket-quantity">`, and whether a page put its control inside the arrangement that carries the rule is a fact about markup that no reading of a stylesheet produces. **And one dish carries a photograph** (Stage 1e), which is arrangement rather than a further claim and is what the barrier was measuring the surface without. A dish with a picture renders a *different card* — `.order-menu-item.has-picture .order-menu-choice` is two columns where every other card is one — and its open panel renders the whole frame uncropped under `max-width: 100%`. Six stages of the menu plan built both and nothing had laid either out at 375px, because this scenario put a picture on nothing. **On one dish and not both**, deliberately: a menu where every card is two columns is a menu where the one-column card is untested, and both shapes stand on this surface at once in any dining room. It goes on the dish that is later 86'd, so the card carrying the picture is also the card carrying the unavailable mark with a way-in control beneath it, which is the busiest box model §11.1 can produce. **The fixture is intrinsically wider than the screen and inside §8.2's cap**, and both halves are load-bearing: `.order-menu-detail-picture`'s `max-width: 100%` acts on nothing when the picture already fits, so a small fixture would let that rule be deleted with the barrier still green; and a fixture over the cap would hand the stored dimensions to the browser's downscaler, making the step about a ladder instead of about a layout. The cap is not written in the scenario — §8.2's constraint stays the only place in this repository that says how large a picture may be. **Both pictures are required to have DECODED before anything is measured**, which is a gate rather than tidiness: an `<img>` whose bytes have not arrived has no intrinsic size, so its box is `0×0`, which lies inside every viewport there is and appears in the census as a one — the barrier would report a placeholder reachable and the required-selector refusal would pass. The decoded width is also asserted on the *guest's* page, which is a different claim from the same assertion on §11.4's panel: that route answered for an administrator, this one answers for a table member holding a join grant. **The upload journey is the harness's** (`MenuPictureJourneys`), extracted in the slice that needed it from a second scenario class rather than pasted, on the ruling `TableJourneys.SeatGuestAsync` moved under one slice earlier. **And the guest says what they thought of a dish, which is Stage 6d and rides this arrangement for the reason every claim above it does — the panel is already open on a chosen dish with the like inside it.** A comment is the first content in this application authored by somebody who is not staff, and what only a browser can say is that the sentence *arrives*: a `string` field on a Blazor component satisfies every unit fact and is what *let them type something* produces. Six claims, each refusing an implementation that passes the ones before it. The box is **empty until something is saved**, and its value is asserted rather than its presence. **The body is saved with trailing whitespace and read back trimmed**, which is §7's trimming ruling and the reason for it — two bodies that render identically must compare equal or the no-op rule below cannot fire. **It survives a reload**, so the second reading came from `menu_item_comment_current` rather than from a field. **The other dish's box is empty and the first dish's is not**, so a standing comment is per dish rather than per surface. **Saving the identical body again reports that nothing was written**, which is the no-op rule §7 gives every menu verb, and a verb that appended a second `submitted` row would report a save. **And it is withdrawn and reloaded**, because a write path that only ever appended `submitted` passes every step above — the fold would answer from the last row it wrote. Each verdict is read from the outcome the surface **declares** beside the sentence rather than from the sentence, on **F-113**'s ruling one register up. A final comment is saved so the panel carries both controls when the barrier runs, and **the barrier's own subject set grows in the same slice the controls arrive in** (**F-93**): the box, both comment controls, and — this being the finding — the like beside them, whose 15.2px nothing had ever measured (**F-127**). The staff read of these comments is Stage 6e and is not built, so nothing here asserts that anybody else can see them; the guest's own read is the whole of what exists.
 
 **The fixture picture is generated rather than carried**, which is what makes 19 possible at all. `PictureFixtures` writes a real PNG of any size — truecolour, unfiltered, uninterlaced, with the pixels in **stored** deflate blocks so the byte length is `edge × (1 + edge × 3)` and a caller can ask for one comfortably over the cap without guessing. The plan deferred a picture scenario four times on the ground that inventing bytes would be a test arranging what it asserts about; half of that is right — a checked-in photograph would be an opaque blob — and half is not, because nothing downstream asserts anything about these bytes. The image is a smooth gradient rather than noise for a reason that is load-bearing: JPEG's whole design is that smooth content is cheap, and a random raster can survive every rung of the downscaler's ladder and still exceed the cap, which would fail scenario 19 for a reason that has nothing to do with the product.
 
@@ -5854,6 +5869,8 @@ CI builds with `-p:ContinuousIntegrationBuild=true`, which flips `TreatWarningsA
 `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageContentTypeContractTests.cs` — 3 assertions: what decides the stored media type is the bytes rather than the declaration, and the vocabulary may only be written where §8.2 declares it (**F-109**, **F-110**).
 
 `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageSurfaceContractTests.cs` — 12 assertions: the picture surface renders an `alt` on every `<img>`, posts through the endpoint rather than a circuit, and names the byte cap the migration declares (**F-108**).
+
+`tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemCommentSurfaceContractTests.cs` — 6 assertions: §11.1's comment box is inside the item's detail panel and never inside its card, the guest surface reads its own standing comment and never the staff-facing read, the body cap is asked for rather than restated, a blank save is a refusal rather than a withdrawal, and the workflow never reaches the comment write (**F-107**). The two reads are told apart by the **receiver** and not by the method name: `ListAsync(` is declared by three of the menu directories and two of them are read by this one component, so a marker without the identifier the page gave the service would forbid reads §11.1 requires — F-67's parenthesis is not enough where the name is shared.
 
 `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemReactionSurfaceContractTests.cs` — 7 assertions: §11.1's like control is in the item's detail panel and never on its card, and the guest surface never reads the count (**F-107**).
 
@@ -6101,6 +6118,8 @@ One row per ruling: what was decided, and where in this document or which ADR ca
 | F-123 | Every probe row breaks exactly one CHECK, and a **control** row differing in one attribute proves it; the four constraint names are read out of `pg_constraint` rather than listed, so a fifth cannot silently shadow a probe. §18 gains the general rule | §16.4, §18 |
 | F-124 | Slice 68's sensitivity paragraph is **corrected in place** on F-114's ruling, and §18 gains the distinction it was missing: a proof is an execution, and a slice that could not execute says *reasoned, not run* | §18 · BUILD_PROGRESS M6 Slice 68 |
 | F-125 | Both fixtures install `WithLogger(NullLogger.Instance)` on the builder chain that reaches `Build`, inside the `try` that already turns a container failure into a skip; `ContainerLoggingContractTests` holds it over a computed subject set | §16.4 |
+| Menu comments, Stage 6d (enhancement, not a finding) | §11.1's detail panel gains the guest's comment box beside the like. Five rulings in §7, and the load-bearing two are *a blank body is a refusal and never a withdrawal* and *the client's cap is an optimisation, every refusal the server's* | §7, §11.1, §16.3 scenario 21, §16.4 |
+| F-127 | The like's declaration goes to `1rem`, the comment controls are written at `1rem`, and §11.1's barrier gains three button and textarea subjects — so §11.12's 16px floor is enforced over controls rather than over fields. The remedy is a **selector set**, exactly as F-118's was | R§1 · S§11.12, §16.3 scenario 21 |
 | F-126 | The fixtures keep the mechanism and change the call; the gate's ordering fact is **deleted rather than reworded**, because a per-builder value has no global assignment to be late (F-41), and the fact that remains is per-builder rather than per-file. §18 gains the rule the failure produced | §16.4, §18 · `Directory.Packages.props` |
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
@@ -6110,6 +6129,7 @@ One row per ruling: what was decided, and where in this document or which ADR ca
 
 **The full changelog through v1.50 is archived** in [`docs/progress/TECHNICAL_SPECIFICATION_THROUGH_V1_50.md`](progress/TECHNICAL_SPECIFICATION_THROUGH_V1_50.md), and every entry it holds is also a commit. The most recent are kept here because `SpecificationVersionTests` reads the newest one as this document's current version and asserts the header agrees with it. How many is not written down: nothing can check it, and it had already drifted by one (**F-77**).
 
+- **v1.56 — 2026-08-27.** Stage 6d: the guest can say what they thought, and the control beside it had been under a floor nobody measured. **§7** gains the five surface rulings — the box is in the detail panel because a `<textarea>` inside a `<button>` is markup a parser takes apart, a blank body is a refusal and never a withdrawal, the withdraw control renders only where something stands, the draft belongs to the chosen dish and a menu re-read never overwrites it, and the outcome is declared beside the sentence. **§11.1** gains the box; **§16.4** gains `MenuItemCommentSurfaceContractTests`, whose two comment reads are told apart by the receiver rather than by a method name four directories share. **§16.3 scenario 21** gains six claims and, in the same slice as the controls, their barrier selectors (**F-93**) — which is what found **F-127**: §11.12's 16px floor had only `<input>` subjects, so the like control had declared 15.2px since Slice 58. **§11.12** now states that the floor is enforced over the selectors the barrier names.
 - **v1.55 — 2026-08-27.** A gate that named an API the pinned package does not have. Testcontainers moved logger configuration off the static `TestcontainersSettings.Logger` and onto the builder before 4.14.0, the version this tree pins: both container fixtures assigned the static property and neither assembly compiled, and `ContainerLoggingContractTests` asserted that they assigned it (**F-126**). The fixtures install `WithLogger` on the chain that reaches `Build`; **§16.4**'s paragraph becomes **one** assertion over the same computed subject set, per builder rather than per file, and the ordering half is **deleted rather than reworded** because a per-builder value has no global assignment to be late (**F-41**). **§18** gains the rule: an emulated proof establishes what an assertion decides, not that the source it scans compiles. `Directory.Packages.props` records the per-builder mechanism and loses the sentence claiming every pin was resolved on one date (**F-77**).
 - **v1.54 — 2026-08-27.** An assertion that decided a fact about a sort order, and the proof that was recorded rather than run. `TheSchemaRefusesEveryForbiddenShapeOfAnEventRow` probed the vocabulary CHECK with a row that broke the payload CHECK as well; PostgreSQL evaluates CHECKs in name order, so it named the one that sorts first and the fact failed on a correct schema (**F-123**). Every probe now breaks one CHECK and carries a control row that proves it, the constraint inventory is read out of `pg_constraint`, and the cap gets the fifth probe the fact's name had been promising. **§18** gains two rules: an assertion may not depend on which of several simultaneous failures is reported first, and a sensitivity proof is a record of an execution — which Slice 68's was not (**F-124**). **§16.4** gains `ContainerLoggingContractTests`; both container fixtures silence the Testcontainers logger, whose several hundred Information lines per run were what buried the failing assertion (**F-125**).
 - **v1.53 — 2026-08-26.** The last stage the menu plan carried, started, and the two documents that still said it could not be. **§7** gains the six comment rulings, **§8.2** gains `menu_item_comment_event` with four named constraints over one nullable column, and **§8.3** gains the fold that has no `WHERE` clause on purpose. **§17 loses the paragraph that promised the rate limiter it already had** and **§19 loses the clause that called Stage 6 unstartable** — both eleven slices stale, both deleted rather than annotated (**F-122**); **§18** gains the habit §17 had been claiming was stated there. **§16.4** gains `MenuItemCommentTests`.
@@ -37948,8 +37968,8 @@ else
 
 --- METADATA ---
   Relative path:         src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor
-  Size:                  35.7 KiB (36573 bytes)
-  SHA-256:               e9eabe7a28110d0ecfc5e90b4f4340641c18c9cd270455cad837b6c037e94489
+  Size:                  41.1 KiB (42092 bytes)
+  SHA-256:               1d400cad0949edc11ab9e4be8d9ea8f381ae59f1c49f2ff88cf950d15389b12c
 
 --- CONTENT ---
 @using System.Globalization
@@ -37966,6 +37986,8 @@ else
 @inject IMenuItemImageDirectory MenuItemPictures
 @inject IMenuItemReactionDirectory MenuItemReactionReads
 @inject IMenuItemReactions MenuItemReactionWrites
+@inject IMenuItemCommentDirectory MenuItemCommentReads
+@inject IMenuItemComments MenuItemCommentWrites
 @inject IOrderReadModel OrderReads
 @inject IOrderEventLog EventLog
 @inject IOrderWorkflow Workflow
@@ -38198,6 +38220,41 @@ else
                                 </span>
                                 <span class="order-menu-like-label">Like</span>
                             </button>
+                        </div>
+
+                        <div class="order-menu-comment">
+                            <label class="order-menu-comment-label" for="order-menu-comment-body">
+                                What did you think?
+                                <span class="optional">(optional — only staff read it)</span>
+                            </label>
+
+                            <textarea id="order-menu-comment-body" class="order-menu-comment-body"
+                                      rows="3" maxlength="@_commentBodyCap"
+                                      data-menu-item-comment="@chosenItem.MenuItemIdentifier"
+                                      placeholder="Best thing on the menu…"
+                                      @key="chosenItem.MenuItemIdentifier"
+                                      @bind="_commentDraft"></textarea>
+
+                            <div class="order-menu-comment-actions">
+                                <button type="button" class="order-menu-comment-save"
+                                        @onclick="() => SaveCommentAsync(chosenItem)">
+                                    Save
+                                </button>
+
+                                @if (HasStandingComment(chosenItem))
+                                {
+                                    <button type="button" class="order-menu-comment-withdraw"
+                                            @onclick="() => WithdrawCommentAsync(chosenItem)">
+                                        Withdraw
+                                    </button>
+                                }
+                            </div>
+
+                            @if (_commentNotice is { } commentNotice)
+                            {
+                                <p class="order-menu-comment-notice" role="status"
+                                   data-comment-outcome="@_commentOutcome">@commentNotice</p>
+                            }
                         </div>
                     </div>
                 }
@@ -38454,6 +38511,13 @@ else
 
     private HashSet<Guid> _likedByMe = [];
 
+    private Dictionary<Guid, string> _myCommentsByItem = new();
+
+    private int? _commentBodyCap;
+    private string _commentDraft = string.Empty;
+    private string? _commentNotice;
+    private string? _commentOutcome;
+
     private IReadOnlyList<SittingMemberSummary> _roster = [];
     private TableSittingSummary? _sitting;
     private Guid? _myOrderIdentifier;
@@ -38605,6 +38669,16 @@ else
         _likedByMe = _person is { } person
             ? (await MenuItemReactionReads.ListLikedByAsync(person, _stopping)).ToHashSet()
             : [];
+
+        _myCommentsByItem = new();
+
+        if (_person is { } author)
+        {
+            _myCommentsByItem = (await MenuItemCommentReads.ListForPersonAsync(author, _stopping))
+                .ToDictionary(comment => comment.MenuItemIdentifier, comment => comment.Body);
+        }
+
+        _commentBodyCap ??= await MenuItemCommentReads.ReadDeclaredBodyCapAsync(_stopping);
     }
 
     private bool IsLikedByMe(MenuItemSummary item) => _likedByMe.Contains(item.MenuItemIdentifier);
@@ -38631,12 +38705,87 @@ else
         }
     }
 
+    private string StandingComment(Guid? menuItemIdentifier)
+        => menuItemIdentifier is { } identifier
+            && _myCommentsByItem.TryGetValue(identifier, out string? body)
+                ? body
+                : string.Empty;
+
+    private bool HasStandingComment(MenuItemSummary item)
+        => _myCommentsByItem.ContainsKey(item.MenuItemIdentifier);
+
+    private async Task SaveCommentAsync(MenuItemSummary item)
+    {
+        if (_person is not { } person)
+        {
+            return;
+        }
+
+        SubmitMenuItemCommentResult result = await MenuItemCommentWrites.SubmitAsync(
+            item.MenuItemIdentifier, person, _commentDraft, _stopping);
+
+        if (result.Submitted)
+        {
+            string stored = result.Body ?? string.Empty;
+
+            _myCommentsByItem[item.MenuItemIdentifier] = stored;
+            _commentDraft = stored;
+        }
+
+        _commentOutcome = result.Outcome.ToString();
+
+        _commentNotice = result.Outcome switch
+        {
+            SubmitMenuItemCommentOutcome.Submitted =>
+                "Saved. Only staff read it, and you can change it or withdraw it whenever you like.",
+            SubmitMenuItemCommentOutcome.NoChange =>
+                "That is word for word what you had already said, so nothing was written.",
+            SubmitMenuItemCommentOutcome.BodyBlank =>
+                "There is nothing here to save. Write something, or press Withdraw to take back what"
+                + " you said before.",
+            SubmitMenuItemCommentOutcome.BodyOverCap =>
+                "That is longer than this box can store. Shorten it and save again.",
+            _ => "This dish has come off the menu, so there is nothing left to say it about.",
+        };
+    }
+
+    private async Task WithdrawCommentAsync(MenuItemSummary item)
+    {
+        if (_person is not { } person)
+        {
+            return;
+        }
+
+        WithdrawMenuItemCommentOutcome outcome = await MenuItemCommentWrites.WithdrawAsync(
+            item.MenuItemIdentifier, person, _stopping);
+
+        if (outcome is WithdrawMenuItemCommentOutcome.Withdrawn)
+        {
+            _myCommentsByItem.Remove(item.MenuItemIdentifier);
+            _commentDraft = string.Empty;
+        }
+
+        _commentOutcome = outcome.ToString();
+
+        _commentNotice = outcome switch
+        {
+            WithdrawMenuItemCommentOutcome.Withdrawn =>
+                "Withdrawn. Staff no longer see it; that you wrote it and took it back stays in the log.",
+            WithdrawMenuItemCommentOutcome.NoComment =>
+                "You have not said anything about this one.",
+            _ => "This dish has come off the menu, so there is nothing left to withdraw.",
+        };
+    }
+
     private void ChooseItem(MenuItemSummary item)
     {
         _pickedMenuItemIdentifier =
             _pickedMenuItemIdentifier == item.MenuItemIdentifier ? null : item.MenuItemIdentifier;
 
         _stagingNotice = null;
+        _commentNotice = null;
+        _commentOutcome = null;
+        _commentDraft = StandingComment(_pickedMenuItemIdentifier);
     }
 
     private void StageItem()
@@ -44685,8 +44834,8 @@ public sealed record RestaurantClockSnapshot(
 
 --- METADATA ---
   Relative path:         src/MyRestaurant.WebApplication/wwwroot/app.css
-  Size:                  39.3 KiB (40208 bytes)
-  SHA-256:               6aaf8879a6dc29b90c7da61a5af14d34c8e9890ccda25dd0e72b128850bedafa
+  Size:                  40.0 KiB (40981 bytes)
+  SHA-256:               49ee257b4f6d73030e3331745a931effbb889e44e0d4e2842f6d158e68c520c2
 
 --- CONTENT ---
 :root {
@@ -45048,7 +45197,8 @@ body {
     margin: 0 0 1.1rem;
 }
 
-.form-field label {
+.form-field label,
+.order-menu-comment-label {
     display: block;
     margin-bottom: 0.3rem;
     font-size: 0.85rem;
@@ -45059,7 +45209,8 @@ body {
 .form-field input,
 .form-field select,
 .form-field textarea,
-.order-basket-quantity input {
+.order-basket-quantity input,
+.order-menu-comment-body {
     width: 100%;
     min-height: var(--touch-target);
     padding: 0.6rem 0.75rem;
@@ -45071,7 +45222,8 @@ body {
     border-radius: 8px;
 }
 
-.form-field textarea {
+.form-field textarea,
+.order-menu-comment-body {
     min-height: 5.5rem;
     line-height: 1.5;
     resize: vertical;
@@ -45080,7 +45232,8 @@ body {
 .form-field input:focus-visible,
 .form-field select:focus-visible,
 .form-field textarea:focus-visible,
-.order-basket-quantity input:focus-visible {
+.order-basket-quantity input:focus-visible,
+.order-menu-comment-body:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 1px;
     border-color: var(--accent);
@@ -46388,7 +46541,9 @@ a:focus-visible,
     margin: 0.8rem 0 0;
 }
 
-.order-menu-like {
+.order-menu-like,
+.order-menu-comment-save,
+.order-menu-comment-withdraw {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
@@ -46399,7 +46554,7 @@ a:focus-visible,
     background-color: var(--surface);
     color: var(--ink-soft);
     font: inherit;
-    font-size: 0.95rem;
+    font-size: 1rem;
     cursor: pointer;
 }
 
@@ -46408,7 +46563,9 @@ a:focus-visible,
     color: var(--danger-ink);
 }
 
-.order-menu-like:focus-visible {
+.order-menu-like:focus-visible,
+.order-menu-comment-save:focus-visible,
+.order-menu-comment-withdraw:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
 }
@@ -46426,6 +46583,32 @@ a:focus-visible,
 
 .order-menu-like-label {
     font-weight: 600;
+}
+
+.order-menu-comment {
+    margin: 0.8rem 0 0;
+    padding: 0.8rem 0 0;
+    border-top: 1px solid var(--accent-hairline);
+}
+
+.order-menu-comment-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.6rem 0 0;
+}
+
+.order-menu-comment-save {
+    border-color: var(--accent-hairline);
+    background-color: var(--accent-surface);
+    color: var(--accent-strong);
+    font-weight: 600;
+}
+
+.order-menu-comment-notice {
+    margin: 0.6rem 0 0;
+    font-size: 0.9rem;
+    color: var(--ink-soft);
 }
 
 .order-basket-empty {
@@ -69053,8 +69236,8 @@ internal static class EnhancedNavigation
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/HandheldReach.cs
-  Size:                  16.3 KiB (16668 bytes)
-  SHA-256:               8f10f1bd60aa72ef81e1a8a7e15d90febcddd288c70a7032f67cfdb341296874
+  Size:                  16.8 KiB (17223 bytes)
+  SHA-256:               995c1eede1ebec92af6357c4b4dddbbe9f7feca8309d1f5d0133172afb4f9ae5
 
 --- CONTENT ---
 using System.Globalization;
@@ -69127,6 +69310,9 @@ internal sealed record HandheldSurface(
             HandheldSelector.Required("#table-order-surface button.order-menu-choice"),
             HandheldSelector.Required("#table-order-surface button.order-menu-inspect"),
             HandheldSelector.Required("#table-order-surface button.order-menu-like"),
+            HandheldSelector.Required("#table-order-surface button.order-menu-comment-save"),
+            HandheldSelector.Required("#table-order-surface button.order-menu-comment-withdraw"),
+            HandheldSelector.Required("#table-order-surface textarea.order-menu-comment-body"),
             HandheldSelector.Required("#table-order-surface .order-picker .form-actions button"),
             HandheldSelector.Required("#table-order-surface .order-basket-controls button"),
             HandheldSelector.Required("#table-order-surface .order-send button"),
@@ -69137,6 +69323,9 @@ internal sealed record HandheldSurface(
         [
             HandheldSelector.Required("#table-order-surface input[type=\"text\"]"),
             HandheldSelector.Required("#table-order-surface input[type=\"number\"]"),
+            HandheldSelector.Required("#table-order-surface textarea"),
+            HandheldSelector.Required("#table-order-surface .order-menu-detail-actions button"),
+            HandheldSelector.Required("#table-order-surface .order-menu-comment-actions button"),
         ],
         [
             HandheldSelector.Required("#table-order-surface img.order-menu-thumbnail"),
@@ -72283,8 +72472,8 @@ internal static class TableJourneys
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/TableOrderJourneys.cs
-  Size:                  49.6 KiB (50771 bytes)
-  SHA-256:               96d857972b319febf3bc57a05c0aa29a0284fef82bc393f928ed3d9c8153561a
+  Size:                  53.6 KiB (54855 bytes)
+  SHA-256:               c77ab77f2e4ad7b26f198e408526e10ebf3d88702e5682aa34431323d639cefc
 
 --- CONTENT ---
 using System.Globalization;
@@ -72391,6 +72580,20 @@ internal static class TableOrderJourneys
 
     private const string LikeControlSelector =
         "#table-order-surface div.order-menu-detail button.order-menu-like";
+
+    private const string CommentBoxSelector =
+        "#table-order-surface div.order-menu-detail textarea.order-menu-comment-body";
+
+    private const string CommentSaveSelector =
+        "#table-order-surface div.order-menu-detail button.order-menu-comment-save";
+
+    private const string CommentWithdrawSelector =
+        "#table-order-surface div.order-menu-detail button.order-menu-comment-withdraw";
+
+    private const string CommentNoticeSelector =
+        "#table-order-surface div.order-menu-detail p.order-menu-comment-notice";
+
+    private const string CommentOutcomeAttribute = "data-comment-outcome";
 
     private const string RemovalCheckboxSelector = "#table-order-surface label.order-line-remove";
 
@@ -72751,6 +72954,104 @@ internal static class TableOrderJourneys
                 $"The like control still reports {was} {timeout.TotalSeconds:F0}s after it was pressed."
                 + $" A press writes one row and re-renders this island; nothing about it waits on a"
                 + $" broadcast, because a reaction deliberately publishes none (§9)."));
+    }
+
+    internal static async Task<string?> ReadChosenItemCommentAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator box = page.Locator(CommentBoxSelector);
+
+        if (await box.CountAsync() == 0)
+        {
+            return null;
+        }
+
+        return await box.First.InputValueAsync();
+    }
+
+    internal static async Task<string> SaveCommentAsync(IPage page, string body, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator box = page.Locator(CommentBoxSelector);
+
+        if (await box.CountAsync() == 0)
+        {
+            throw new InvalidOperationException(
+                "There is no comment box to write in: §11.1 renders it inside the detail panel beside"
+                + " the like, so a dish has to be chosen first.");
+        }
+
+        string? before = await ReadCommentOutcomeAsync(page);
+
+        await box.First.FillAsync(body);
+        await page.Locator(CommentSaveSelector).First.ClickAsync();
+
+        return await WaitForCommentOutcomeAsync(page, before, timeout, "saving a comment");
+    }
+
+    internal static async Task<string> WithdrawCommentAsync(IPage page, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator control = page.Locator(CommentWithdrawSelector);
+
+        if (await control.CountAsync() == 0)
+        {
+            throw new InvalidOperationException(
+                "There is no withdraw control in this panel. §11.1 renders it only where a standing"
+                + " comment exists, because §7's withdrawal verb refuses when there is nothing to"
+                + " withdraw — so a scenario that wants to press it has to have saved something"
+                + " first.");
+        }
+
+        string? before = await ReadCommentOutcomeAsync(page);
+
+        await control.First.ClickAsync();
+
+        return await WaitForCommentOutcomeAsync(page, before, timeout, "withdrawing a comment");
+    }
+
+    private static async Task<string?> ReadCommentOutcomeAsync(IPage page)
+    {
+        ILocator notice = page.Locator(CommentNoticeSelector);
+
+        if (await notice.CountAsync() == 0)
+        {
+            return null;
+        }
+
+        return await notice.First.GetAttributeAsync(CommentOutcomeAttribute);
+    }
+
+    private static async Task<string> WaitForCommentOutcomeAsync(
+        IPage page,
+        string? before,
+        TimeSpan timeout,
+        string whatWasPressed)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (await ReadCommentOutcomeAsync(page) is { } outcome
+                && !string.Equals(outcome, before, StringComparison.Ordinal))
+            {
+                return outcome;
+            }
+
+            await Task.Delay(PollInterval);
+        }
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"§11.1 reported no new outcome {timeout.TotalSeconds:F0}s after {whatWasPressed}"
+                + $" (it still reads '{before ?? "nothing"}'). The surface declares the verdict beside"
+                + $" the sentence so a scenario reads the outcome rather than the copywriting; a press"
+                + $" that produces neither is the @onclick landing on no circuit, which"
+                + $" WaitForLiveSurfaceAsync is supposed to have ruled out before this."));
     }
 
     internal static async Task<IReadOnlyList<MenuCard>> WaitForMenuAsync(
@@ -74236,8 +74537,8 @@ public sealed class MenuPictureScenarios : IClassFixture<RestaurantHarness>
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/MenuReactionScenarios.cs
-  Size:                  8.1 KiB (8276 bytes)
-  SHA-256:               dc876203eb781cd700061c1a239bb58acddded6dbb26235f5a2d9f9177a18b37
+  Size:                  9.7 KiB (9891 bytes)
+  SHA-256:               26996661ad440068dafecf2932deea414e532c1011bac8ff6d1588acb6188d58
 
 --- CONTENT ---
 using Microsoft.Playwright;
@@ -74254,10 +74555,14 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
 
     private const int WideFixtureEdge = 400;
 
+    private const string FirstComment = "It is off tonight and it is still the best thing here.";
+
+    private const string SecondComment = "Ask them to keep one back for me next time.";
+
     public MenuReactionScenarios(RestaurantHarness harness) => _harness = harness;
 
     [Fact]
-    public async Task Guest_LikesADish_AndTheOpinionSurvivesAReload()
+    public async Task Guest_LikesADish_SaysWhatTheyThought_AndBothSurviveAReload()
     {
         SkipUnlessHarnessAvailable();
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -74332,6 +74637,43 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
 
         Assert.Null(await AdministrationJourneys.ReadMenuIndexLikeCountAsync(
             administrator, salmon.Identifier));
+
+        Assert.Equal(string.Empty, await TableOrderJourneys.ReadChosenItemCommentAsync(guest));
+
+        Assert.Equal(
+            "Submitted",
+            await TableOrderJourneys.SaveCommentAsync(
+                guest, FirstComment + "   ", InteractivityPatience));
+
+        Assert.Equal(FirstComment, await TableOrderJourneys.ReadChosenItemCommentAsync(guest));
+
+        await ReopenTheMenuAsync(guest, salmon);
+
+        Assert.Equal(FirstComment, await TableOrderJourneys.ReadChosenItemCommentAsync(guest));
+
+        await TableOrderJourneys.ChooseAsync(guest, pudding);
+
+        Assert.Equal(string.Empty, await TableOrderJourneys.ReadChosenItemCommentAsync(guest));
+
+        await TableOrderJourneys.ChooseAsync(guest, salmon);
+
+        Assert.Equal(FirstComment, await TableOrderJourneys.ReadChosenItemCommentAsync(guest));
+
+        Assert.Equal(
+            "NoChange",
+            await TableOrderJourneys.SaveCommentAsync(guest, FirstComment, InteractivityPatience));
+
+        Assert.Equal(
+            "Withdrawn",
+            await TableOrderJourneys.WithdrawCommentAsync(guest, InteractivityPatience));
+
+        await ReopenTheMenuAsync(guest, salmon);
+
+        Assert.Equal(string.Empty, await TableOrderJourneys.ReadChosenItemCommentAsync(guest));
+
+        Assert.Equal(
+            "Submitted",
+            await TableOrderJourneys.SaveCommentAsync(guest, SecondComment, InteractivityPatience));
 
         await KitchenJourneys.OpenAsync(administrator, InteractivityPatience);
         await KitchenJourneys.EightySixAsync(administrator, salmon.Name);
@@ -83005,6 +83347,328 @@ public sealed class MenuGroupingTests
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemCommentSurfaceContractTests.cs
+################################################################################
+
+--- METADATA ---
+  Relative path:         tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemCommentSurfaceContractTests.cs
+  Size:                  13.4 KiB (13739 bytes)
+  SHA-256:               6ac9a6c2bf90d2a801f17ffa1d62a65fa85050264c035ed33cf09365c204996e
+
+--- CONTENT ---
+using System.Text.RegularExpressions;
+using Xunit;
+
+namespace MyRestaurant.WebApplication.Tests.Menu;
+
+public sealed class MenuItemCommentSurfaceContractTests
+{
+    private const string SolutionFileName = "MyRestaurant.slnx";
+
+    private const string GuestPageRelativePath =
+        "src/MyRestaurant.WebApplication/Components/Pages/Table/TableOrderSurface.razor";
+
+    private const string WorkflowRelativePath =
+        "src/MyRestaurant.WebApplication/Menu/MenuWorkflow.cs";
+
+    private const string MigrationRelativePath =
+        "src/MyRestaurant.DataAccess/Migrations/0009_menu_item_comments.sql";
+
+    private const string CapConstraintName = "menu_item_comment_event_body_within_cap";
+
+    private const string CapRead = "ReadDeclaredBodyCapAsync(";
+
+    private const string PerPersonRead = "ListForPersonAsync(";
+
+    private const string WholeMenuRead = "ListAsync(";
+
+    private const string BoxClass = "order-menu-comment-body";
+
+    private const string SaveControlClass = "order-menu-comment-save";
+
+    private const string WithdrawControlClass = "order-menu-comment-withdraw";
+
+    private const string PanelClass = "order-menu-detail";
+
+    private const string CardChoiceClass = "order-menu-choice";
+
+    private const string BlankOutcome = "SubmitMenuItemCommentOutcome.BodyBlank";
+
+    private const string WithdrawCall = "WithdrawAsync(";
+
+    private const string SaveHandlerSignature = "private async Task SaveCommentAsync(";
+
+    private static readonly Regex InjectedCommentDirectory =
+        new(@"@inject\s+IMenuItemCommentDirectory\s+(\w+)");
+
+    private static readonly Regex DeclaredCap =
+        new($@"{CapConstraintName}[\s\S]*?<=\s*([0-9]+)", RegexOptions.Singleline);
+
+    private static readonly Regex CommentBoxTag =
+        new($@"<textarea[^>]*{BoxClass}[^>]*>", RegexOptions.Singleline);
+
+    private static readonly Regex MaximumLengthAttribute = new(@"maxlength=""([^""]*)""");
+
+    [Fact]
+    public void TheGuestSurface_TakesBothCommentServices_AndRendersExactlyOneCommentBox()
+    {
+        string page = GuestPage();
+
+        Assert.Contains("@inject IMenuItemCommentDirectory", page, StringComparison.Ordinal);
+        Assert.Contains("@inject IMenuItemComments ", page, StringComparison.Ordinal);
+
+        int boxes = Occurrences(page, $"class=\"{BoxClass}\"");
+
+        Assert.True(
+            boxes == 1,
+            $"§11.1 renders exactly one comment box; the markup holds {boxes}. Two is what a copy of"
+            + " the block onto the card leaves behind, and the card is the one place it must not be"
+            + " (see the nesting fact). Zero is Stage 6d unbuilt, and every prohibition below would"
+            + " then be asserting nothing.");
+
+        int save = Occurrences(page, $"class=\"{SaveControlClass}\"");
+        int withdraw = Occurrences(page, $"class=\"{WithdrawControlClass}\"");
+
+        Assert.True(
+            save == 1 && withdraw == 1,
+            $"§11.1 renders one save control and one withdraw control; the markup holds {save} and"
+            + $" {withdraw}. They are separate verbs because §7 makes them separate events, and a"
+            + " surface with one control cannot express both.");
+    }
+
+    [Fact]
+    public void TheCommentBox_SitsInsideTheDetailPanel_AndNotInsideTheCardButton()
+    {
+        string page = GuestPage();
+
+        int cardOpen = page.IndexOf($"class=\"{CardChoiceClass}\"", StringComparison.Ordinal);
+        Assert.True(cardOpen >= 0, $"the guest menu no longer renders a '{CardChoiceClass}' card.");
+
+        int cardClose = page.IndexOf("</button>", cardOpen, StringComparison.Ordinal);
+        Assert.True(cardClose > cardOpen, "the card's <button> is unterminated.");
+
+        string card = page[cardOpen..cardClose];
+
+        Assert.False(
+            card.Contains(BoxClass, StringComparison.Ordinal),
+            "the comment box is inside the card's <button>. A browser will not keep that markup — a"
+            + " <textarea> is interactive content and a button may hold none, so the parser lifts it"
+            + " out and the card splits — and even where it rendered, a box on sixty cards is sixty"
+            + " boxes read from a phone. §11.1 puts it in the detail panel, beside the like, on the"
+            + " reasoning that put the like there.");
+
+        int panel = page.IndexOf($"class=\"{PanelClass}\"", StringComparison.Ordinal);
+        Assert.True(panel >= 0, $"the guest menu no longer renders a '{PanelClass}' panel.");
+
+        int box = page.IndexOf($"class=\"{BoxClass}\"", StringComparison.Ordinal);
+
+        Assert.True(
+            box > panel,
+            "the comment box is rendered before §11.1's detail panel opens, so it is not inside it."
+            + " The panel is the only part of this surface that exists per chosen dish; a box outside"
+            + " it belongs to no dish and would save the same words against whichever one was picked"
+            + " last.");
+    }
+
+    [Fact]
+    public void TheGuestSurface_ReadsItsOwnComments_AndNeverTheStaffFacingRead()
+    {
+        string page = GuestPage();
+
+        Match injected = InjectedCommentDirectory.Match(page);
+
+        Assert.True(
+            injected.Success,
+            $"§11.1's surface does not inject IMenuItemCommentDirectory, so the two markers below"
+            + " have no receiver to qualify and the prohibition cannot be written. This fact keys on"
+            + " the identifier the page gave the service rather than on a bare method name, and the"
+            + " reason is that ListAsync( is declared by three of the menu directories, two of which"
+            + " this component reads — a marker without the receiver would forbid the menu read and"
+            + " the picture read that §11.1 requires.");
+
+        string receiver = injected.Groups[1].Value;
+
+        Assert.True(
+            page.Contains($"{receiver}.{PerPersonRead}", StringComparison.Ordinal),
+            $"§11.1's surface never calls {receiver}.{PerPersonRead}. §7 renders a guest their own"
+            + " standing comment and nobody else's, so this read is the whole of the guest's half of"
+            + " Stage 6d — and without it the prohibition below is asserting nothing.");
+
+        Assert.False(
+            page.Contains($"{receiver}.{WholeMenuRead}", StringComparison.Ordinal),
+            $"§11.1's surface calls {receiver}.{WholeMenuRead}, which answers with every comment"
+            + " every guest has left. §7 rules a comment staff-facing and that ruling is what makes"
+            + " the moderation question not arise: nothing a guest writes is rendered to another"
+            + " guest, so there is nobody to moderate on behalf of. This read would render one"
+            + " guest's words to another, and the plan's fourth Stage 6 row is what has to be"
+            + " reopened before any surface does that.");
+    }
+
+    [Fact]
+    public void TheBodyCapIsTheSchemasAndTheSurfaceAsksTheDirectoryForIt()
+    {
+        string page = GuestPage();
+
+        Match declared = DeclaredCap.Match(Migration());
+
+        Assert.True(
+            declared.Success,
+            $"{MigrationRelativePath} no longer declares a bound in {CapConstraintName}, so there is"
+            + " no number for this fact to look for. §7 says the cap is the schema's and is stated"
+            + " once; the constraint is that one place.");
+
+        Assert.True(
+            page.Contains(CapRead, StringComparison.Ordinal),
+            $"§11.1's surface never calls {CapRead}, so whatever `maxlength` it renders is a second"
+            + " copy of §8.2's bound rather than the bound itself (F-107).");
+
+        Match box = CommentBoxTag.Match(page);
+
+        Assert.True(box.Success, $"the comment box is no longer a <textarea> carrying '{BoxClass}'.");
+
+        Match attribute = MaximumLengthAttribute.Match(box.Value);
+
+        Assert.True(
+            attribute.Success && attribute.Groups[1].Value.StartsWith('@'),
+            "the comment box's maxlength is not an expression. The client's cap is an optimisation"
+            + " and the refusal is the server's, exactly as §7 already rules for a picture's bytes —"
+            + " so the attribute states what the schema declared, and where the read cannot answer,"
+            + " no attribute is rendered at all rather than a number nobody checked.");
+
+        string capValue = declared.Groups[1].Value;
+
+        Assert.False(
+            page.Contains(capValue, StringComparison.Ordinal),
+            $"§11.1's surface writes the number {capValue}, which is the bound"
+            + $" {CapConstraintName} declares. §7 says the cap travels rather than being copied — the"
+            + " read above asks `pg_get_constraintdef` for it and the write service recognises the"
+            + " refusal by the constraint's name (F-107). This claim is over this one file rather"
+            + " than over the tree, and the reason is recorded as a residual: 1000 is not a"
+            + " distinctive number and two files in `wwwroot/js` write it as a millisecond count, so"
+            + " the picture cap's tree-wide twin cannot be written here without reporting them.");
+    }
+
+    [Fact]
+    public void ABlankSaveIsRefused_AndIsNeverTreatedAsAWithdrawal()
+    {
+        string page = GuestPage();
+
+        Assert.True(
+            page.Contains(BlankOutcome, StringComparison.Ordinal),
+            $"§11.1's save path does not name {BlankOutcome}, so an empty box falls to whatever the"
+            + " catch-all arm says — which on this surface is a sentence about the dish having come"
+            + " off the menu. The write service decided this outcome in Stage 6c and the surface owes"
+            + " it a sentence of its own.");
+
+        Assert.True(
+            page.Contains(WithdrawCall, StringComparison.Ordinal),
+            $"§11.1's surface never calls {WithdrawCall}, so the prohibition below is asserting"
+            + " nothing and §7's withdrawal verb has no control.");
+
+        string save = BodyOf(page, SaveHandlerSignature);
+
+        Assert.False(
+            save.Contains(WithdrawCall, StringComparison.Ordinal),
+            "§11.1's save path reaches the withdrawal verb. Clearing the box and pressing Save is"
+            + " what somebody will do, and treating it as a withdrawal makes the surface a second"
+            + " authority on what withdrawal means — the write service already refuses a blank body"
+            + " by name. One verb per intent: the refusal names the control that does withdraw, and"
+            + " nothing is written until it is pressed.");
+    }
+
+    [Fact]
+    public void TheMenuWorkflow_NeverReachesTheCommentWrite()
+    {
+        string workflow = File.ReadAllText(PathUnder(WorkflowRelativePath));
+
+        Assert.Contains("IMenuWorkflow", workflow, StringComparison.Ordinal);
+        Assert.Contains("MenuChanged", workflow, StringComparison.Ordinal);
+
+        foreach (string forbidden in new[] { "IMenuItemComments", "SubmitAsync" })
+        {
+            Assert.False(
+                workflow.Contains(forbidden, StringComparison.Ordinal),
+                $"MenuWorkflow mentions {forbidden}. A comment publishes nothing (§7, §9), for the"
+                + " reaction's reason: §9's MenuChanged means re-read the menu, and an opinion has"
+                + " not changed the menu. A verb behind the workflow would make one guest's sentence"
+                + " re-read the whole menu on every phone in the building. The symptom is load, not"
+                + " an error, which is why this is a test rather than a comment.");
+        }
+    }
+
+    private static string GuestPage() => File.ReadAllText(PathUnder(GuestPageRelativePath));
+
+    private static string Migration() => File.ReadAllText(PathUnder(MigrationRelativePath));
+
+    private static string BodyOf(string source, string signature)
+    {
+        int at = source.IndexOf(signature, StringComparison.Ordinal);
+
+        Assert.True(at >= 0, $"'{signature}' is not in the source this fact was written about.");
+
+        int open = source.IndexOf('{', at);
+
+        Assert.True(open > at, $"'{signature}' has no body.");
+
+        int depth = 0;
+
+        for (int index = open; index < source.Length; index++)
+        {
+            if (source[index] == '{')
+            {
+                depth++;
+            }
+            else if (source[index] == '}')
+            {
+                depth--;
+
+                if (depth == 0)
+                {
+                    return source[open..index];
+                }
+            }
+        }
+
+        throw new InvalidOperationException($"'{signature}' has an unterminated body.");
+    }
+
+    private static int Occurrences(string text, string value)
+    {
+        int found = 0;
+
+        for (int at = text.IndexOf(value, StringComparison.Ordinal);
+             at >= 0;
+             at = text.IndexOf(value, at + value.Length, StringComparison.Ordinal))
+        {
+            found++;
+        }
+
+        return found;
+    }
+
+    private static string PathUnder(string relativePath)
+        => Path.Combine(
+            FindRepositoryRoot().FullName,
+            relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+    private static DirectoryInfo FindRepositoryRoot()
+    {
+        for (DirectoryInfo? candidate = new(AppContext.BaseDirectory);
+             candidate is not null;
+             candidate = candidate.Parent)
+        {
+            if (File.Exists(Path.Combine(candidate.FullName, SolutionFileName)))
+            {
+                return candidate;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Walked up from '{AppContext.BaseDirectory}' without finding {SolutionFileName}.");
+    }
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemImageContentTypeContractTests.cs
 ################################################################################
 
@@ -89782,10 +90446,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 388
-  Total size     : 3.4 MiB (3544897 bytes)
+  Files dumped   : 389
+  Total size     : 3.4 MiB (3589314 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-27T08:35:40-04:00
+  Completed at   : 2026-08-27T09:34:30-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
