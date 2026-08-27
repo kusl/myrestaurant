@@ -33,9 +33,12 @@ A menu with headings, a description under each dish, a photograph beside it, and
 | **5a** | likes: the schema and the data access | landed, M6 Slice 57 |
 | **5b** | likes: the guest's control | landed, M6 Slice 58 |
 | **5c** | likes: a dish that is off tonight | landed, M6 Slice 60 |
-| **6** | guest comments | **open** — the only stage not yet built |
+| **6** | guest comments | open (in progress) |
 | **6a** | the rate limiter takes a second policy | landed, M6 Slice 62 (prerequisite 1) |
 | **6b** | the rendering rule stops being a sentence | landed, M6 Slice 63 (prerequisite 2) |
+| **6c** | comments: the schema and the data access | landed, M6 Slice 68 |
+| **6d** | comments: the guest's control | open |
+| **6e** | comments: the staff read | open |
 
 ## The rulings that outlive their stages
 
@@ -56,12 +59,26 @@ These are the parts of the plan worth keeping after the stage landed. Each is em
 | The like control is in the item's detail panel, never on its card | §11.1 |
 | A reaction publishes nothing, because the menu has not changed | §7, §9 |
 | The kitchen's 86 panel obeys the opposite of §11.1's rule, and that is required rather than permitted | §11.2 |
+| A comment is filed against the item and never against an order line | §7 |
+| A comment is staff-facing; a guest sees only their own | §7 |
+| One standing comment per person per dish; editing is resubmission and every version is kept | §7, §8.2 |
+| A withdrawn comment stops being rendered and stays in the log | §7, §8.3 |
+| The comment length cap is the schema's and is stated once | §7, §8.2 |
 
-## Stage 6 — guest comments, and what is still to settle
+## Stage 6 — guest comments, and what is settled
 
-**This is the only stage not built.** Two prerequisites were discharged ahead of it, each in its own slice, because both were wanted regardless of whether comments ever ship.
+**Two prerequisites were discharged ahead of it**, each in its own slice, because both were wanted regardless of whether comments ever shipped.
 
 - **Prerequisite 1 — a refusal an endpoint decides (Slice 62).** `/register` had been documented as rate-limited for eleven slices without being rate-limited. The limiter now takes a second policy and refuses at the endpoint rather than on a page, so a comment surface has somewhere to attach.
 - **Prerequisite 2 — the rendering rule stops being a sentence (Slice 63).** Guest-authored text is the first content in this application written by somebody who is not staff, so "it is rendered as text and never as markup" had to become a gate rather than a paragraph. `RawHtmlContractTests` asserts that raw HTML has a closed set of sources and that none of them is a person.
 
-**What is still open before a comment can be written.** Who may read a comment and for how long; whether a comment is attached to an item or to an order line; whether staff may reply, and if so under which role; and what moderation means for an append-only log — a comment cannot be edited out of history any more than an order line can (§6.7, F-10b). None of these is decidable from the request as it was made, so none is written down as though it were.
+**The four open questions, and how Slice 68 settled three of them.** Each is decided in §7 and the reason is there rather than here.
+
+| Question | Ruling | Why |
+|---|---|---|
+| Attached to an item or to an order line? | the item | An opinion needs no purchase, which the like already settled; and an order line's log carries §6.7's correction rules a comment has no business inheriting. |
+| Who may read it, and for how long? | staff, and for as long as the log | §11.4's like-count ruling applied to text. Retention is the order log's, because inventing one policy for one table is how two policies start. |
+| May staff reply? | not built | A reply makes a thread, a thread makes a conversation, and a conversation needs a role, a notification and a moderation rule. Deferred, and named as deferred. |
+| What does moderation mean for an append-only log? | the question does not arise | Nothing a guest writes is rendered to another guest, so there is nobody to moderate on behalf of. Should Stage 6d or a later stage ever show one guest another's words, this row is what has to be reopened first — and it is the reason that surface is not in 6c. |
+
+**What is left.** Stage 6d is the guest's own control, in §11.1's detail panel beside the like, on the same reasoning that put the like there. Stage 6e is the staff read. Neither is startable from `docs/TECHNICAL_SPECIFICATION.md` alone until the surface rulings are written, and both are ordinary stage work rather than blocked work.

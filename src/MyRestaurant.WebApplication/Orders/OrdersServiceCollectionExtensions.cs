@@ -27,6 +27,9 @@ public static class OrdersServiceCollectionExtensions
         services.AddScoped<IMenuItemReactionDirectory, DapperMenuItemReactionDirectory>();
         services.AddScoped<IMenuItemReactions, DapperMenuItemReactions>();
 
+        services.AddScoped<IMenuItemCommentDirectory, DapperMenuItemCommentDirectory>();
+        services.AddScoped<IMenuItemComments, DapperMenuItemComments>();
+
         services.AddScoped<IOrderMutations, DapperOrderMutations>();
         services.AddScoped<IOrderReadModel, DapperOrderReadModel>();
         services.AddScoped<IOrderEventLog, DapperOrderEventLog>();

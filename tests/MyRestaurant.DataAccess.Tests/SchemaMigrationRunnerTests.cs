@@ -22,6 +22,8 @@ public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture
         "public.menu_item_image_event",
         "public.menu_item_reaction_event",
         "public.menu_item_reaction_current",
+        "public.menu_item_comment_event",
+        "public.menu_item_comment_current",
         "public.guest_order",
         "public.order_event",
         "public.order_operation_line_added",

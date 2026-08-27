@@ -1,6 +1,6 @@
 # myrestaurant — Technical Specification
 
-**Version 1.52 — 2026-08-26 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
+**Version 1.53 — 2026-08-26 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
 
 This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md`. It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. Appendix A maps every ruling to its embodiment.
 
@@ -230,6 +230,10 @@ The picture is served on its own route and attached from the item's own page. `0
 **The browser resizes an oversized picture before the form posts it, and that is an optimisation rather than a check.** It never refuses anything: a refusal is the server's, and the client only ever makes the payload smaller. The server's cap is the one in §8.2 and it is enforced regardless of what the client did. The output is JPEG although §8.2 admits WebP, because the ground is the dining room — a phone that cannot encode WebP still has to be able to attach a photograph.
 
 **Reactions.** A person may like a dish. `menu_item_reaction_event` is an event table rather than a row per person, and `liked`/`unliked` is its vocabulary. Four rulings: liking does not require having ordered the dish, because `order_current_line` records what was eaten and a like records an opinion; the count is staff-facing and a guest sees only their own press, because a count of three on a menu of sixty items is noise that reads as a verdict; the control is in the item's detail panel and never on its card, because a card is a link target and a button inside a link target is a control nobody can press reliably; and a reaction publishes nothing, because §9's `MenuChanged` means *re-read the menu* and an opinion has not changed the menu.
+
+**Comments.** A person may say what they thought of a dish. `menu_item_comment_event` is an event table on `menu_item_reaction_event`'s shape and `submitted`/`withdrawn` is its vocabulary. Six rulings, and the first two are what make the rest small. *A comment is filed against the item and never against an order line*, because `order_current_line` records what was eaten and a comment records an opinion — the same argument the like already settled — and because an order line lives in an append-only log whose settled total is a snapshot, so a comment hanging off one would inherit §6.7's correction rules for no reason anybody asked for. *A comment is staff-facing and a guest sees only their own*, which is §11.4's ruling for the like count applied to text: nothing a guest writes is rendered to another guest, so there is no moderation question to answer and none is invented here. *One standing comment per person per dish*, which is why the fold partitions on `(menu_item_identifier, person_identifier)` exactly as the reaction's does — a thread per person per dish is a conversation, and a conversation needs staff replies, which this stage does not build. *Editing is resubmission and withdrawal is an event*: every version is kept and a withdrawn comment stops being rendered without leaving the log, because a comment cannot be edited out of history any more than an order line can (F-10b, §6.7). *The stored body is trimmed*, and the reason is mechanical rather than tidiness — HTML collapses leading and trailing whitespace, so storing it stores a difference nobody can see, and two bodies that render identically would then compare unequal and defeat the no-op rule this verb shares with every other menu verb. *The length cap is the schema's and is stated once*: `menu_item_comment_event_body_within_cap` is the only place in this repository that says how long a comment may be, `ReadDeclaredBodyCapAsync` asks `pg_get_constraintdef` for the bound, and the writer recognises the refusal by constraint name (**F-107**).
+
+A comment publishes nothing, for the reaction's reason: §9's `MenuChanged` means *re-read the menu* and an opinion has not changed the menu.
 
 **Two rules survive every menu rewrite.** A deactivated item stays in history and in every settled order that already names it — deactivation is not deletion (F-10b). And a price change is an event beside the order lines that already carry the old price; it never rewrites them (§6.7).
 
@@ -587,6 +591,41 @@ CREATE TABLE menu_item_reaction_event (
 CREATE INDEX menu_item_reaction_event_item_person_index
     ON menu_item_reaction_event (menu_item_identifier, person_identifier, occurred_at);
 
+-- 0009. menu_item_reaction_event's shape with one payload column, so the paired biconditional is back:
+-- 'submitted' carries a body and 'withdrawn' carries none, and the CHECK is an equality between two
+-- predicates rather than two implications, because an equality cannot be half-written. body is NULLABLE
+-- and that nullability IS the fold's answer — a standing comment is a row whose body is not null, which
+-- the biconditional makes exactly equivalent to "the last event was a submission" without the view
+-- having to filter on event_type after a DISTINCT ON it cannot filter after.
+--
+-- THREE named constraints over one column rather than one conjunction, because each is a different
+-- refusal an operator or a caller has to be able to tell apart: a vocabulary, a payload rule, a blank
+-- body, and a cap. The cap is the ONLY statement in this repository of how long a comment may be
+-- (F-107) and DapperMenuItemComments recognises it by conname, which is why it is named and separate:
+-- a conjunction would report the whole expression and the writer could not tell over-cap from blank.
+CREATE TABLE menu_item_comment_event (
+    menu_item_comment_event_identifier uuid PRIMARY KEY,
+    menu_item_identifier               uuid NOT NULL
+                                       REFERENCES menu_item (menu_item_identifier),
+    person_identifier                  uuid NOT NULL
+                                       REFERENCES person (person_identifier),
+    event_type                         text NOT NULL,
+    body                               text,
+    occurred_at                        timestamptz NOT NULL,
+    CONSTRAINT menu_item_comment_event_type_vocabulary CHECK (event_type IN
+        ('submitted', 'withdrawn')),
+    CONSTRAINT menu_item_comment_event_body_payload
+        CHECK ((event_type = 'submitted') = (body IS NOT NULL)),
+    CONSTRAINT menu_item_comment_event_body_not_blank
+        CHECK (body IS NULL OR btrim(body) <> ''),
+    CONSTRAINT menu_item_comment_event_body_within_cap
+        CHECK (body IS NULL OR length(body) <= 1000)
+);
+-- The reaction index's reasoning, unchanged: the fold's prefix is also the write's own lookup, and it is
+-- deliberately NOT UNIQUE on any prefix, because a person may comment, withdraw and comment again.
+CREATE INDEX menu_item_comment_event_item_person_index
+    ON menu_item_comment_event (menu_item_identifier, person_identifier, occurred_at);
+
 CREATE TABLE guest_order (
     guest_order_identifier   uuid PRIMARY KEY,
     table_sitting_identifier uuid NOT NULL REFERENCES table_sitting (table_sitting_identifier),
@@ -854,6 +893,28 @@ ORDER BY menu_item_identifier,
          person_identifier,
          occurred_at DESC,
          menu_item_reaction_event_identifier DESC;
+
+-- 0009. The reaction fold with a payload, and the event identifier is projected rather than only sorted
+-- on: §7 requires every menu read's order to end in an identifier, and a staff read of every standing
+-- comment orders by item and then by recency, which two comments stamped in one millisecond do not
+-- total on their own.
+--
+-- No WHERE clause, deliberately. DISTINCT ON has to see the withdrawal to know it is the latest row, so
+-- filtering here would return the submission BEFORE a withdrawal and report a withdrawn comment as
+-- standing. The caller filters on body IS NOT NULL instead, which the payload biconditional makes an
+-- exact test of "the last event was a submission".
+CREATE VIEW menu_item_comment_current AS
+SELECT DISTINCT ON (menu_item_identifier, person_identifier)
+    menu_item_comment_event_identifier,
+    menu_item_identifier,
+    person_identifier,
+    body,
+    occurred_at
+FROM menu_item_comment_event
+ORDER BY menu_item_identifier,
+         person_identifier,
+         occurred_at DESC,
+         menu_item_comment_event_identifier DESC;
 ```
 
 The bill (sum over `sitting_bill` for a sitting) **includes still-pending lines** by design; the counter reviews them before close (§5.3).
@@ -1151,7 +1212,7 @@ CI builds with `-p:ContinuousIntegrationBuild=true`, which flips `TreatWarningsA
 
 `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemReactionSurfaceContractTests.cs` — 7 assertions: §11.1's like control is in the item's detail panel and never on its card, and the guest surface never reads the count (**F-107**).
 
-`tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs` — 29 assertions: the menu's composition root registers every workflow, read and administration service the surfaces resolve.
+`tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs` — 30 assertions: the menu's composition root registers every workflow, read and administration service the surfaces resolve.
 
 `tests/MyRestaurant.WebApplication.Tests/Menu/MenuGroupingTests.cs` — 11 assertions: a flat item list becomes headings holding items, in §7's total order, with the identifier tail that makes the order total.
 
@@ -1174,6 +1235,8 @@ CI builds with `-p:ContinuousIntegrationBuild=true`, which flips `TreatWarningsA
 `tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemImageTests.cs` — 15 assertions: one picture per item enforced by the primary key, the byte cap enforced by the constraint, and no stored length or dimension beside bytes that already answer for themselves.
 
 `tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemReactionTests.cs` — 9 assertions: a like is an event rather than a row per person, `liked`/`unliked` is idempotent per person per item, and liking requires no prior order.
+
+`tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemCommentTests.cs` — 13 assertions: a comment is an event rather than a row per person, resubmission and withdrawal are both appends, the stored body is trimmed, and each of the four named constraints refuses its own forbidden shape by its own name — including the cap, which is read out of the constraint rather than written down (**F-107**).
 
 `tests/MyRestaurant.DataAccess.Tests/Menu/MenuAvailabilityTests.cs` — 7 assertions: a deactivated item stays in history and in every settled order that already names it — deactivation is not deletion (**F-10b**).
 
@@ -1217,8 +1280,6 @@ Accepted, by ruling or by design: token replay within ≤120 s (bounded by membe
 
 **Coordinated disclosure, and this section's part in it (F-42).** The project must offer a **private** channel for security reports, named in `SECURITY.md`, and that channel is the single exception to §18's no-outside-contributions rule. The asymmetry is the argument: refusing a feature costs the person who wanted it, and the AGPL has already given them the source and the freedom to build it; refusing a report costs an operator's *guests*, who never chose this software, cannot read `CONTRIBUTING.md`, and have no fork to run. **This section is part of the offer rather than a disclaimer.** Every ruling above was argued and written down, so `SECURITY.md` must send a reporter here first — a report that asks for one of them to be *re-ruled* is an argument and gets read as one; a report that presents one as news gets pointed back at the paragraph that decided it. What the project owes in return is stated as targets rather than as an SLA a single maintainer would miss, and the advisory is published when there is a release to upgrade to rather than held open-endedly. A fork operator is the security contact for their own instance, and `SECURITY.md` says so, because nothing here can reach their box, their data or their guests.
 
-The reason this is not a two-line addition, recorded so it is not rediscovered: the limiter is configured inside `AddRestaurantDisplays`, and `RateLimiterOptions.OnRejected` and `RejectionStatusCode` are single-valued. A second `AddRateLimiter` call adding a registration policy silently takes over the rejection handler, and a refused registration would then answer with §4.2's *"Too many pairing attempts from this device"* — worse than no limit, because it is wrong and looks deliberate. Doing it properly means `OnRejected` dispatching on the endpoint. When it lands, §13 gains the window and permit count beside `DISPLAY_PAIRING_*`.
-
 ## 18. Governance
 
 **This document is the contract; `docs/REQUIREMENTS.md` is the requirement it implements.** Where they disagree, the disagreement is a finding and gets a row in `docs/DOCUMENTATION_REVIEW.md`. Where this document and an ADR describe one decision, they agree by construction: the ADR carries the rationale, this document carries the mechanism.
@@ -1228,6 +1289,8 @@ The reason this is not a two-line addition, recorded so it is not rediscovered: 
 **A count in prose is a second copy of a fact.** Prose stating a number no gate can check is **deleted rather than corrected** (F-77, F-89, F-112). Where a rule can be executed against the tree, no hardcoded list of its subjects exists (F-47, F-58) — a list of one is still a list.
 
 **No comment in authored source.** `.cs`, `.razor`, `.sql`, `.css`, `.js` and `.sh` carry no comments, with two exceptions that are not commentary: a shebang, and the contiguous header block of a script whose `--help` prints it. The reasoning that a comment would have carried belongs in this document, in the findings register, or in the commit that made the change — all three of which something can check or a reader can date, and a comment is neither (F-120). `SourceCommentContractTests` holds the rule for C# and Razor.
+
+**An accepted risk that names its own remedy is a deferral.** It belongs where deferrals are tracked — a stage in `docs/MENU_AND_HANDHELD_PLAN.md` or a row in `docs/DOCUMENTATION_REVIEW.md` — and not in §17, where an unstarted repair and a considered acceptance read identically (**F-115**). When the remedy lands, the paragraph that promised it is **deleted rather than left beneath the account of the landing**, because two accounts of one mechanism read as diligence and the reader cannot date either (**F-114**, **F-122**).
 
 **History is archived rather than deleted.** The long form of every document that has one is under `docs/progress/`, withheld from the context dump by `export.sh` and still tracked, still hygiene-checked, and still linked by path from a document the dump contains — asserted by `ContextDumpExclusionContractTests`, because a session working from the dump cannot see these files and has no way to learn they exist.
 
@@ -1244,7 +1307,7 @@ The reason this is not a two-line addition, recorded so it is not rediscovered: 
 - **M4 close-out — restaurant time:** the §8.1 rendering rule actually honoured on every surface (`RestaurantTime`, replacing eighteen `ToLocalTime()` call sites), the §13 clock-format decision, and the §11.7 footer clock. Scheduled here rather than inside a feature slice because a half-applied time convention is worse than a uniformly wrong one, and ahead of M5 because a wrong time on a settled bill is a different order of problem from a wrong time on a roster — see F-36.
 - **M5 — counter & administration:** bills, price adjustment, close & settle, end-of-day, counter fallback QR, menu management + events, event explorer, hide/unhide, post-close corrections.
 - **M6 — hardening & production:** full E2E suite (§16.3), backups + restore drill, cloudflared production profile + tunnel docs, quick-tunnel demo script with warning, OPERATIONS runbooks, CI pipeline. The **guest registration surface** (§11.8) also lands here rather than in M2, where it belonged: R§4.3 required it from rev 2 and no milestone claimed it, and the gap surfaced only when §16.3 scenario 3 went to write it — see F-37.
-- **M7 — the menu, and the screen it is read on:** the first work driven by a user rather than by this document. Stage 1 is the §11.12 handheld contract — its vocabulary and the four index pages in Slice 30, its 375px end-to-end barrier in Slice 32, the remaining surfaces still open — and it lands *first* even though the menu was asked for first: the menu work adds four surfaces that are all read from a phone, and writing them before the responsive vocabulary exists means writing them against the shape F-59 was found in and then touching all four again. Stage 2 is ADR-0014's schema — sections, descriptions and explicit ordering — Stage 3 is the surfaces that read it, and Stages 4 to 6 are images, likes and comments, the last of which is recorded as *not startable* until §17's rate-limit ruling is revisited. `docs/MENU_AND_HANDHELD_PLAN.md` is the plan and is struck through as it lands.
+- **M7 — the menu, and the screen it is read on:** the first work driven by a user rather than by this document. Stage 1 is the §11.12 handheld contract — its vocabulary and the four index pages in Slice 30, its 375px end-to-end barrier in Slice 32, the remaining surfaces still open — and it lands *first* even though the menu was asked for first: the menu work adds four surfaces that are all read from a phone, and writing them before the responsive vocabulary exists means writing them against the shape F-59 was found in and then touching all four again. Stage 2 is ADR-0014's schema — sections, descriptions and explicit ordering — Stage 3 is the surfaces that read it, and Stages 4 to 6 are images, likes and comments. Stage 6 was recorded as *not startable* until §17's rate-limit ruling was revisited; it was revisited in Slice 62 and the two prerequisites that followed from it are discharged, so the stage is open work rather than blocked work (**F-122**). `docs/MENU_AND_HANDHELD_PLAN.md` is the plan and is struck through as it lands.
 - **M6 close-out — the release:** the build stamp and the source offer (§11.9), because both are things a first tag makes true forever and neither is worth adding *after* the version people cite. Publishing images for other people to run is what turns "which build is this?" from a question the operator can answer from memory into one the instance must answer itself, and what makes `CONTRIBUTING.md`'s promise that a fork "owes its users the same" into something a fork can actually discharge — see F-39. Then `scripts/ci_local.sh --with-all`, a drill against the real stack, and the tag.
 
 ---
@@ -1380,6 +1443,8 @@ One row per ruling: what was decided, and where in this document or which ADR ca
 | Menu likes, Stage 5a (enhancement, not a finding) | Both are ruled and recorded in §7 | §7, §8.2, §8.3, §16.4 |
 | Menu Stage 1e (enhancement, not a finding) | The journey is extracted rather than pasted (`MenuPictureJourneys`), on the ruling `TableJourneys.SeatGuestAsync` moved under one slice earlier, and the… | R§1 · S§11.12, §16.3 scenario 21, §16.4 |
 | Menu Stage 1d (enhancement, not a finding) | §16.3 scenario 21's guest is seated in a handheld context and the scenario closes with the barrier | R§1 · S§11.12, §16.3, §16.4 |
+| Menu comments, Stage 6c (enhancement, not a finding) | Six rulings in §7, and the two that make the rest small are *filed against the item, never an order line* and *staff-facing, a guest sees only their own* — the second of which is what removes the moderation question rather than answering it | §7, §8.2, §8.3, §16.4 |
+| F-122 | The pre-fix paragraph is **deleted rather than left beneath the account of the landing** (F-114), §19's *not startable* clause is rewritten to what is true, and §18 gains the deferral habit §17 had been pointing at | §17, §18, §19 |
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
 | Claude judgment calls (owner-vetoable, recorded) | Reminder = once at threshold iff no line of the send fulfilled/removed; counter/admin line-changing staff edits also alert loudly; reset forces TOTP… | §10.1–10.2, §3.5, §3.7, §4.5 |
@@ -1388,6 +1453,7 @@ One row per ruling: what was decided, and where in this document or which ADR ca
 
 **The full changelog through v1.50 is archived** in [`docs/progress/TECHNICAL_SPECIFICATION_THROUGH_V1_50.md`](progress/TECHNICAL_SPECIFICATION_THROUGH_V1_50.md), and every entry it holds is also a commit. The most recent are kept here because `SpecificationVersionTests` reads the newest one as this document's current version and asserts the header agrees with it. How many is not written down: nothing can check it, and it had already drifted by one (**F-77**).
 
+- **v1.53 — 2026-08-26.** The last stage the menu plan carried, started, and the two documents that still said it could not be. **§7** gains the six comment rulings, **§8.2** gains `menu_item_comment_event` with four named constraints over one nullable column, and **§8.3** gains the fold that has no `WHERE` clause on purpose. **§17 loses the paragraph that promised the rate limiter it already had** and **§19 loses the clause that called Stage 6 unstartable** — both eleven slices stale, both deleted rather than annotated (**F-122**); **§18** gains the habit §17 had been claiming was stated there. **§16.4** gains `MenuItemCommentTests`.
 - **v1.52 — 2026-08-26.** A reading composed out of two instants, and the flake it had been producing since the harness was written. **§16.4** gains `HarnessSnapshotContractTests`: a composite that a `Func<T, bool>` is evaluated against is read in one `EvaluateAsync`, over a subject set computed from the harness rather than listed. `KitchenJourneys.ReadBoardAsync` and `TableOrderJourneys.ReadBasketAsync` are rewritten to one evaluation each (**F-121**). No production code changed.
 - **v1.51 — 2026-08-26.** House-cleaning slice. Every comment removed from authored `.cs`, `.razor`, `.sql`, `.css`, `.js` and `.sh` — 2,087,175 bytes, 42% of all code — and §18 now states the rule that keeps it that way, held by `SourceCommentContractTests`. `DocumentationCommentContractTests` deleted: its subject no longer exists (**F-120**). `ConfigurationSurfaceTests` no longer terminates its scan on a documentation comment (**F-119**). The long form of this document, of the findings register, of the build log and of the menu plan archived to `docs/progress/`; §7, §11, §14, §16, §18, Appendix A and this changelog rewritten as registers. No behaviour changed.
 - **v1.50 — 2026-08-25.** The picture the barrier had never seen, and the element that can be present with no area at all. **§16.3 scenario 21** attaches a photograph to one of its two dishes: a dish with a picture renders a different card grid and its panel renders the whole frame uncropped, and six stages of the menu plan built both…

@@ -95,6 +95,18 @@ public sealed class MenuWiringTests
     }
 
     [Fact]
+    public void MenuItemCommentServices_AreResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        Assert.IsType<DapperMenuItemCommentDirectory>(
+            scope.ServiceProvider.GetRequiredService<IMenuItemCommentDirectory>());
+        Assert.IsType<DapperMenuItemComments>(
+            scope.ServiceProvider.GetRequiredService<IMenuItemComments>());
+    }
+
+    [Fact]
     public async Task ACreatedItem_IsAnnounced_AndItsArgumentsArePassedThrough()
     {
         FakeMenuAdministration administration = new();
