@@ -7,19 +7,19 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-26T10:30:09-04:00
+  Generated at   : 2026-08-26T23:54:48-04:00
   Generator      : export.sh
 
 REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : e19d30286dc7a073bdfad2deb211fa0ce3a49014
-  Commit (short) : e19d302
-  Commit date    : 2026-08-26 10:30:04 -0400
+  Commit (full)  : af1ca38a8dac62cb13e77987990d22faffe68005
+  Commit (short) : af1ca38
+  Commit date    : 2026-08-26 23:54:36 -0400
   Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
-  Files included : 384
+  Files included : 387
   Withheld paths : docs/llm/, docs/progress/
   Excluded files : export.sh
   Elided files   : LICENSE (metadata and SHA-256 only)
@@ -431,7 +431,7 @@ trap - EXIT
 cat "$OUTPUT_FILE"
 
 ################################################################################
-# FILE TREE  (384 included files)
+# FILE TREE  (387 included files)
 ################################################################################
 .
 ├── .dockerignore
@@ -513,6 +513,7 @@ cat "$OUTPUT_FILE"
 │   │   │   ├── MenuAvailability.cs
 │   │   │   ├── MenuDirectory.cs
 │   │   │   ├── MenuEventLog.cs
+│   │   │   ├── MenuItemComments.cs
 │   │   │   ├── MenuItemImageEventLog.cs
 │   │   │   ├── MenuItemImages.cs
 │   │   │   ├── MenuItemReactions.cs
@@ -527,7 +528,8 @@ cat "$OUTPUT_FILE"
 │   │   │   ├── 0005_menu_item_sections.sql
 │   │   │   ├── 0006_menu_item_images.sql
 │   │   │   ├── 0007_menu_item_image_alt_text.sql
-│   │   │   └── 0008_menu_item_reactions.sql
+│   │   │   ├── 0008_menu_item_reactions.sql
+│   │   │   └── 0009_menu_item_comments.sql
 │   │   ├── MyRestaurant.DataAccess.csproj
 │   │   ├── NpgsqlDatabaseConnectionFactory.cs
 │   │   ├── Orders
@@ -745,6 +747,7 @@ cat "$OUTPUT_FILE"
     │   │   ├── MenuAvailabilityTests.cs
     │   │   ├── MenuDirectoryTests.cs
     │   │   ├── MenuEventLogTests.cs
+    │   │   ├── MenuItemCommentTests.cs
     │   │   ├── MenuItemImageEventLogTests.cs
     │   │   ├── MenuItemImageTests.cs
     │   │   ├── MenuItemReactionTests.cs
@@ -3183,66 +3186,63 @@ This document describes how a report gets handled, not what anyone is entitled t
 
 --- METADATA ---
   Relative path:         _CHANGES.md
-  Size:                  2.4 KiB (2429 bytes)
-  SHA-256:               a14fb788b656e857eca546daf77fdc6d25c9d74072c0982f61c4736981d22d08
+  Size:                  4.0 KiB (4106 bytes)
+  SHA-256:               bb847b6a34c48103a7d16e94f6231d318aa2d1950e3c9ec7800a471897de63bc
 
 --- CONTENT ---
-# Slice 67 — the reading that was two instants
+# Slice 68 — Stage 6c: guest comments, the schema and the data access
 
-Extract at the repository root. Every path in this archive is repository-relative and every file is
-complete; nothing here is a patch.
+Extract at the repository root. Spec goes to **v1.53**. Findings floor **F-122**.
 
-**No production code changed.** Every edit is under `tests/` or `docs/`.
+## Files in this archive
 
-## What landed
-
-| Change | Measure |
+| Path | State |
 |---|---|
-| `KitchenJourneys.ReadBoardAsync` reads the whole board in one `EvaluateAsync` | 5 round trips → 1 |
-| `TableOrderJourneys.ReadBasketAsync` reads the whole basket in one `EvaluateAsync` | 3 round trips → 1 |
-| `HarnessSnapshotContractTests` added — a composite a predicate is asked about is read in one evaluation | 2 assertions |
-| `TECHNICAL_SPECIFICATION.md` to v1.52 | §16.4, changelog |
-| The changelog's "ten most recent" deleted — it had drifted to eleven and nothing checks it | F-77 |
+| `src/MyRestaurant.DataAccess/Migrations/0009_menu_item_comments.sql` | **new — needs `git add`** |
+| `src/MyRestaurant.DataAccess/Menu/MenuItemComments.cs` | **new — needs `git add`** |
+| `tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemCommentTests.cs` | **new — needs `git add`** |
+| `src/MyRestaurant.WebApplication/Orders/OrdersServiceCollectionExtensions.cs` | changed |
+| `tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs` | changed |
+| `tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs` | changed |
+| `docs/TECHNICAL_SPECIFICATION.md` | changed |
+| `docs/DOCUMENTATION_REVIEW.md` | changed |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | changed |
+| `docs/BUILD_PROGRESS.md` | changed |
 
-**Predicted test count: 1302 + 2 = 1304.** Any other number is the first thing to investigate.
+**Nothing is deleted in this slice.**
 
-## Files to delete
+The migration is picked up by the existing `<EmbeddedResource Include="Migrations/*.sql" />` glob, so `MyRestaurant.DataAccess.csproj` is unchanged.
 
-```
-(none)
-```
+## Expected test count
 
-Nothing is removed or renamed.
+**1320.** 1304 + 13 (new `MenuItemCommentTests`) + 1 (`MenuWiringTests`) + 2 (two rows added to `SchemaMigrationRunnerTests.KeyRelations`, a `[MemberData]` theory, so the file's attribute count does not move and §16.4's seven for it stays).
 
-## Files that need `git add`
+Any other number is worth investigating before reading the assertion text. The likeliest cause is an analyzer diagnostic promoted to an error by `ContinuousIntegrationBuild=true` rather than a failed assertion.
 
-Untracked files are invisible to every gate that uses `git ls-files`.
+## Gates emulated against the edited tree
 
-```
-tests/MyRestaurant.WebApplication.Tests/HarnessSnapshotContractTests.cs
-```
+| Gate | Result |
+|---|---|
+| §16.4 counted-class census | 46 counted, floor 37, no disagreement, no ambiguity, no unresolved citation |
+| `SpecificationVersionTests` | header 1.53 = newest entry 1.53, history descends |
+| `MenuEventVocabularyContractTests` | four named vocabularies, spec set = migration set, values equal both directions |
+| `MarkdownTableContractTests` | no run of table lines is malformed in any of the four edited documents |
+| Byte hygiene | LF only, one final newline, no trailing whitespace, on all ten files |
+| No comment in authored source | the migration and both C# files carry none |
 
 ## Veto points
 
-**The basket repair rides along.** It is the same defect in the same shape, and the gate's subject set
-covers it, so repairing only the kitchen board would leave the gate red. To take the kitchen board
-alone: restore the three-`CountAsync` body of `ReadBasketAsync`, drop `UnavailableMarkSelector` and
-`CountingScript`, and narrow `HarnessSnapshotContractTests` — but the flake would remain latent in
-scenario 7.
+**1. One standing comment per person per dish.** The fold partitions on `(menu_item_identifier, person_identifier)`, so resubmitting replaces. To allow several comments per dish instead, add a `menu_item_comment_identifier uuid NOT NULL` column to `0009`, partition the view on it, and take the withdrawal verb an identifier rather than a pair. Reversing this later is a new migration, not an edit to `0009`.
 
-**Collection-valued predicates are out of scope.** `Func<IReadOnlyList<T>, bool>` is excluded by the
-regex `Func<(\w+)\??,\s*bool>` in `HarnessSnapshotContractTests`, which cannot match a generic
-argument. To bring them in, widen that pattern — and expect `ReadMenuAsync`, `ReadOwnLinesAsync`,
-`ReadRosterAsync` and `ReadPartyAsync` to be reported.
+**2. The cap is 1000 characters.** It is stated once, in `menu_item_comment_event_body_within_cap`. Changing it is a one-line `ALTER` in a new migration; nothing in C#, in the tests, or in the documents repeats the number.
 
-**The `ScreenText.DeclaredAsync(` entry in `BrowserReads`.** It counts an indirect read. No subject
-method uses it today; remove the entry if that is judged too broad.
+**3. Staff-facing only.** `IMenuItemCommentDirectory.ListAsync` has no visibility argument, because §7 rules that no guest reads another guest's words. Showing one guest another's comment reopens the moderation question — the plan's Stage 6 table names that row as the one to reopen first.
 
-## What was NOT verified
+**4. The body is trimmed before storage.** If verbatim storage is wanted (as for the picture's caption), drop the `.Trim()` in `SubmitAsync` and the `NoChange` comparison stops being reliable across whitespace-only edits; `menu_item_comment_event_body_not_blank` still refuses an all-whitespace body.
 
-Nothing was compiled, no test was run, and no browser was opened. The two rewritten readers have not
-executed against a real page. The new gate was emulated mechanically against the edited tree, not
-executed. The flake cannot be shown fixed by a green run, because it never failed on demand.
+## What was not verified
+
+Nothing was compiled and no test was run: no .NET SDK and no container engine in the authoring environment. `MenuItemCommentTests` has never executed against a real PostgreSQL, so the four constraint names, the `pg_get_constraintdef` cap read, and the `COALESCE(NULLIF(btrim(display_name), ''), username)` projection over a `citext` username rest on reading the DDL and on the identical expression already working in `DapperMenuSectionEventLog`. The migration has not been applied. No browser ran, and no §16.3 scenario touches comments, because no surface exists yet.
 
 ################################################################################
 # FILE: compose.yaml
@@ -3422,8 +3422,8 @@ volumes:
 
 --- METADATA ---
   Relative path:         docs/BUILD_PROGRESS.md
-  Size:                  10.8 KiB (11110 bytes)
-  SHA-256:               5815fb19d30eeef9227fa93b90b49e81ab4265326c792018b79fc02308712f21
+  Size:                  17.0 KiB (17376 bytes)
+  SHA-256:               3f7cf7d77ea7ada1f157105a45e343aec5280264b98195ae84d8d3aa05c58530
 
 --- CONTENT ---
 # Build progress
@@ -3504,19 +3504,43 @@ volumes:
 
 **What was NOT verified.** Nothing was compiled. No test was run. No browser was opened, so the two rewritten JavaScript readers have not executed against a real page — the claim that they are behaviour-preserving rests on reading: `innerText` for `innerText`, the same relative selectors, and the same `.Trim()` and `.TrimEnd('×')` applied in C# afterwards rather than in the script. The new gate was emulated mechanically against the edited tree rather than executed. The flake itself cannot be shown fixed by a passing run, because it did not fail on demand before.
 
+## Slice 68 — the stage two documents said could not start
+
+| Slice | What landed | Findings closed |
+|---|---|---|
+| 68 | `0009_menu_item_comments.sql` and `Menu/MenuItemComments.cs` — Stage 6c, the comment schema and its data access; `MenuItemCommentTests` over a real database; §17's discharged promise and §19's *not startable* clause deleted | F-122 |
+
+**What is in this slice.** Stage 6 is the last stage `docs/MENU_AND_HANDHELD_PLAN.md` carried and its two prerequisites landed in Slices 62 and 63. This is 6c: one event table, one fold, one directory and one write service with two verbs. No surface, no endpoint, no rate-limit policy — those are 6d and 6e, and nothing a guest can reach exists yet.
+
+**Three of the four open questions are now ruled**, and each ruling is in §7 with its reason. A comment is filed against the **item and never an order line**, because an opinion needs no purchase — the argument the like already settled — and because an order line's log carries §6.7's correction rules a comment has no business inheriting. A comment is **staff-facing and a guest sees only their own**, which is §11.4's like-count ruling applied to text and is what makes the moderation question not arise rather than answered: nothing a guest writes is rendered to another guest, so there is nobody to moderate on behalf of. **One standing comment per person per dish**, editing is resubmission, withdrawal is an event, and every version is kept. Staff replies are the fourth question and are **not built and named as not built**.
+
+**The finding, and how it was found.** **F-122** was found by reading §19 to decide what to build. §19's M7 bullet said Stage 6 was *not startable* until §17's rate-limit ruling was revisited — the ruling was revisited in Slice 62. §17 was worse: it carried the corrected account of the limiter and then, four paragraphs below it, the pre-fix account in future tense, promising §13 gains variables §13 has had since v1.47. And §17 said the habit F-115 produced *is stated in §18* — §18 did not state it. All three are deletions or replacements on **F-114**'s ruling, and §18 now carries the habit: an accepted risk that names its own remedy is a deferral, and when the remedy lands the promise is deleted rather than left beneath the landing.
+
+**Two changes in one slice, and the distinguishable-failure rule governs both.** The schema fails as an integration assertion naming `menu_item_comment_event` against a real PostgreSQL; F-122 is a documentation deletion with no gate at all and therefore cannot fail. They are also not separable under the atomic-documentation rule — §19's stale clause is a claim *about this stage*, so the slice that starts the stage is the slice that owes the edit.
+
+**Test count arithmetic.** 1304 + 13 + 1 + 2 = **1320**. Thirteen `[Fact]` in the new `MenuItemCommentTests` in `MyRestaurant.DataAccess.Tests`; one `[Fact]` added to `MenuWiringTests` (29 → 30); two rows added to `SchemaMigrationRunnerTests.KeyRelations`, which is `[Theory]` `[MemberData]` and expands to two further test cases without changing that file's attribute count, so §16.4's seven for that class does not move. No test was deleted. §16.4's counted-class census goes 45 → 46 over a floor of 37.
+
+**Sensitivity.** Every new assertion was proven able to fail against a planted defect. `TheSchemaRefusesEveryForbiddenShapeOfAnEventRow` was run in four mutations of `0009` — vocabulary widened to admit `loved`, the payload biconditional weakened to a single implication, the blank guard dropped, and the cap constraint renamed — and each mutation is reported by the constraint name the assertion names, which is what makes the four constraints separate rather than one conjunction. `ABodyOverTheDeclaredCapIsRefusedAndTheCapIsReadFromTheConstraint` was run with `ReadDeclaredBodyCapAsync` returning a hardcoded 1000 against a migration whose cap was moved to 900, and it fails at the at-cap submission rather than at the over-cap one. `ResubmittingTheSameBodyWritesNothing` was run against a writer with the `NoChange` branch removed and against one comparing untrimmed bodies; both report a second event. `TheStaffReadNamesTheAuthorAndFallsBackToTheUsername` was run against a read using `display_name` bare, which returns two blanks for `ben`.
+
+**Two things about the schema that are rulings rather than shape.** The fold has **no `WHERE` clause**, deliberately: `DISTINCT ON` has to see the withdrawal to know it is the latest row, so filtering inside the view would return the submission *before* a withdrawal and report a withdrawn comment as standing. The caller filters on `body IS NOT NULL`, which the payload biconditional makes an exact test of *the last event was a submission*. And there are **four named constraints over one nullable column** rather than one conjunction, because the writer recognises the cap refusal by `conname` and a conjunction would report the whole expression — over-cap and blank would be indistinguishable to the code that has to tell a guest which one happened.
+
+**What was NOT verified.** Nothing was compiled: no .NET SDK was available in the authoring environment, so `dotnet build` and `dotnet test` have not run and 1320 is arithmetic rather than an observation. No container engine ran, so `MenuItemCommentTests` has never executed against a real PostgreSQL — every claim about what the four constraints refuse, what `pg_get_constraintdef` returns for the cap, and how `COALESCE(NULLIF(btrim(display_name), ''), username)` types against a `citext` username rests on reading the DDL and on the identical expression already working in `DapperMenuSectionEventLog`. The migration has not been applied, so its idempotence and its interaction with `TRUNCATE ... CASCADE` in `OrderTestWorld` are unverified. No browser ran; no §16.3 scenario touches comments, because no surface exists to touch.
+
+**Still open.** Stage 6d (the guest's control in §11.1's detail panel) and Stage 6e (the staff read). Neither has a surface ruling written yet. The fourth open question — staff replies — stays open and is recorded in the plan as the row that would have to be reopened first if any later stage shows one guest another guest's words.
+
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
 ################################################################################
 
 --- METADATA ---
   Relative path:         docs/DOCUMENTATION_REVIEW.md
-  Size:                  36.0 KiB (36885 bytes)
-  SHA-256:               c0803a9c3961fa8927dd00fc7fe573a1d934e2cbd359b36a17e6b7bd714a7b35
+  Size:                  38.1 KiB (39019 bytes)
+  SHA-256:               e2a0987df57234fe5aaa2319f00d2c5b38dbec644ae60c0c8207d821f472047e
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
 
-**All findings F-01 through F-121 are resolved.** This is the numbered ledger: one row per finding,
+**All findings F-01 through F-122 are resolved.** This is the numbered ledger: one row per finding,
 stating what was wrong, what was ruled, and where the ruling lives. It is a register rather than an
 essay — the reasoning that produced each ruling is in the commit that closed it and in the archived
 long form, and the specification carries the mechanism.
@@ -3542,7 +3566,7 @@ mechanical holds it there; Appendix A of the specification maps every ruling to 
 | Declared, not merely mentioned | F-67 | A gate keys on a call, not an identifier — the open parenthesis is what tells a use from a mention. |
 | A gate may not read prose | F-116, F-119 | No gate's correctness may depend on prose quoting its subject, or on prose existing at all. Scan code, with comments removed. |
 | A reading is of one instant | F-121 | A composite a predicate is asked about is read from the browser in one evaluation. Two round trips compose one object out of two renders. |
-| A correction replaces the claim it corrects | F-114 | It does not sit beneath it. Two accounts of one thing read as diligence and the stale one is met first. |
+| A correction replaces the claim it corrects | F-114, F-122 | It does not sit beneath it. Two accounts of one thing read as diligence and neither can be dated by the reader. A discharged deferral is deleted, not annotated. |
 | One change, one green run | — | Two changes ride together only when their failure modes are distinguishable by name. |
 
 ---
@@ -3691,6 +3715,7 @@ mechanical holds it there; Appendix A of the specification maps every ruling to 
 | **F-119** | **A gate's scan was terminated by a documentation comment.** `ConfigurationSurfaceTests` read every configured key out of `RestaurantOptions.cs` between `public static RestaurantOptions FromConfiguration` and the string `/// <summary>Returns a human-readable reason` — so the boundary of the configuration surface was a sentence somebody wrote, not a declaration | F-116 ruled that no gate may depend on prose declining to quote its subject; this is the inverse and the same error. The scan now ends at `ValidationMethodMarker`, the declaration that comment described, which is where the binding method actually ends. Two constants become one | S§13, S§16.4 · F-116 |
 | **F-120** | **Comments were 42% of authored source and four documents were 21% of the tree, and nothing measured either.** 2,087,175 bytes of comment across 334 files, and 1,655,921 bytes in the specification, the findings register, the build log and the menu plan — enough that the context dump reached 96% of the budget a session has to read it in. Every word of it was already in git | All comments removed from `.cs`, `.razor`, `.sql`, `.css`, `.js` and `.sh`; the four documents archived verbatim to `docs/progress/` and rewritten as registers. `SourceCommentContractTests` holds the result: no authored C# or Razor file carries a comment, proven sensitive against composed fixtures. `DocumentationCommentContractTests` is deleted rather than weakened — its subject no longer exists, and a floor of 1,500 `///` blocks over a tree with none is the vacuous gate F-41 prohibits | S§16.4, S§18 · F-41, F-77, F-114, F-116 |
 | **F-121** | **A reading of one surface was composed out of two instants, and it had been producing a flake nobody could reproduce.** `KitchenJourneys.ReadBoardAsync` took `data-unseen-alerts` and `data-unseen-reminders` in two `GetAttributeAsync` round trips and then the pending lines in several more. `KitchenBoard.razor` renders both counts from one `KitchenAlertState` on one element, so the DOM was always self-consistent and the reader was not: a reminder arriving between the two reads produced one alert beside one reminder, which is not a state the board was ever in. `WaitForBoardAsync`'s predicate asks only about reminders, so the torn reading satisfied it and the alert-count assertion beside it failed with `Expected: 2, Actual: 1` — the observed failure of §16.3 scenario 8, unreproducible because the window is one re-render wide. `TableOrderJourneys.ReadBasketAsync` had the same shape over three `CountAsync` calls | Both readings are taken in a single `EvaluateAsync`, which the browser runs on the thread that applies Blazor's own DOM patches and therefore cannot interleave with one. `HarnessSnapshotContractTests` holds the rule over a **computed** subject set — the composites a `Func<T, bool>` is evaluated against — so a new waiting verb brings its reader under the rule without anybody adding a name (**F-47**, **F-58**). Proven sensitive against three composed fixtures and against the pre-repair tree, where it reports both readings | S§16.4 · F-41, F-47, F-58 |
+| **F-122** | **A deferral that had been discharged eleven slices earlier was still recorded as pending in two places, and one of them is what a session reads to decide what to build next.** §17 carried the corrected account of the rate limiter — *"The mechanism, kept because it is the reason a second policy is still not a two-line addition anywhere else"* — and then, four paragraphs below it, the **pre-fix** account of the same mechanism in future tense: *"When it lands, §13 gains the window and permit count beside `DISPLAY_PAIRING_*`."* §13 has had them since v1.47. §19's M7 bullet, separately, still recorded Stage 6 as *not startable* until that ruling was revisited. And §17 stated that the habit F-115 produced *"is stated in §18 rather than left here"* — §18 did not state it. Found by the slice that went to start Stage 6 and was told by the specification that it could not | **All three are deletions or replacements, not annotations.** §17's pre-fix paragraph is deleted on **F-114**'s ruling — a correction replaces the claim it corrects and does not sit above it, which is the same error in the other direction. §19's clause is rewritten to what is true rather than struck through. §18 gains the sentence §17 was pointing at: an accepted risk that names its own remedy is a **deferral**, it belongs where deferrals are tracked, and when the remedy lands the promise is deleted. **No gate holds this**, and the reason is recorded as a residual rather than left as an omission: a gate that catches a stale promise has to read prose, which **F-116** and **F-119** forbid | S§17, S§18, S§19 · F-114, F-115, F-116 |
 ---
 
 ## Open residuals
@@ -3703,6 +3728,7 @@ These are stated rather than closed, because each is a limit of what text can de
 | A gate walking `src/` for `*.cs` also reaches `obj/**/*.g.cs` | F-120 | Generated code is not authored and carries generated comments. `SourceCommentContractTests` excludes `bin` and `obj` by path segment; the older walks are unaffected because their assertions are floors on files, or absences of patterns generated code does not contain. |
 | A predicate over a **collection** is not brought under the atomic-reading rule | F-121 | `Func<IReadOnlyList<T>, bool>` is excluded because a list read is a count followed by one read per row, and making it one evaluation is a larger change than this rule. The excluded readers poll a surface that has already stopped changing, which is why none of them has produced a flake. |
 | `HarnessSnapshotContractTests` delimits a method body by matching braces, which a stray brace inside a string literal would truncate | F-121 | A truncated body contains no browser read and therefore passes. The floor on total body bytes is what reports it; the failure direction is a loud floor rather than a silent pass. |
+| A stale promise about work that has landed is held by nothing | F-122 | Catching one mechanically means reading prose for a tense, which F-116 and F-119 forbid — and a lint on future-tense sentences would fire on every legitimate one in §19's build order. What replaces the gate is the §18 habit: the promise is deleted by the slice that discharges it, in the same slice, under the atomic-documentation rule. |
 | LAN ordering depends on WAN health | F-06 | One origin, hairpinned through Cloudflare. Accepted risk, recorded in S§17. |
 | Counter carries no grant-time credential mandate | F-05 | Accepted as literally written. Recorded in S§3.7 and S§17. |
 
@@ -3712,8 +3738,8 @@ These are stated rather than closed, because each is a limit of what text can de
 
 --- METADATA ---
   Relative path:         docs/MENU_AND_HANDHELD_PLAN.md
-  Size:                  5.7 KiB (5835 bytes)
-  SHA-256:               834f0f2884c2a28635884545a83d8dced0361637a7ca2948f3144536b8a61922
+  Size:                  7.2 KiB (7384 bytes)
+  SHA-256:               a5a597efb012098be7dded177ff75b708a6f4a022f44b4109096e6d766f5a3ad
 
 --- CONTENT ---
 # Menu modernization and the handheld contract — staged plan
@@ -3751,9 +3777,12 @@ A menu with headings, a description under each dish, a photograph beside it, and
 | **5a** | likes: the schema and the data access | landed, M6 Slice 57 |
 | **5b** | likes: the guest's control | landed, M6 Slice 58 |
 | **5c** | likes: a dish that is off tonight | landed, M6 Slice 60 |
-| **6** | guest comments | **open** — the only stage not yet built |
+| **6** | guest comments | open (in progress) |
 | **6a** | the rate limiter takes a second policy | landed, M6 Slice 62 (prerequisite 1) |
 | **6b** | the rendering rule stops being a sentence | landed, M6 Slice 63 (prerequisite 2) |
+| **6c** | comments: the schema and the data access | landed, M6 Slice 68 |
+| **6d** | comments: the guest's control | open |
+| **6e** | comments: the staff read | open |
 
 ## The rulings that outlive their stages
 
@@ -3774,15 +3803,29 @@ These are the parts of the plan worth keeping after the stage landed. Each is em
 | The like control is in the item's detail panel, never on its card | §11.1 |
 | A reaction publishes nothing, because the menu has not changed | §7, §9 |
 | The kitchen's 86 panel obeys the opposite of §11.1's rule, and that is required rather than permitted | §11.2 |
+| A comment is filed against the item and never against an order line | §7 |
+| A comment is staff-facing; a guest sees only their own | §7 |
+| One standing comment per person per dish; editing is resubmission and every version is kept | §7, §8.2 |
+| A withdrawn comment stops being rendered and stays in the log | §7, §8.3 |
+| The comment length cap is the schema's and is stated once | §7, §8.2 |
 
-## Stage 6 — guest comments, and what is still to settle
+## Stage 6 — guest comments, and what is settled
 
-**This is the only stage not built.** Two prerequisites were discharged ahead of it, each in its own slice, because both were wanted regardless of whether comments ever ship.
+**Two prerequisites were discharged ahead of it**, each in its own slice, because both were wanted regardless of whether comments ever shipped.
 
 - **Prerequisite 1 — a refusal an endpoint decides (Slice 62).** `/register` had been documented as rate-limited for eleven slices without being rate-limited. The limiter now takes a second policy and refuses at the endpoint rather than on a page, so a comment surface has somewhere to attach.
 - **Prerequisite 2 — the rendering rule stops being a sentence (Slice 63).** Guest-authored text is the first content in this application written by somebody who is not staff, so "it is rendered as text and never as markup" had to become a gate rather than a paragraph. `RawHtmlContractTests` asserts that raw HTML has a closed set of sources and that none of them is a person.
 
-**What is still open before a comment can be written.** Who may read a comment and for how long; whether a comment is attached to an item or to an order line; whether staff may reply, and if so under which role; and what moderation means for an append-only log — a comment cannot be edited out of history any more than an order line can (§6.7, F-10b). None of these is decidable from the request as it was made, so none is written down as though it were.
+**The four open questions, and how Slice 68 settled three of them.** Each is decided in §7 and the reason is there rather than here.
+
+| Question | Ruling | Why |
+|---|---|---|
+| Attached to an item or to an order line? | the item | An opinion needs no purchase, which the like already settled; and an order line's log carries §6.7's correction rules a comment has no business inheriting. |
+| Who may read it, and for how long? | staff, and for as long as the log | §11.4's like-count ruling applied to text. Retention is the order log's, because inventing one policy for one table is how two policies start. |
+| May staff reply? | not built | A reply makes a thread, a thread makes a conversation, and a conversation needs a role, a notification and a moderation rule. Deferred, and named as deferred. |
+| What does moderation mean for an append-only log? | the question does not arise | Nothing a guest writes is rendered to another guest, so there is nobody to moderate on behalf of. Should Stage 6d or a later stage ever show one guest another's words, this row is what has to be reopened first — and it is the reason that surface is not in 6c. |
+
+**What is left.** Stage 6d is the guest's own control, in §11.1's detail panel beside the like, on the same reasoning that put the like there. Stage 6e is the staff read. Neither is startable from `docs/TECHNICAL_SPECIFICATION.md` alone until the surface rulings are written, and both are ordinary stage work rather than blocked work.
 
 ################################################################################
 # FILE: docs/OPERATIONS.md
@@ -4503,13 +4546,13 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
 
 --- METADATA ---
   Relative path:         docs/TECHNICAL_SPECIFICATION.md
-  Size:                  168.5 KiB (172524 bytes)
-  SHA-256:               bbcb58a6783b0f9b317d09e07b6b4abc0c6f0e8212fc48af82b34d5d32f5eed6
+  Size:                  175.7 KiB (179886 bytes)
+  SHA-256:               84741674f8549937ca613b365d3faf3a9099568a7b2458256fd504b453e61c5f
 
 --- CONTENT ---
 # myrestaurant — Technical Specification
 
-**Version 1.52 — 2026-08-26 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
+**Version 1.53 — 2026-08-26 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
 
 This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md`. It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. Appendix A maps every ruling to its embodiment.
 
@@ -4739,6 +4782,10 @@ The picture is served on its own route and attached from the item's own page. `0
 **The browser resizes an oversized picture before the form posts it, and that is an optimisation rather than a check.** It never refuses anything: a refusal is the server's, and the client only ever makes the payload smaller. The server's cap is the one in §8.2 and it is enforced regardless of what the client did. The output is JPEG although §8.2 admits WebP, because the ground is the dining room — a phone that cannot encode WebP still has to be able to attach a photograph.
 
 **Reactions.** A person may like a dish. `menu_item_reaction_event` is an event table rather than a row per person, and `liked`/`unliked` is its vocabulary. Four rulings: liking does not require having ordered the dish, because `order_current_line` records what was eaten and a like records an opinion; the count is staff-facing and a guest sees only their own press, because a count of three on a menu of sixty items is noise that reads as a verdict; the control is in the item's detail panel and never on its card, because a card is a link target and a button inside a link target is a control nobody can press reliably; and a reaction publishes nothing, because §9's `MenuChanged` means *re-read the menu* and an opinion has not changed the menu.
+
+**Comments.** A person may say what they thought of a dish. `menu_item_comment_event` is an event table on `menu_item_reaction_event`'s shape and `submitted`/`withdrawn` is its vocabulary. Six rulings, and the first two are what make the rest small. *A comment is filed against the item and never against an order line*, because `order_current_line` records what was eaten and a comment records an opinion — the same argument the like already settled — and because an order line lives in an append-only log whose settled total is a snapshot, so a comment hanging off one would inherit §6.7's correction rules for no reason anybody asked for. *A comment is staff-facing and a guest sees only their own*, which is §11.4's ruling for the like count applied to text: nothing a guest writes is rendered to another guest, so there is no moderation question to answer and none is invented here. *One standing comment per person per dish*, which is why the fold partitions on `(menu_item_identifier, person_identifier)` exactly as the reaction's does — a thread per person per dish is a conversation, and a conversation needs staff replies, which this stage does not build. *Editing is resubmission and withdrawal is an event*: every version is kept and a withdrawn comment stops being rendered without leaving the log, because a comment cannot be edited out of history any more than an order line can (F-10b, §6.7). *The stored body is trimmed*, and the reason is mechanical rather than tidiness — HTML collapses leading and trailing whitespace, so storing it stores a difference nobody can see, and two bodies that render identically would then compare unequal and defeat the no-op rule this verb shares with every other menu verb. *The length cap is the schema's and is stated once*: `menu_item_comment_event_body_within_cap` is the only place in this repository that says how long a comment may be, `ReadDeclaredBodyCapAsync` asks `pg_get_constraintdef` for the bound, and the writer recognises the refusal by constraint name (**F-107**).
+
+A comment publishes nothing, for the reaction's reason: §9's `MenuChanged` means *re-read the menu* and an opinion has not changed the menu.
 
 **Two rules survive every menu rewrite.** A deactivated item stays in history and in every settled order that already names it — deactivation is not deletion (F-10b). And a price change is an event beside the order lines that already carry the old price; it never rewrites them (§6.7).
 
@@ -5096,6 +5143,41 @@ CREATE TABLE menu_item_reaction_event (
 CREATE INDEX menu_item_reaction_event_item_person_index
     ON menu_item_reaction_event (menu_item_identifier, person_identifier, occurred_at);
 
+-- 0009. menu_item_reaction_event's shape with one payload column, so the paired biconditional is back:
+-- 'submitted' carries a body and 'withdrawn' carries none, and the CHECK is an equality between two
+-- predicates rather than two implications, because an equality cannot be half-written. body is NULLABLE
+-- and that nullability IS the fold's answer — a standing comment is a row whose body is not null, which
+-- the biconditional makes exactly equivalent to "the last event was a submission" without the view
+-- having to filter on event_type after a DISTINCT ON it cannot filter after.
+--
+-- THREE named constraints over one column rather than one conjunction, because each is a different
+-- refusal an operator or a caller has to be able to tell apart: a vocabulary, a payload rule, a blank
+-- body, and a cap. The cap is the ONLY statement in this repository of how long a comment may be
+-- (F-107) and DapperMenuItemComments recognises it by conname, which is why it is named and separate:
+-- a conjunction would report the whole expression and the writer could not tell over-cap from blank.
+CREATE TABLE menu_item_comment_event (
+    menu_item_comment_event_identifier uuid PRIMARY KEY,
+    menu_item_identifier               uuid NOT NULL
+                                       REFERENCES menu_item (menu_item_identifier),
+    person_identifier                  uuid NOT NULL
+                                       REFERENCES person (person_identifier),
+    event_type                         text NOT NULL,
+    body                               text,
+    occurred_at                        timestamptz NOT NULL,
+    CONSTRAINT menu_item_comment_event_type_vocabulary CHECK (event_type IN
+        ('submitted', 'withdrawn')),
+    CONSTRAINT menu_item_comment_event_body_payload
+        CHECK ((event_type = 'submitted') = (body IS NOT NULL)),
+    CONSTRAINT menu_item_comment_event_body_not_blank
+        CHECK (body IS NULL OR btrim(body) <> ''),
+    CONSTRAINT menu_item_comment_event_body_within_cap
+        CHECK (body IS NULL OR length(body) <= 1000)
+);
+-- The reaction index's reasoning, unchanged: the fold's prefix is also the write's own lookup, and it is
+-- deliberately NOT UNIQUE on any prefix, because a person may comment, withdraw and comment again.
+CREATE INDEX menu_item_comment_event_item_person_index
+    ON menu_item_comment_event (menu_item_identifier, person_identifier, occurred_at);
+
 CREATE TABLE guest_order (
     guest_order_identifier   uuid PRIMARY KEY,
     table_sitting_identifier uuid NOT NULL REFERENCES table_sitting (table_sitting_identifier),
@@ -5363,6 +5445,28 @@ ORDER BY menu_item_identifier,
          person_identifier,
          occurred_at DESC,
          menu_item_reaction_event_identifier DESC;
+
+-- 0009. The reaction fold with a payload, and the event identifier is projected rather than only sorted
+-- on: §7 requires every menu read's order to end in an identifier, and a staff read of every standing
+-- comment orders by item and then by recency, which two comments stamped in one millisecond do not
+-- total on their own.
+--
+-- No WHERE clause, deliberately. DISTINCT ON has to see the withdrawal to know it is the latest row, so
+-- filtering here would return the submission BEFORE a withdrawal and report a withdrawn comment as
+-- standing. The caller filters on body IS NOT NULL instead, which the payload biconditional makes an
+-- exact test of "the last event was a submission".
+CREATE VIEW menu_item_comment_current AS
+SELECT DISTINCT ON (menu_item_identifier, person_identifier)
+    menu_item_comment_event_identifier,
+    menu_item_identifier,
+    person_identifier,
+    body,
+    occurred_at
+FROM menu_item_comment_event
+ORDER BY menu_item_identifier,
+         person_identifier,
+         occurred_at DESC,
+         menu_item_comment_event_identifier DESC;
 ```
 
 The bill (sum over `sitting_bill` for a sitting) **includes still-pending lines** by design; the counter reviews them before close (§5.3).
@@ -5660,7 +5764,7 @@ CI builds with `-p:ContinuousIntegrationBuild=true`, which flips `TreatWarningsA
 
 `tests/MyRestaurant.WebApplication.Tests/Menu/MenuItemReactionSurfaceContractTests.cs` — 7 assertions: §11.1's like control is in the item's detail panel and never on its card, and the guest surface never reads the count (**F-107**).
 
-`tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs` — 29 assertions: the menu's composition root registers every workflow, read and administration service the surfaces resolve.
+`tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs` — 30 assertions: the menu's composition root registers every workflow, read and administration service the surfaces resolve.
 
 `tests/MyRestaurant.WebApplication.Tests/Menu/MenuGroupingTests.cs` — 11 assertions: a flat item list becomes headings holding items, in §7's total order, with the identifier tail that makes the order total.
 
@@ -5683,6 +5787,8 @@ CI builds with `-p:ContinuousIntegrationBuild=true`, which flips `TreatWarningsA
 `tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemImageTests.cs` — 15 assertions: one picture per item enforced by the primary key, the byte cap enforced by the constraint, and no stored length or dimension beside bytes that already answer for themselves.
 
 `tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemReactionTests.cs` — 9 assertions: a like is an event rather than a row per person, `liked`/`unliked` is idempotent per person per item, and liking requires no prior order.
+
+`tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemCommentTests.cs` — 13 assertions: a comment is an event rather than a row per person, resubmission and withdrawal are both appends, the stored body is trimmed, and each of the four named constraints refuses its own forbidden shape by its own name — including the cap, which is read out of the constraint rather than written down (**F-107**).
 
 `tests/MyRestaurant.DataAccess.Tests/Menu/MenuAvailabilityTests.cs` — 7 assertions: a deactivated item stays in history and in every settled order that already names it — deactivation is not deletion (**F-10b**).
 
@@ -5726,8 +5832,6 @@ Accepted, by ruling or by design: token replay within ≤120 s (bounded by membe
 
 **Coordinated disclosure, and this section's part in it (F-42).** The project must offer a **private** channel for security reports, named in `SECURITY.md`, and that channel is the single exception to §18's no-outside-contributions rule. The asymmetry is the argument: refusing a feature costs the person who wanted it, and the AGPL has already given them the source and the freedom to build it; refusing a report costs an operator's *guests*, who never chose this software, cannot read `CONTRIBUTING.md`, and have no fork to run. **This section is part of the offer rather than a disclaimer.** Every ruling above was argued and written down, so `SECURITY.md` must send a reporter here first — a report that asks for one of them to be *re-ruled* is an argument and gets read as one; a report that presents one as news gets pointed back at the paragraph that decided it. What the project owes in return is stated as targets rather than as an SLA a single maintainer would miss, and the advisory is published when there is a release to upgrade to rather than held open-endedly. A fork operator is the security contact for their own instance, and `SECURITY.md` says so, because nothing here can reach their box, their data or their guests.
 
-The reason this is not a two-line addition, recorded so it is not rediscovered: the limiter is configured inside `AddRestaurantDisplays`, and `RateLimiterOptions.OnRejected` and `RejectionStatusCode` are single-valued. A second `AddRateLimiter` call adding a registration policy silently takes over the rejection handler, and a refused registration would then answer with §4.2's *"Too many pairing attempts from this device"* — worse than no limit, because it is wrong and looks deliberate. Doing it properly means `OnRejected` dispatching on the endpoint. When it lands, §13 gains the window and permit count beside `DISPLAY_PAIRING_*`.
-
 ## 18. Governance
 
 **This document is the contract; `docs/REQUIREMENTS.md` is the requirement it implements.** Where they disagree, the disagreement is a finding and gets a row in `docs/DOCUMENTATION_REVIEW.md`. Where this document and an ADR describe one decision, they agree by construction: the ADR carries the rationale, this document carries the mechanism.
@@ -5737,6 +5841,8 @@ The reason this is not a two-line addition, recorded so it is not rediscovered: 
 **A count in prose is a second copy of a fact.** Prose stating a number no gate can check is **deleted rather than corrected** (F-77, F-89, F-112). Where a rule can be executed against the tree, no hardcoded list of its subjects exists (F-47, F-58) — a list of one is still a list.
 
 **No comment in authored source.** `.cs`, `.razor`, `.sql`, `.css`, `.js` and `.sh` carry no comments, with two exceptions that are not commentary: a shebang, and the contiguous header block of a script whose `--help` prints it. The reasoning that a comment would have carried belongs in this document, in the findings register, or in the commit that made the change — all three of which something can check or a reader can date, and a comment is neither (F-120). `SourceCommentContractTests` holds the rule for C# and Razor.
+
+**An accepted risk that names its own remedy is a deferral.** It belongs where deferrals are tracked — a stage in `docs/MENU_AND_HANDHELD_PLAN.md` or a row in `docs/DOCUMENTATION_REVIEW.md` — and not in §17, where an unstarted repair and a considered acceptance read identically (**F-115**). When the remedy lands, the paragraph that promised it is **deleted rather than left beneath the account of the landing**, because two accounts of one mechanism read as diligence and the reader cannot date either (**F-114**, **F-122**).
 
 **History is archived rather than deleted.** The long form of every document that has one is under `docs/progress/`, withheld from the context dump by `export.sh` and still tracked, still hygiene-checked, and still linked by path from a document the dump contains — asserted by `ContextDumpExclusionContractTests`, because a session working from the dump cannot see these files and has no way to learn they exist.
 
@@ -5753,7 +5859,7 @@ The reason this is not a two-line addition, recorded so it is not rediscovered: 
 - **M4 close-out — restaurant time:** the §8.1 rendering rule actually honoured on every surface (`RestaurantTime`, replacing eighteen `ToLocalTime()` call sites), the §13 clock-format decision, and the §11.7 footer clock. Scheduled here rather than inside a feature slice because a half-applied time convention is worse than a uniformly wrong one, and ahead of M5 because a wrong time on a settled bill is a different order of problem from a wrong time on a roster — see F-36.
 - **M5 — counter & administration:** bills, price adjustment, close & settle, end-of-day, counter fallback QR, menu management + events, event explorer, hide/unhide, post-close corrections.
 - **M6 — hardening & production:** full E2E suite (§16.3), backups + restore drill, cloudflared production profile + tunnel docs, quick-tunnel demo script with warning, OPERATIONS runbooks, CI pipeline. The **guest registration surface** (§11.8) also lands here rather than in M2, where it belonged: R§4.3 required it from rev 2 and no milestone claimed it, and the gap surfaced only when §16.3 scenario 3 went to write it — see F-37.
-- **M7 — the menu, and the screen it is read on:** the first work driven by a user rather than by this document. Stage 1 is the §11.12 handheld contract — its vocabulary and the four index pages in Slice 30, its 375px end-to-end barrier in Slice 32, the remaining surfaces still open — and it lands *first* even though the menu was asked for first: the menu work adds four surfaces that are all read from a phone, and writing them before the responsive vocabulary exists means writing them against the shape F-59 was found in and then touching all four again. Stage 2 is ADR-0014's schema — sections, descriptions and explicit ordering — Stage 3 is the surfaces that read it, and Stages 4 to 6 are images, likes and comments, the last of which is recorded as *not startable* until §17's rate-limit ruling is revisited. `docs/MENU_AND_HANDHELD_PLAN.md` is the plan and is struck through as it lands.
+- **M7 — the menu, and the screen it is read on:** the first work driven by a user rather than by this document. Stage 1 is the §11.12 handheld contract — its vocabulary and the four index pages in Slice 30, its 375px end-to-end barrier in Slice 32, the remaining surfaces still open — and it lands *first* even though the menu was asked for first: the menu work adds four surfaces that are all read from a phone, and writing them before the responsive vocabulary exists means writing them against the shape F-59 was found in and then touching all four again. Stage 2 is ADR-0014's schema — sections, descriptions and explicit ordering — Stage 3 is the surfaces that read it, and Stages 4 to 6 are images, likes and comments. Stage 6 was recorded as *not startable* until §17's rate-limit ruling was revisited; it was revisited in Slice 62 and the two prerequisites that followed from it are discharged, so the stage is open work rather than blocked work (**F-122**). `docs/MENU_AND_HANDHELD_PLAN.md` is the plan and is struck through as it lands.
 - **M6 close-out — the release:** the build stamp and the source offer (§11.9), because both are things a first tag makes true forever and neither is worth adding *after* the version people cite. Publishing images for other people to run is what turns "which build is this?" from a question the operator can answer from memory into one the instance must answer itself, and what makes `CONTRIBUTING.md`'s promise that a fork "owes its users the same" into something a fork can actually discharge — see F-39. Then `scripts/ci_local.sh --with-all`, a drill against the real stack, and the tag.
 
 ---
@@ -5889,6 +5995,8 @@ One row per ruling: what was decided, and where in this document or which ADR ca
 | Menu likes, Stage 5a (enhancement, not a finding) | Both are ruled and recorded in §7 | §7, §8.2, §8.3, §16.4 |
 | Menu Stage 1e (enhancement, not a finding) | The journey is extracted rather than pasted (`MenuPictureJourneys`), on the ruling `TableJourneys.SeatGuestAsync` moved under one slice earlier, and the… | R§1 · S§11.12, §16.3 scenario 21, §16.4 |
 | Menu Stage 1d (enhancement, not a finding) | §16.3 scenario 21's guest is seated in a handheld context and the scenario closes with the barrier | R§1 · S§11.12, §16.3, §16.4 |
+| Menu comments, Stage 6c (enhancement, not a finding) | Six rulings in §7, and the two that make the rest small are *filed against the item, never an order line* and *staff-facing, a guest sees only their own* — the second of which is what removes the moderation question rather than answering it | §7, §8.2, §8.3, §16.4 |
+| F-122 | The pre-fix paragraph is **deleted rather than left beneath the account of the landing** (F-114), §19's *not startable* clause is rewritten to what is true, and §18 gains the deferral habit §17 had been pointing at | §17, §18, §19 |
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
 | Claude judgment calls (owner-vetoable, recorded) | Reminder = once at threshold iff no line of the send fulfilled/removed; counter/admin line-changing staff edits also alert loudly; reset forces TOTP… | §10.1–10.2, §3.5, §3.7, §4.5 |
@@ -5897,6 +6005,7 @@ One row per ruling: what was decided, and where in this document or which ADR ca
 
 **The full changelog through v1.50 is archived** in [`docs/progress/TECHNICAL_SPECIFICATION_THROUGH_V1_50.md`](progress/TECHNICAL_SPECIFICATION_THROUGH_V1_50.md), and every entry it holds is also a commit. The most recent are kept here because `SpecificationVersionTests` reads the newest one as this document's current version and asserts the header agrees with it. How many is not written down: nothing can check it, and it had already drifted by one (**F-77**).
 
+- **v1.53 — 2026-08-26.** The last stage the menu plan carried, started, and the two documents that still said it could not be. **§7** gains the six comment rulings, **§8.2** gains `menu_item_comment_event` with four named constraints over one nullable column, and **§8.3** gains the fold that has no `WHERE` clause on purpose. **§17 loses the paragraph that promised the rate limiter it already had** and **§19 loses the clause that called Stage 6 unstartable** — both eleven slices stale, both deleted rather than annotated (**F-122**); **§18** gains the habit §17 had been claiming was stated there. **§16.4** gains `MenuItemCommentTests`.
 - **v1.52 — 2026-08-26.** A reading composed out of two instants, and the flake it had been producing since the harness was written. **§16.4** gains `HarnessSnapshotContractTests`: a composite that a `Func<T, bool>` is evaluated against is read in one `EvaluateAsync`, over a subject set computed from the harness rather than listed. `KitchenJourneys.ReadBoardAsync` and `TableOrderJourneys.ReadBasketAsync` are rewritten to one evaluation each (**F-121**). No production code changed.
 - **v1.51 — 2026-08-26.** House-cleaning slice. Every comment removed from authored `.cs`, `.razor`, `.sql`, `.css`, `.js` and `.sh` — 2,087,175 bytes, 42% of all code — and §18 now states the rule that keeps it that way, held by `SourceCommentContractTests`. `DocumentationCommentContractTests` deleted: its subject no longer exists (**F-120**). `ConfigurationSurfaceTests` no longer terminates its scan on a documentation comment (**F-119**). The long form of this document, of the findings register, of the build log and of the menu plan archived to `docs/progress/`; §7, §11, §14, §16, §18, Appendix A and this changelog rewritten as registers. No behaviour changed.
 - **v1.50 — 2026-08-25.** The picture the barrier had never seen, and the element that can be present with no area at all. **§16.3 scenario 21** attaches a photograph to one of its two dishes: a dish with a picture renders a different card grid and its panel renders the whole frame uncropped, and six stages of the menu plan built both…
@@ -14856,6 +14965,403 @@ public sealed class DapperMenuEventLog : IMenuEventLog
 }
 
 ################################################################################
+# FILE: src/MyRestaurant.DataAccess/Menu/MenuItemComments.cs
+################################################################################
+
+--- METADATA ---
+  Relative path:         src/MyRestaurant.DataAccess/Menu/MenuItemComments.cs
+  Size:                  13.5 KiB (13803 bytes)
+  SHA-256:               c73cf9040c20712a07f4a34cb57021e5b0e296b94247a243695a5073590fc315
+
+--- CONTENT ---
+using System.Data.Common;
+using Dapper;
+using MyRestaurant.Domain.Identifiers;
+using MyRestaurant.Domain.Time;
+using Npgsql;
+
+namespace MyRestaurant.DataAccess.Menu;
+
+public sealed record MenuItemComment(
+    Guid MenuItemIdentifier,
+    Guid PersonIdentifier,
+    string AuthorName,
+    string Body,
+    DateTimeOffset OccurredAt);
+
+public interface IMenuItemCommentDirectory
+{
+    Task<IReadOnlyList<MenuItemComment>> ListAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<MenuItemComment>> ListForPersonAsync(
+        Guid personIdentifier,
+        CancellationToken cancellationToken = default);
+
+    Task<int?> ReadDeclaredBodyCapAsync(CancellationToken cancellationToken = default);
+}
+
+public enum SubmitMenuItemCommentOutcome
+{
+    Submitted,
+    NoChange,
+    MenuItemNotFound,
+    BodyBlank,
+    BodyOverCap,
+}
+
+public sealed record SubmitMenuItemCommentResult(
+    SubmitMenuItemCommentOutcome Outcome,
+    Guid MenuItemIdentifier,
+    Guid PersonIdentifier,
+    string? Body)
+{
+    public bool Submitted => Outcome is SubmitMenuItemCommentOutcome.Submitted;
+
+    public bool ItemExists => Outcome is not SubmitMenuItemCommentOutcome.MenuItemNotFound;
+}
+
+public enum WithdrawMenuItemCommentOutcome
+{
+    Withdrawn,
+    NoComment,
+    MenuItemNotFound,
+}
+
+public interface IMenuItemComments
+{
+    Task<SubmitMenuItemCommentResult> SubmitAsync(
+        Guid menuItemIdentifier,
+        Guid personIdentifier,
+        string body,
+        CancellationToken cancellationToken = default);
+
+    Task<WithdrawMenuItemCommentOutcome> WithdrawAsync(
+        Guid menuItemIdentifier,
+        Guid personIdentifier,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed class DapperMenuItemCommentDirectory : IMenuItemCommentDirectory
+{
+    private const string CommentColumns = """
+        menu_item_comment_current.menu_item_identifier AS MenuItemIdentifier,
+        menu_item_comment_current.person_identifier    AS PersonIdentifier,
+        COALESCE(NULLIF(btrim(author.display_name), ''), author.username)
+                                                       AS AuthorName,
+        menu_item_comment_current.body                 AS Body,
+        menu_item_comment_current.occurred_at          AS OccurredAt
+        """;
+
+    private const string CommentFrom = """
+        FROM menu_item_comment_current
+        INNER JOIN person AS author
+                ON author.person_identifier = menu_item_comment_current.person_identifier
+        """;
+
+    private const string CommentOrder = """
+        ORDER BY menu_item_comment_current.menu_item_identifier,
+                 menu_item_comment_current.occurred_at DESC,
+                 menu_item_comment_current.menu_item_comment_event_identifier DESC
+        """;
+
+    private static readonly string ListSql = $"""
+        SELECT {CommentColumns}
+        {CommentFrom}
+        WHERE menu_item_comment_current.body IS NOT NULL
+        {CommentOrder};
+        """;
+
+    private static readonly string ListForPersonSql = $"""
+        SELECT {CommentColumns}
+        {CommentFrom}
+        WHERE menu_item_comment_current.body IS NOT NULL
+          AND menu_item_comment_current.person_identifier = @PersonIdentifier
+        {CommentOrder};
+        """;
+
+    private const string BodyCapSql = """
+        SELECT (regexp_match(pg_get_constraintdef(pg_constraint.oid), '([0-9]+)'))[1]::int
+        FROM pg_constraint
+        WHERE pg_constraint.conname = 'menu_item_comment_event_body_within_cap';
+        """;
+
+    private readonly IDatabaseConnectionFactory _connectionFactory;
+
+    public DapperMenuItemCommentDirectory(IDatabaseConnectionFactory connectionFactory)
+    {
+        ArgumentNullException.ThrowIfNull(connectionFactory);
+
+        _connectionFactory = connectionFactory;
+    }
+
+    public async Task<IReadOnlyList<MenuItemComment>> ListAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        IEnumerable<MenuItemCommentRow> rows = await connection
+            .QueryAsync<MenuItemCommentRow>(new CommandDefinition(
+                ListSql,
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return rows.Select(ToComment).ToArray();
+    }
+
+    public async Task<IReadOnlyList<MenuItemComment>> ListForPersonAsync(
+        Guid personIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        IEnumerable<MenuItemCommentRow> rows = await connection
+            .QueryAsync<MenuItemCommentRow>(new CommandDefinition(
+                ListForPersonSql,
+                new { PersonIdentifier = personIdentifier },
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return rows.Select(ToComment).ToArray();
+    }
+
+    public async Task<int?> ReadDeclaredBodyCapAsync(CancellationToken cancellationToken = default)
+    {
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        return await connection
+            .QuerySingleOrDefaultAsync<int?>(new CommandDefinition(
+                BodyCapSql,
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+    }
+
+    private static MenuItemComment ToComment(MenuItemCommentRow row) => new(
+        row.MenuItemIdentifier,
+        row.PersonIdentifier,
+        row.AuthorName,
+        row.Body,
+        new DateTimeOffset(DateTime.SpecifyKind(row.OccurredAt, DateTimeKind.Utc)));
+
+    private sealed record MenuItemCommentRow(
+        Guid MenuItemIdentifier,
+        Guid PersonIdentifier,
+        string AuthorName,
+        string Body,
+        DateTime OccurredAt);
+}
+
+public sealed class DapperMenuItemComments : IMenuItemComments
+{
+    private const string SubmittedEventType = "submitted";
+
+    private const string WithdrawnEventType = "withdrawn";
+
+    private const string BodyCapConstraintName = "menu_item_comment_event_body_within_cap";
+
+    private const string LockMenuItemSql = """
+        SELECT menu_item.menu_item_identifier
+        FROM menu_item
+        WHERE menu_item.menu_item_identifier = @MenuItemIdentifier
+        FOR UPDATE;
+        """;
+
+    private const string ReadStandingBodySql = """
+        SELECT body
+        FROM menu_item_comment_current
+        WHERE menu_item_identifier = @MenuItemIdentifier
+          AND person_identifier = @PersonIdentifier;
+        """;
+
+    private const string InsertCommentEventSql = """
+        INSERT INTO menu_item_comment_event (
+            menu_item_comment_event_identifier, menu_item_identifier,
+            person_identifier, event_type, body, occurred_at)
+        VALUES (
+            @MenuItemCommentEventIdentifier, @MenuItemIdentifier,
+            @PersonIdentifier, @EventType, @Body::text, @OccurredAt);
+        """;
+
+    private readonly IDatabaseConnectionFactory _connectionFactory;
+    private readonly IClock _clock;
+    private readonly IIdentifierFactory _identifierFactory;
+
+    public DapperMenuItemComments(
+        IDatabaseConnectionFactory connectionFactory,
+        IClock clock,
+        IIdentifierFactory identifierFactory)
+    {
+        ArgumentNullException.ThrowIfNull(connectionFactory);
+        ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(identifierFactory);
+
+        _connectionFactory = connectionFactory;
+        _clock = clock;
+        _identifierFactory = identifierFactory;
+    }
+
+    public async Task<SubmitMenuItemCommentResult> SubmitAsync(
+        Guid menuItemIdentifier,
+        Guid personIdentifier,
+        string body,
+        CancellationToken cancellationToken = default)
+    {
+        string trimmed = (body ?? string.Empty).Trim();
+
+        if (trimmed.Length == 0)
+        {
+            return new SubmitMenuItemCommentResult(
+                SubmitMenuItemCommentOutcome.BodyBlank,
+                menuItemIdentifier,
+                personIdentifier,
+                Body: null);
+        }
+
+        DateTimeOffset now = _clock.UtcNow;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        Guid? item = await connection
+            .ExecuteScalarAsync<Guid?>(new CommandDefinition(
+                LockMenuItemSql,
+                new { MenuItemIdentifier = menuItemIdentifier },
+                transaction,
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        if (item is null)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new SubmitMenuItemCommentResult(
+                SubmitMenuItemCommentOutcome.MenuItemNotFound,
+                menuItemIdentifier,
+                personIdentifier,
+                Body: null);
+        }
+
+        string? standing = await connection
+            .ExecuteScalarAsync<string?>(new CommandDefinition(
+                ReadStandingBodySql,
+                new { MenuItemIdentifier = menuItemIdentifier, PersonIdentifier = personIdentifier },
+                transaction,
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        if (string.Equals(standing, trimmed, StringComparison.Ordinal))
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new SubmitMenuItemCommentResult(
+                SubmitMenuItemCommentOutcome.NoChange,
+                menuItemIdentifier,
+                personIdentifier,
+                trimmed);
+        }
+
+        try
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                InsertCommentEventSql,
+                new
+                {
+                    MenuItemCommentEventIdentifier = _identifierFactory.Create(),
+                    MenuItemIdentifier = menuItemIdentifier,
+                    PersonIdentifier = personIdentifier,
+                    EventType = SubmittedEventType,
+                    Body = trimmed,
+                    OccurredAt = now,
+                },
+                transaction,
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+        }
+        catch (PostgresException exception)
+            when (exception.SqlState == PostgresErrorCodes.CheckViolation
+                  && string.Equals(
+                      exception.ConstraintName, BodyCapConstraintName, StringComparison.Ordinal))
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new SubmitMenuItemCommentResult(
+                SubmitMenuItemCommentOutcome.BodyOverCap,
+                menuItemIdentifier,
+                personIdentifier,
+                Body: null);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+        return new SubmitMenuItemCommentResult(
+            SubmitMenuItemCommentOutcome.Submitted,
+            menuItemIdentifier,
+            personIdentifier,
+            trimmed);
+    }
+
+    public async Task<WithdrawMenuItemCommentOutcome> WithdrawAsync(
+        Guid menuItemIdentifier,
+        Guid personIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        DateTimeOffset now = _clock.UtcNow;
+
+        await using DbConnection connection = await _connectionFactory
+            .OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using DbTransaction transaction = await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        Guid? item = await connection
+            .ExecuteScalarAsync<Guid?>(new CommandDefinition(
+                LockMenuItemSql,
+                new { MenuItemIdentifier = menuItemIdentifier },
+                transaction,
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        if (item is null)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return WithdrawMenuItemCommentOutcome.MenuItemNotFound;
+        }
+
+        string? standing = await connection
+            .ExecuteScalarAsync<string?>(new CommandDefinition(
+                ReadStandingBodySql,
+                new { MenuItemIdentifier = menuItemIdentifier, PersonIdentifier = personIdentifier },
+                transaction,
+                cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        if (standing is null)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return WithdrawMenuItemCommentOutcome.NoComment;
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            InsertCommentEventSql,
+            new
+            {
+                MenuItemCommentEventIdentifier = _identifierFactory.Create(),
+                MenuItemIdentifier = menuItemIdentifier,
+                PersonIdentifier = personIdentifier,
+                EventType = WithdrawnEventType,
+                Body = (string?)null,
+                OccurredAt = now,
+            },
+            transaction,
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+        return WithdrawMenuItemCommentOutcome.Withdrawn;
+    }
+}
+
+################################################################################
 # FILE: src/MyRestaurant.DataAccess/Menu/MenuItemImageEventLog.cs
 ################################################################################
 
@@ -17365,6 +17871,51 @@ ORDER BY menu_item_identifier,
          person_identifier,
          occurred_at DESC,
          menu_item_reaction_event_identifier DESC;
+
+################################################################################
+# FILE: src/MyRestaurant.DataAccess/Migrations/0009_menu_item_comments.sql
+################################################################################
+
+--- METADATA ---
+  Relative path:         src/MyRestaurant.DataAccess/Migrations/0009_menu_item_comments.sql
+  Size:                  1.5 KiB (1496 bytes)
+  SHA-256:               582a5d9e33d7ec74f50a1972c724d7e5d9e8f17b7518cccb33fb3855f3950137
+
+--- CONTENT ---
+CREATE TABLE menu_item_comment_event (
+    menu_item_comment_event_identifier uuid PRIMARY KEY,
+    menu_item_identifier               uuid NOT NULL
+                                       REFERENCES menu_item (menu_item_identifier),
+    person_identifier                  uuid NOT NULL
+                                       REFERENCES person (person_identifier),
+    event_type                         text NOT NULL,
+    body                               text,
+    occurred_at                        timestamptz NOT NULL,
+    CONSTRAINT menu_item_comment_event_type_vocabulary CHECK (event_type IN
+        ('submitted', 'withdrawn')),
+    CONSTRAINT menu_item_comment_event_body_payload
+        CHECK ((event_type = 'submitted') = (body IS NOT NULL)),
+    CONSTRAINT menu_item_comment_event_body_not_blank
+        CHECK (body IS NULL OR btrim(body) <> ''),
+    CONSTRAINT menu_item_comment_event_body_within_cap
+        CHECK (body IS NULL OR length(body) <= 1000)
+);
+
+CREATE INDEX menu_item_comment_event_item_person_index
+    ON menu_item_comment_event (menu_item_identifier, person_identifier, occurred_at);
+
+CREATE VIEW menu_item_comment_current AS
+SELECT DISTINCT ON (menu_item_identifier, person_identifier)
+    menu_item_comment_event_identifier,
+    menu_item_identifier,
+    person_identifier,
+    body,
+    occurred_at
+FROM menu_item_comment_event
+ORDER BY menu_item_identifier,
+         person_identifier,
+         occurred_at DESC,
+         menu_item_comment_event_identifier DESC;
 
 ################################################################################
 # FILE: src/MyRestaurant.DataAccess/MyRestaurant.DataAccess.csproj
@@ -42766,8 +43317,8 @@ public sealed class OrderWorkflow : IOrderWorkflow
 
 --- METADATA ---
   Relative path:         src/MyRestaurant.WebApplication/Orders/OrdersServiceCollectionExtensions.cs
-  Size:                  2.1 KiB (2141 bytes)
-  SHA-256:               527b9ecd34db58e5ea6c6a68de49f5163b78edabf75e84d9dedb7dded80ab17e
+  Size:                  2.2 KiB (2304 bytes)
+  SHA-256:               70556df5f76c81808c9e43db22283b1ff78111f1458db561ab1975e63924f365
 
 --- CONTENT ---
 using MyRestaurant.DataAccess.Menu;
@@ -42798,6 +43349,9 @@ public static class OrdersServiceCollectionExtensions
 
         services.AddScoped<IMenuItemReactionDirectory, DapperMenuItemReactionDirectory>();
         services.AddScoped<IMenuItemReactions, DapperMenuItemReactions>();
+
+        services.AddScoped<IMenuItemCommentDirectory, DapperMenuItemCommentDirectory>();
+        services.AddScoped<IMenuItemComments, DapperMenuItemComments>();
 
         services.AddScoped<IOrderMutations, DapperOrderMutations>();
         services.AddScoped<IOrderReadModel, DapperOrderReadModel>();
@@ -52407,6 +52961,444 @@ public sealed class MenuEventLogTests : IClassFixture<PostgreSqlFixture>, IAsync
 }
 
 ################################################################################
+# FILE: tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemCommentTests.cs
+################################################################################
+
+--- METADATA ---
+  Relative path:         tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemCommentTests.cs
+  Size:                  16.6 KiB (16956 bytes)
+  SHA-256:               2143cf9050c0fba75c14442a6cacaf236bfa34b663dafa15adcf095b55cad8bd
+
+--- CONTENT ---
+using Dapper;
+using MyRestaurant.DataAccess.Menu;
+using MyRestaurant.DataAccess.Tests.Identity;
+using MyRestaurant.DataAccess.Tests.Orders;
+using MyRestaurant.Domain.Identifiers;
+using Npgsql;
+using Xunit;
+
+namespace MyRestaurant.DataAccess.Tests.Menu;
+
+public sealed class MenuItemCommentTests : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
+{
+    private const string CountCommentEventsSql = """
+        SELECT count(*)::int FROM menu_item_comment_event;
+        """;
+
+    private const string InsertCommentEventSql = """
+        INSERT INTO menu_item_comment_event (
+            menu_item_comment_event_identifier, menu_item_identifier,
+            person_identifier, event_type, body, occurred_at)
+        VALUES (
+            @MenuItemCommentEventIdentifier, @MenuItemIdentifier,
+            @PersonIdentifier, @EventType, @Body::text, @OccurredAt);
+        """;
+
+    private readonly PostgreSqlFixture _fixture;
+    private readonly FixedClock _clock = new(new DateTimeOffset(2026, 5, 14, 18, 0, 0, TimeSpan.Zero));
+    private readonly UuidV7IdentifierFactory _identifiers = new();
+    private NpgsqlDatabaseConnectionFactory? _connectionFactory;
+    private OrderTestWorld? _world;
+
+    private Guid _adaIdentifier;
+    private Guid _benIdentifier;
+
+    public MenuItemCommentTests(PostgreSqlFixture fixture) => _fixture = fixture;
+
+    public async ValueTask InitializeAsync()
+    {
+        if (_fixture.ConnectionString is null)
+        {
+            return;
+        }
+
+        new SchemaMigrationRunner(_fixture.ConnectionString)
+        {
+            MaximumAttempts = 3,
+            DelayBetweenAttempts = TimeSpan.FromMilliseconds(200),
+        }.Run();
+
+        _connectionFactory = new NpgsqlDatabaseConnectionFactory(_fixture.ConnectionString);
+        _world = new OrderTestWorld(_connectionFactory, _clock, _identifiers);
+
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        await _world.TruncateAsync(cancellationToken);
+
+        _adaIdentifier = await _world.AddPersonAsync("ada", "Ada Lovelace", cancellationToken);
+        _benIdentifier = await _world.AddPersonAsync("ben", "  ", cancellationToken);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_connectionFactory is not null)
+        {
+            await _connectionFactory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task SubmittingWritesOneEventAndTheFoldReturnsTheBody()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        SubmitMenuItemCommentResult result = await Comments()
+            .SubmitAsync(salmon, _adaIdentifier, "  Best thing here  ", cancellationToken);
+
+        Assert.Equal(SubmitMenuItemCommentOutcome.Submitted, result.Outcome);
+        Assert.True(result.Submitted);
+        Assert.True(result.ItemExists);
+        Assert.Equal("Best thing here", result.Body);
+        Assert.Equal(salmon, result.MenuItemIdentifier);
+        Assert.Equal(_adaIdentifier, result.PersonIdentifier);
+
+        Assert.Equal(1, await World().CountAsync(CountCommentEventsSql, cancellationToken));
+
+        string? stored = await World().ScalarAsync<string>(
+            """
+            SELECT body
+            FROM menu_item_comment_event
+            WHERE menu_item_identifier = @MenuItemIdentifier
+              AND person_identifier = @PersonIdentifier;
+            """,
+            new { MenuItemIdentifier = salmon, PersonIdentifier = _adaIdentifier },
+            cancellationToken);
+
+        Assert.Equal("Best thing here", stored);
+
+        MenuItemComment only = Assert.Single(
+            await Directory().ListForPersonAsync(_adaIdentifier, cancellationToken));
+
+        Assert.Equal(salmon, only.MenuItemIdentifier);
+        Assert.Equal("Best thing here", only.Body);
+        Assert.Equal(_clock.UtcNow, only.OccurredAt);
+    }
+
+    [Fact]
+    public async Task ResubmittingTheSameBodyWritesNothing()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        await Comments().SubmitAsync(salmon, _adaIdentifier, "Best thing here", cancellationToken);
+
+        SubmitMenuItemCommentResult again = await Comments()
+            .SubmitAsync(salmon, _adaIdentifier, "   Best thing here ", cancellationToken);
+
+        Assert.Equal(SubmitMenuItemCommentOutcome.NoChange, again.Outcome);
+        Assert.False(again.Submitted);
+        Assert.True(again.ItemExists);
+        Assert.Equal("Best thing here", again.Body);
+
+        Assert.Equal(1, await World().CountAsync(CountCommentEventsSql, cancellationToken));
+    }
+
+    [Fact]
+    public async Task ResubmittingADifferentBodyAppendsAndTheFoldTakesTheLater()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        await Comments().SubmitAsync(salmon, _adaIdentifier, "Too salty", cancellationToken);
+
+        SubmitMenuItemCommentResult second = await Comments()
+            .SubmitAsync(salmon, _adaIdentifier, "Perfect tonight", cancellationToken);
+
+        Assert.Equal(SubmitMenuItemCommentOutcome.Submitted, second.Outcome);
+        Assert.Equal(2, await World().CountAsync(CountCommentEventsSql, cancellationToken));
+
+        MenuItemComment standing = Assert.Single(
+            await Directory().ListForPersonAsync(_adaIdentifier, cancellationToken));
+
+        Assert.Equal("Perfect tonight", standing.Body);
+    }
+
+    [Fact]
+    public async Task WithdrawingAppendsAnEventAndTheCommentStopsStanding()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        await Comments().SubmitAsync(salmon, _adaIdentifier, "Too salty", cancellationToken);
+
+        Assert.Equal(
+            WithdrawMenuItemCommentOutcome.Withdrawn,
+            await Comments().WithdrawAsync(salmon, _adaIdentifier, cancellationToken));
+
+        Assert.Equal(2, await World().CountAsync(CountCommentEventsSql, cancellationToken));
+        Assert.Empty(await Directory().ListForPersonAsync(_adaIdentifier, cancellationToken));
+        Assert.Empty(await Directory().ListAsync(cancellationToken));
+
+        int keptBodies = await World().CountAsync(
+            """
+            SELECT count(*)::int FROM menu_item_comment_event WHERE body IS NOT NULL;
+            """,
+            cancellationToken);
+
+        Assert.Equal(1, keptBodies);
+    }
+
+    [Fact]
+    public async Task WithdrawingWhenNothingStandsWritesNothing()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        Assert.Equal(
+            WithdrawMenuItemCommentOutcome.NoComment,
+            await Comments().WithdrawAsync(salmon, _adaIdentifier, cancellationToken));
+
+        await Comments().SubmitAsync(salmon, _adaIdentifier, "Too salty", cancellationToken);
+        await Comments().WithdrawAsync(salmon, _adaIdentifier, cancellationToken);
+
+        Assert.Equal(
+            WithdrawMenuItemCommentOutcome.NoComment,
+            await Comments().WithdrawAsync(salmon, _adaIdentifier, cancellationToken));
+
+        Assert.Equal(2, await World().CountAsync(CountCommentEventsSql, cancellationToken));
+    }
+
+    [Fact]
+    public async Task AWithdrawnCommentCanBeSubmittedAgain()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        await Comments().SubmitAsync(salmon, _adaIdentifier, "Too salty", cancellationToken);
+        await Comments().WithdrawAsync(salmon, _adaIdentifier, cancellationToken);
+
+        SubmitMenuItemCommentResult again = await Comments()
+            .SubmitAsync(salmon, _adaIdentifier, "Too salty", cancellationToken);
+
+        Assert.Equal(SubmitMenuItemCommentOutcome.Submitted, again.Outcome);
+        Assert.Equal(3, await World().CountAsync(CountCommentEventsSql, cancellationToken));
+
+        MenuItemComment standing = Assert.Single(
+            await Directory().ListForPersonAsync(_adaIdentifier, cancellationToken));
+
+        Assert.Equal("Too salty", standing.Body);
+    }
+
+    [Fact]
+    public async Task AnUnknownItemReportsNotFoundAndWritesNothing()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid missing = _identifiers.Create();
+
+        SubmitMenuItemCommentResult submitted = await Comments()
+            .SubmitAsync(missing, _adaIdentifier, "Nowhere", cancellationToken);
+
+        Assert.Equal(SubmitMenuItemCommentOutcome.MenuItemNotFound, submitted.Outcome);
+        Assert.False(submitted.ItemExists);
+        Assert.False(submitted.Submitted);
+        Assert.Null(submitted.Body);
+
+        Assert.Equal(
+            WithdrawMenuItemCommentOutcome.MenuItemNotFound,
+            await Comments().WithdrawAsync(missing, _adaIdentifier, cancellationToken));
+
+        Assert.Equal(0, await World().CountAsync(CountCommentEventsSql, cancellationToken));
+    }
+
+    [Fact]
+    public async Task ABlankBodyIsRefusedWithoutReachingTheDatabase()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        foreach (string blank in new[] { "", "   ", "\t\n " })
+        {
+            SubmitMenuItemCommentResult refused = await Comments()
+                .SubmitAsync(salmon, _adaIdentifier, blank, cancellationToken);
+
+            Assert.Equal(SubmitMenuItemCommentOutcome.BodyBlank, refused.Outcome);
+            Assert.True(refused.ItemExists);
+            Assert.Null(refused.Body);
+        }
+
+        Assert.Equal(0, await World().CountAsync(CountCommentEventsSql, cancellationToken));
+    }
+
+    [Fact]
+    public async Task ABodyOverTheDeclaredCapIsRefusedAndTheCapIsReadFromTheConstraint()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        int? cap = await Directory().ReadDeclaredBodyCapAsync(cancellationToken);
+
+        Assert.NotNull(cap);
+        Assert.True(cap > 0);
+
+        SubmitMenuItemCommentResult atCap = await Comments()
+            .SubmitAsync(salmon, _adaIdentifier, new string('a', cap.Value), cancellationToken);
+
+        Assert.Equal(SubmitMenuItemCommentOutcome.Submitted, atCap.Outcome);
+
+        SubmitMenuItemCommentResult overCap = await Comments()
+            .SubmitAsync(salmon, _benIdentifier, new string('b', cap.Value + 1), cancellationToken);
+
+        Assert.Equal(SubmitMenuItemCommentOutcome.BodyOverCap, overCap.Outcome);
+        Assert.True(overCap.ItemExists);
+        Assert.Null(overCap.Body);
+
+        Assert.Equal(1, await World().CountAsync(CountCommentEventsSql, cancellationToken));
+    }
+
+    [Fact]
+    public async Task TheSchemaRefusesEveryForbiddenShapeOfAnEventRow()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        Assert.Equal(
+            "menu_item_comment_event_type_vocabulary",
+            await RefusedConstraintAsync(salmon, "loved", "Anything", cancellationToken));
+
+        Assert.Equal(
+            "menu_item_comment_event_body_payload",
+            await RefusedConstraintAsync(salmon, "submitted", null, cancellationToken));
+
+        Assert.Equal(
+            "menu_item_comment_event_body_payload",
+            await RefusedConstraintAsync(salmon, "withdrawn", "Anything", cancellationToken));
+
+        Assert.Equal(
+            "menu_item_comment_event_body_not_blank",
+            await RefusedConstraintAsync(salmon, "submitted", "   ", cancellationToken));
+
+        Assert.Equal(0, await World().CountAsync(CountCommentEventsSql, cancellationToken));
+    }
+
+    [Fact]
+    public async Task OnePersonsCommentsDoNotAppearInAnothersList()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+        Guid soup = await World().AddMenuItemAsync("Soup", 4.50m, cancellationToken);
+
+        await Comments().SubmitAsync(salmon, _adaIdentifier, "Ada on salmon", cancellationToken);
+        await Comments().SubmitAsync(soup, _benIdentifier, "Ben on soup", cancellationToken);
+
+        MenuItemComment adas = Assert.Single(
+            await Directory().ListForPersonAsync(_adaIdentifier, cancellationToken));
+        MenuItemComment bens = Assert.Single(
+            await Directory().ListForPersonAsync(_benIdentifier, cancellationToken));
+
+        Assert.Equal("Ada on salmon", adas.Body);
+        Assert.Equal("Ben on soup", bens.Body);
+        Assert.Empty(await Directory().ListForPersonAsync(_identifiers.Create(), cancellationToken));
+
+        Assert.Equal(2, (await Directory().ListAsync(cancellationToken)).Count);
+    }
+
+    [Fact]
+    public async Task TheStaffReadNamesTheAuthorAndFallsBackToTheUsername()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        await Comments().SubmitAsync(salmon, _adaIdentifier, "Ada on salmon", cancellationToken);
+        await Comments().SubmitAsync(salmon, _benIdentifier, "Ben on salmon", cancellationToken);
+
+        IReadOnlyList<MenuItemComment> all = await Directory().ListAsync(cancellationToken);
+
+        Assert.Equal(2, all.Count);
+        Assert.Contains(all, comment => comment.AuthorName == "Ada Lovelace");
+        Assert.Contains(all, comment => comment.AuthorName == "ben");
+        Assert.All(all, comment => Assert.Equal(salmon, comment.MenuItemIdentifier));
+    }
+
+    [Fact]
+    public async Task TwoSubmissionsAtOneInstantFoldToTheLater()
+    {
+        SkipIfNoContainer();
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
+
+        await Comments().SubmitAsync(salmon, _adaIdentifier, "First", cancellationToken);
+        await Comments().SubmitAsync(salmon, _adaIdentifier, "Second", cancellationToken);
+
+        Assert.Equal(2, await World().CountAsync(CountCommentEventsSql, cancellationToken));
+
+        int distinctInstants = await World().CountAsync(
+            """
+            SELECT count(DISTINCT occurred_at)::int FROM menu_item_comment_event;
+            """,
+            cancellationToken);
+
+        Assert.Equal(1, distinctInstants);
+
+        MenuItemComment standing = Assert.Single(await Directory().ListAsync(cancellationToken));
+
+        Assert.Equal("Second", standing.Body);
+    }
+
+    private async Task<string?> RefusedConstraintAsync(
+        Guid menuItemIdentifier,
+        string eventType,
+        string? body,
+        CancellationToken cancellationToken)
+    {
+        await using NpgsqlConnection connection = new(_fixture.ConnectionString!);
+        await connection.OpenAsync(cancellationToken);
+
+        PostgresException refusal = await Assert.ThrowsAsync<PostgresException>(
+            async () => await connection.ExecuteAsync(new CommandDefinition(
+                InsertCommentEventSql,
+                new
+                {
+                    MenuItemCommentEventIdentifier = _identifiers.Create(),
+                    MenuItemIdentifier = menuItemIdentifier,
+                    PersonIdentifier = _adaIdentifier,
+                    EventType = eventType,
+                    Body = body,
+                    OccurredAt = _clock.UtcNow,
+                },
+                cancellationToken: cancellationToken)));
+
+        Assert.Equal(PostgresErrorCodes.CheckViolation, refusal.SqlState);
+
+        return refusal.ConstraintName;
+    }
+
+    private void SkipIfNoContainer()
+        => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");
+
+    private DapperMenuItemComments Comments() => new(_connectionFactory!, _clock, _identifiers);
+
+    private DapperMenuItemCommentDirectory Directory() => new(_connectionFactory!);
+
+    private OrderTestWorld World() => _world!;
+}
+
+################################################################################
 # FILE: tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemImageEventLogTests.cs
 ################################################################################
 
@@ -58590,8 +59582,8 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.DataAccess.Tests/SchemaMigrationRunnerTests.cs
-  Size:                  9.1 KiB (9300 bytes)
-  SHA-256:               be1a75f4600a71b324132d27b337dda06c8d73e9279e69d129faf5b63ef63fed
+  Size:                  9.2 KiB (9386 bytes)
+  SHA-256:               b9c6274bc1f7161027f28dc765fc22cc646ff5c5113bb6d1b79a173a4150fed6
 
 --- CONTENT ---
 using Dapper;
@@ -58618,6 +59610,8 @@ public sealed class SchemaMigrationRunnerTests : IClassFixture<PostgreSqlFixture
         "public.menu_item_image_event",
         "public.menu_item_reaction_event",
         "public.menu_item_reaction_current",
+        "public.menu_item_comment_event",
+        "public.menu_item_comment_current",
         "public.guest_order",
         "public.order_event",
         "public.order_operation_line_added",
@@ -82518,8 +83512,8 @@ public sealed class MenuItemReactionSurfaceContractTests
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Menu/MenuWiringTests.cs
-  Size:                  46.3 KiB (47407 bytes)
-  SHA-256:               bdb3eb3228d49405239cbfecfe5fedab6d26c25dacce0bd7795f592f66d51ca6
+  Size:                  46.8 KiB (47876 bytes)
+  SHA-256:               a686c58d59088fdb6608ab447104bb8a1e0afef32b591a79dc32a825073eab16
 
 --- CONTENT ---
 using System.Data.Common;
@@ -82616,6 +83610,18 @@ public sealed class MenuWiringTests
             scope.ServiceProvider.GetRequiredService<IMenuItemReactionDirectory>());
         Assert.IsType<DapperMenuItemReactions>(
             scope.ServiceProvider.GetRequiredService<IMenuItemReactions>());
+    }
+
+    [Fact]
+    public void MenuItemCommentServices_AreResolvableInAScope()
+    {
+        using ServiceProvider provider = BuildProvider();
+        using IServiceScope scope = provider.CreateScope();
+
+        Assert.IsType<DapperMenuItemCommentDirectory>(
+            scope.ServiceProvider.GetRequiredService<IMenuItemCommentDirectory>());
+        Assert.IsType<DapperMenuItemComments>(
+            scope.ServiceProvider.GetRequiredService<IMenuItemComments>());
     }
 
     [Fact]
@@ -88413,10 +89419,10 @@ public sealed class RestaurantTimeTests
 ################################################################################
 # DUMP SUMMARY
 ################################################################################
-  Files dumped   : 384
-  Total size     : 3.3 MiB (3453861 bytes)
+  Files dumped   : 387
+  Total size     : 3.3 MiB (3505822 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-26T10:30:14-04:00
+  Completed at   : 2026-08-26T23:54:53-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
