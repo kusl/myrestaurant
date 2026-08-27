@@ -1,3 +1,4 @@
+using System.Globalization;
 using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Deployment;
@@ -8,63 +9,71 @@ public sealed class ContainerLoggingContractTests
     private const string TestsRelativePath = "tests";
 
     private const string BuilderConstruction = "new PostgreSqlBuilder(";
-    private const string LoggerInstallation = "TestcontainersSettings.Logger =";
+    private const string BuilderCompletion = ".Build()";
+    private const string LoggerInstallation = ".WithLogger(";
 
     private const int MinimumFixtures = 2;
 
     [Fact]
-    public void EveryFixtureThatBuildsAContainerSilencesTheContainerLogger()
+    public void EveryContainerBuilderInstallsItsOwnLoggerBeforeItBuilds()
     {
         IReadOnlyList<string> fixtures = FixtureSources();
 
         Assert.True(
             fixtures.Count >= MinimumFixtures,
-            $"Only {fixtures.Count} source file(s) under {TestsRelativePath}/ construct a"
-                + $" Testcontainers builder, and this tree has {MinimumFixtures}: the DataAccess"
-                + " fixture and the end-to-end harness. The walk is not reading the files it is"
-                + " about, so every fact below would pass on nothing (F-41).");
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Only {fixtures.Count} source file(s) under {TestsRelativePath}/ construct a"
+                    + $" Testcontainers builder, and this tree has {MinimumFixtures}: the DataAccess"
+                    + $" fixture and the end-to-end harness. The walk is not reading the files it is"
+                    + $" about, so the fact below would pass on nothing (F-41)."));
 
-        List<string> loud = fixtures
-            .Where(path => !File.ReadAllText(path).Contains(LoggerInstallation, StringComparison.Ordinal))
-            .Select(Relative)
-            .ToList();
+        List<string> problems = [];
 
-        Assert.True(
-            loud.Count == 0,
-            $"These fixture(s) build a container without assigning '{LoggerInstallation}':"
-                + $" {Format(loud)}. Testcontainers logs every create, every readiness probe and"
-                + " every delete at Information through its own console logger, which on this suite"
-                + " is several hundred lines per run and buries the one assertion that failed. What"
-                + " diagnoses a container that will not start here is the fixture's own"
-                + " DescribeFailure prose, not those lines (F-124).");
-    }
-
-    [Fact]
-    public void TheLoggerIsSilencedBeforeTheFirstContainerIsBuilt()
-    {
-        List<string> late = [];
-
-        foreach (string path in FixtureSources())
+        foreach (string path in fixtures)
         {
             string source = File.ReadAllText(path);
 
-            int installed = source.IndexOf(LoggerInstallation, StringComparison.Ordinal);
-            int built = source.IndexOf(BuilderConstruction, StringComparison.Ordinal);
-
-            if (installed < 0 || built < 0 || installed < built)
+            for (int constructed = source.IndexOf(BuilderConstruction, StringComparison.Ordinal);
+                 constructed >= 0;
+                 constructed = source.IndexOf(
+                     BuilderConstruction,
+                     constructed + BuilderConstruction.Length,
+                     StringComparison.Ordinal))
             {
-                continue;
-            }
+                int completed = source.IndexOf(BuilderCompletion, constructed, StringComparison.Ordinal);
 
-            late.Add(Relative(path));
+                if (completed < 0)
+                {
+                    problems.Add(
+                        $"{Relative(path)} constructs a builder that no '{BuilderCompletion}' follows, so"
+                            + $" this scan cannot decide which logger the container it produces is given");
+                    continue;
+                }
+
+                if (!source[constructed..completed].Contains(LoggerInstallation, StringComparison.Ordinal))
+                {
+                    problems.Add(
+                        $"{Relative(path)} constructs a builder and reaches '{BuilderCompletion}' without"
+                            + $" calling '{LoggerInstallation}'");
+                }
+            }
         }
 
         Assert.True(
-            late.Count == 0,
-            $"These fixture(s) assign '{LoggerInstallation}' after they construct a builder:"
-                + $" {Format(late)}. The setting is read when a container is created, so a container"
-                + " built above the assignment logs anyway and the first run of a session is the"
-                + " noisy one — which is the run somebody is reading.");
+            problems.Count == 0,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"{problems.Count} container builder(s) here do not choose their own logger:"
+                    + $" {Format(problems)}. Testcontainers seeds every builder with its console logger"
+                    + $" and then reports each container created, each readiness probe and each container"
+                    + $" deleted at Information through it — several hundred lines per run of this suite,"
+                    + $" with the one assertion that failed somewhere inside. The logger is a value on"
+                    + $" the builder's own resource configuration rather than a global setting, so it has"
+                    + $" to be installed on the chain that reaches {BuilderCompletion} and installing it"
+                    + $" anywhere else silences nothing (F-126). What diagnoses a container that will not"
+                    + $" start here is the fixture's own DescribeFailure prose, not those lines"
+                    + $" (F-125)."));
     }
 
     private static IReadOnlyList<string> FixtureSources()

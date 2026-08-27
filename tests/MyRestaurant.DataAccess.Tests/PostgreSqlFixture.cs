@@ -1,4 +1,3 @@
-using DotNet.Testcontainers.Configurations;
 using Microsoft.Extensions.Logging.Abstractions;
 using Testcontainers.PostgreSql;
 using Xunit;

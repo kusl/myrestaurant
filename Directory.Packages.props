@@ -5,10 +5,13 @@
     (TECHNICAL_SPECIFICATION §16; REQUIREMENTS §2). csproj files use versionless
     <PackageReference> entries.
 
-    Every version below is the latest STABLE (non-prerelease, non-nightly) release as
-    resolved on 2026-08-02, verified with `dotnet list package` in its outdated mode
-    against nuget.org. Confirm with `dotnet restore` on a networked machine; if a version
-    has moved on, bump it here only (BUILD_PROGRESS: first-build checklist).
+    Every version below is a STABLE (non-prerelease, non-nightly) release, verified with
+    `dotnet list package` in its outdated mode against nuget.org. There is no longer a date
+    on that claim: it used to say every pin had been resolved on one day, and three of the
+    annotations further down already contradicted it (F-126). Confirm with `dotnet restore`
+    on a networked machine; if a version has moved on, bump it here only
+    (BUILD_PROGRESS: first-build checklist) and read the API surface of what you bumped AT
+    the version you pinned rather than from memory.
 
     Note that outdated mode only inspects packages a project actually references, so it is
     silent about NSubstitute below — that entry is a version *pin standing ready* for
@@ -81,6 +84,12 @@
   </ItemGroup>
 
   <ItemGroup Label="Integration tests (MyRestaurant.DataAccess.Tests)">
+    <!-- Also referenced by MyRestaurant.EndToEnd.Tests, so one bump moves both fixtures.
+
+         4.x configures the container logger PER BUILDER: `WithLogger` on the chain that reaches
+         `Build`, seeded with the library's own console logger inside `Init`. The global
+         `TestcontainersSettings.Logger` that both fixtures used to assign does not exist at this
+         version, and neither did the gate that asserted they assigned it (F-126). -->
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />
   </ItemGroup>
 
