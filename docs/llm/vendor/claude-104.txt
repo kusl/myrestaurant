@@ -1,0 +1,93 @@
+38
+89
+
+please continue 
+and the structured tar gz was a good idea 
+It removes the guess work of which file goes where 
+if I can paste the whole folder together in one go 
+please do that if possible 
+remember to tell me which files if any I would need to delete
+please avoid giving me bespoke scripts to manipulate text in code / documentation 
+remember to give full files for all files that need to change 
+I will likely miss those bespoke scripts 
+also please remember to update all documentation as necessary
+remember to not be verbose 
+don't add comments in the code 
+we have to watch how verbose we are so the project fits in claude 
+also we have a defect in the code 
+which I fixed as below 
+
+fix error with gemini pro extended 
+
+### The Issue
+
+The `CS0117` build error occurs because recent versions of the `Testcontainers` NuGet package removed the static `TestcontainersSettings.Logger` property. Logging configuration has been moved away from global settings and is now handled on a per-container basis via the builder API.
+
+### The Fix
+
+To resolve this, you need to remove the static logger assignments and instead use the `.WithLogger()` extension method directly on your `PostgreSqlBuilder` instances.
+
+**1. Update `PostgreSqlFixture.cs**`
+In `MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs`, remove the `TestcontainersSettings.Logger = NullLogger.Instance;` assignment. Update your builder to look like this:
+
+```csharp
+_container = new PostgreSqlBuilder(PostgreSqlImage)
+    .WithDatabase("myrestaurant")
+    .WithUsername("myrestaurant")
+    .WithPassword("myrestaurant")
+    .WithLogger(NullLogger.Instance)
+    .Build();
+
+```
+
+**2. Update `RestaurantHarness.cs**`
+Similarly, in `MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs`, remove the `TestcontainersSettings.Logger = NullLogger.Instance;` assignment and update the builder chain:
+
+```csharp
+_container = new PostgreSqlBuilder(PostgreSqlImage)
+    .WithDatabase("postgres")
+    .WithUsername("myrestaurant")
+    .WithPassword("myrestaurant")
+    .WithLogger(NullLogger.Instance)
+    .Build();
+
+```
+
+Once you move `NullLogger.Instance` into the builder configuration for both files, your tests will compile successfully.
+
+However, once I fixed this error, I got this test failure 
+────────────────────────────────────────────────────────────────────────────
+  6. test
+────────────────────────────────────────────────────────────────────────────
+Running tests from tests/MyRestaurant.Domain.Tests/bin/Release/net10.0/MyRestaurant.Domain.Tests.dll (net10.0|x64)
+Running tests from tests/MyRestaurant.WebApplication.Tests/bin/Release/net10.0/MyRestaurant.WebApplication.Tests.dll (net10.0|x64)
+Running tests from tests/MyRestaurant.EndToEnd.Tests/bin/Release/net10.0/MyRestaurant.EndToEnd.Tests.dll (net10.0|x64)
+Running tests from tests/MyRestaurant.DataAccess.Tests/bin/Release/net10.0/MyRestaurant.DataAccess.Tests.dll (net10.0|x64)
+tests/MyRestaurant.Domain.Tests/bin/Release/net10.0/MyRestaurant.Domain.Tests.dll (net10.0|x64) passed (761ms)
+failed MyRestaurant.WebApplication.Tests.Deployment.ContainerLoggingContractTests.EveryFixtureThatBuildsAContainerSilencesTheContainerLogger (50ms)
+  from tests/MyRestaurant.WebApplication.Tests/bin/Release/net10.0/MyRestaurant.WebApplication.Tests.dll (net10.0|x64)
+  These fixture(s) build a container without assigning 'TestcontainersSettings.Logger =': tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs; tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs. Testcontainers logs every create, every readiness probe and every delete at Information through its own console logger, which on this suite is several hundred lines per run and buries the one assertion that failed. What diagnoses a container that will not start here is the fixture's own DescribeFailure prose, not those lines (F-124).
+    at MyRestaurant.WebApplication.Tests.Deployment.ContainerLoggingContractTests.EveryFixtureThatBuildsAContainerSilencesTheContainerLogger() in /_/tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerLoggingContractTests.cs:32
+    at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+tests/MyRestaurant.WebApplication.Tests/bin/Release/net10.0/MyRestaurant.WebApplication.Tests.dll (net10.0|x64) failed with 1 error(s) (1s 175ms)
+Exit code: 2
+tests/MyRestaurant.DataAccess.Tests/bin/Release/net10.0/MyRestaurant.DataAccess.Tests.dll (net10.0|x64) passed (34s 984ms)
+tests/MyRestaurant.EndToEnd.Tests/bin/Release/net10.0/MyRestaurant.EndToEnd.Tests.dll (net10.0|x64) passed (2m 35s 381ms)
+
+Test run summary: Failed!
+  tests/MyRestaurant.WebApplication.Tests/bin/Release/net10.0/MyRestaurant.WebApplication.Tests.dll (net10.0|x64) failed with 1 error(s) (1s 175ms)
+  tests/MyRestaurant.EndToEnd.Tests/bin/Release/net10.0/MyRestaurant.EndToEnd.Tests.dll (net10.0|x64) passed (2m 35s 381ms)
+  tests/MyRestaurant.DataAccess.Tests/bin/Release/net10.0/MyRestaurant.DataAccess.Tests.dll (net10.0|x64) passed (34s 984ms)
+  tests/MyRestaurant.Domain.Tests/bin/Release/net10.0/MyRestaurant.Domain.Tests.dll (net10.0|x64) passed (761ms)
+
+  total: 1322
+  failed: 1
+  succeeded: 1321
+  skipped: 0
+  duration: 2m 35s 573ms
+Test run completed with non-success exit code: 2 (see: https://aka.ms/testingplatform/exitcodes)
+
+I tried to remove the failing test but now the test counts don't match which fails another test. 
+At this point I gave up and wrote this prompt 
+Please fix properly. 
