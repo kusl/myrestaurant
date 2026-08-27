@@ -12,10 +12,14 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
 
     private const int WideFixtureEdge = 400;
 
+    private const string FirstComment = "It is off tonight and it is still the best thing here.";
+
+    private const string SecondComment = "Ask them to keep one back for me next time.";
+
     public MenuReactionScenarios(RestaurantHarness harness) => _harness = harness;
 
     [Fact]
-    public async Task Guest_LikesADish_AndTheOpinionSurvivesAReload()
+    public async Task Guest_LikesADish_SaysWhatTheyThought_AndBothSurviveAReload()
     {
         SkipUnlessHarnessAvailable();
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -90,6 +94,43 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
 
         Assert.Null(await AdministrationJourneys.ReadMenuIndexLikeCountAsync(
             administrator, salmon.Identifier));
+
+        Assert.Equal(string.Empty, await TableOrderJourneys.ReadChosenItemCommentAsync(guest));
+
+        Assert.Equal(
+            "Submitted",
+            await TableOrderJourneys.SaveCommentAsync(
+                guest, FirstComment + "   ", InteractivityPatience));
+
+        Assert.Equal(FirstComment, await TableOrderJourneys.ReadChosenItemCommentAsync(guest));
+
+        await ReopenTheMenuAsync(guest, salmon);
+
+        Assert.Equal(FirstComment, await TableOrderJourneys.ReadChosenItemCommentAsync(guest));
+
+        await TableOrderJourneys.ChooseAsync(guest, pudding);
+
+        Assert.Equal(string.Empty, await TableOrderJourneys.ReadChosenItemCommentAsync(guest));
+
+        await TableOrderJourneys.ChooseAsync(guest, salmon);
+
+        Assert.Equal(FirstComment, await TableOrderJourneys.ReadChosenItemCommentAsync(guest));
+
+        Assert.Equal(
+            "NoChange",
+            await TableOrderJourneys.SaveCommentAsync(guest, FirstComment, InteractivityPatience));
+
+        Assert.Equal(
+            "Withdrawn",
+            await TableOrderJourneys.WithdrawCommentAsync(guest, InteractivityPatience));
+
+        await ReopenTheMenuAsync(guest, salmon);
+
+        Assert.Equal(string.Empty, await TableOrderJourneys.ReadChosenItemCommentAsync(guest));
+
+        Assert.Equal(
+            "Submitted",
+            await TableOrderJourneys.SaveCommentAsync(guest, SecondComment, InteractivityPatience));
 
         await KitchenJourneys.OpenAsync(administrator, InteractivityPatience);
         await KitchenJourneys.EightySixAsync(administrator, salmon.Name);

@@ -103,6 +103,20 @@ internal static class TableOrderJourneys
     private const string LikeControlSelector =
         "#table-order-surface div.order-menu-detail button.order-menu-like";
 
+    private const string CommentBoxSelector =
+        "#table-order-surface div.order-menu-detail textarea.order-menu-comment-body";
+
+    private const string CommentSaveSelector =
+        "#table-order-surface div.order-menu-detail button.order-menu-comment-save";
+
+    private const string CommentWithdrawSelector =
+        "#table-order-surface div.order-menu-detail button.order-menu-comment-withdraw";
+
+    private const string CommentNoticeSelector =
+        "#table-order-surface div.order-menu-detail p.order-menu-comment-notice";
+
+    private const string CommentOutcomeAttribute = "data-comment-outcome";
+
     private const string RemovalCheckboxSelector = "#table-order-surface label.order-line-remove";
 
     private const string UnavailableMarkSelector = "#table-order-surface p.order-line-warning";
@@ -462,6 +476,104 @@ internal static class TableOrderJourneys
                 $"The like control still reports {was} {timeout.TotalSeconds:F0}s after it was pressed."
                 + $" A press writes one row and re-renders this island; nothing about it waits on a"
                 + $" broadcast, because a reaction deliberately publishes none (§9)."));
+    }
+
+    internal static async Task<string?> ReadChosenItemCommentAsync(IPage page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator box = page.Locator(CommentBoxSelector);
+
+        if (await box.CountAsync() == 0)
+        {
+            return null;
+        }
+
+        return await box.First.InputValueAsync();
+    }
+
+    internal static async Task<string> SaveCommentAsync(IPage page, string body, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator box = page.Locator(CommentBoxSelector);
+
+        if (await box.CountAsync() == 0)
+        {
+            throw new InvalidOperationException(
+                "There is no comment box to write in: §11.1 renders it inside the detail panel beside"
+                + " the like, so a dish has to be chosen first.");
+        }
+
+        string? before = await ReadCommentOutcomeAsync(page);
+
+        await box.First.FillAsync(body);
+        await page.Locator(CommentSaveSelector).First.ClickAsync();
+
+        return await WaitForCommentOutcomeAsync(page, before, timeout, "saving a comment");
+    }
+
+    internal static async Task<string> WithdrawCommentAsync(IPage page, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        ILocator control = page.Locator(CommentWithdrawSelector);
+
+        if (await control.CountAsync() == 0)
+        {
+            throw new InvalidOperationException(
+                "There is no withdraw control in this panel. §11.1 renders it only where a standing"
+                + " comment exists, because §7's withdrawal verb refuses when there is nothing to"
+                + " withdraw — so a scenario that wants to press it has to have saved something"
+                + " first.");
+        }
+
+        string? before = await ReadCommentOutcomeAsync(page);
+
+        await control.First.ClickAsync();
+
+        return await WaitForCommentOutcomeAsync(page, before, timeout, "withdrawing a comment");
+    }
+
+    private static async Task<string?> ReadCommentOutcomeAsync(IPage page)
+    {
+        ILocator notice = page.Locator(CommentNoticeSelector);
+
+        if (await notice.CountAsync() == 0)
+        {
+            return null;
+        }
+
+        return await notice.First.GetAttributeAsync(CommentOutcomeAttribute);
+    }
+
+    private static async Task<string> WaitForCommentOutcomeAsync(
+        IPage page,
+        string? before,
+        TimeSpan timeout,
+        string whatWasPressed)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (await ReadCommentOutcomeAsync(page) is { } outcome
+                && !string.Equals(outcome, before, StringComparison.Ordinal))
+            {
+                return outcome;
+            }
+
+            await Task.Delay(PollInterval);
+        }
+
+        throw new InvalidOperationException(
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"§11.1 reported no new outcome {timeout.TotalSeconds:F0}s after {whatWasPressed}"
+                + $" (it still reads '{before ?? "nothing"}'). The surface declares the verdict beside"
+                + $" the sentence so a scenario reads the outcome rather than the copywriting; a press"
+                + $" that produces neither is the @onclick landing on no circuit, which"
+                + $" WaitForLiveSurfaceAsync is supposed to have ruled out before this."));
     }
 
     internal static async Task<IReadOnlyList<MenuCard>> WaitForMenuAsync(

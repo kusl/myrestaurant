@@ -12,6 +12,8 @@
 @inject IMenuItemImageDirectory MenuItemPictures
 @inject IMenuItemReactionDirectory MenuItemReactionReads
 @inject IMenuItemReactions MenuItemReactionWrites
+@inject IMenuItemCommentDirectory MenuItemCommentReads
+@inject IMenuItemComments MenuItemCommentWrites
 @inject IOrderReadModel OrderReads
 @inject IOrderEventLog EventLog
 @inject IOrderWorkflow Workflow
@@ -244,6 +246,41 @@
                                 </span>
                                 <span class="order-menu-like-label">Like</span>
                             </button>
+                        </div>
+
+                        <div class="order-menu-comment">
+                            <label class="order-menu-comment-label" for="order-menu-comment-body">
+                                What did you think?
+                                <span class="optional">(optional — only staff read it)</span>
+                            </label>
+
+                            <textarea id="order-menu-comment-body" class="order-menu-comment-body"
+                                      rows="3" maxlength="@_commentBodyCap"
+                                      data-menu-item-comment="@chosenItem.MenuItemIdentifier"
+                                      placeholder="Best thing on the menu…"
+                                      @key="chosenItem.MenuItemIdentifier"
+                                      @bind="_commentDraft"></textarea>
+
+                            <div class="order-menu-comment-actions">
+                                <button type="button" class="order-menu-comment-save"
+                                        @onclick="() => SaveCommentAsync(chosenItem)">
+                                    Save
+                                </button>
+
+                                @if (HasStandingComment(chosenItem))
+                                {
+                                    <button type="button" class="order-menu-comment-withdraw"
+                                            @onclick="() => WithdrawCommentAsync(chosenItem)">
+                                        Withdraw
+                                    </button>
+                                }
+                            </div>
+
+                            @if (_commentNotice is { } commentNotice)
+                            {
+                                <p class="order-menu-comment-notice" role="status"
+                                   data-comment-outcome="@_commentOutcome">@commentNotice</p>
+                            }
                         </div>
                     </div>
                 }
@@ -500,6 +537,13 @@
 
     private HashSet<Guid> _likedByMe = [];
 
+    private Dictionary<Guid, string> _myCommentsByItem = new();
+
+    private int? _commentBodyCap;
+    private string _commentDraft = string.Empty;
+    private string? _commentNotice;
+    private string? _commentOutcome;
+
     private IReadOnlyList<SittingMemberSummary> _roster = [];
     private TableSittingSummary? _sitting;
     private Guid? _myOrderIdentifier;
@@ -651,6 +695,16 @@
         _likedByMe = _person is { } person
             ? (await MenuItemReactionReads.ListLikedByAsync(person, _stopping)).ToHashSet()
             : [];
+
+        _myCommentsByItem = new();
+
+        if (_person is { } author)
+        {
+            _myCommentsByItem = (await MenuItemCommentReads.ListForPersonAsync(author, _stopping))
+                .ToDictionary(comment => comment.MenuItemIdentifier, comment => comment.Body);
+        }
+
+        _commentBodyCap ??= await MenuItemCommentReads.ReadDeclaredBodyCapAsync(_stopping);
     }
 
     private bool IsLikedByMe(MenuItemSummary item) => _likedByMe.Contains(item.MenuItemIdentifier);
@@ -677,12 +731,87 @@
         }
     }
 
+    private string StandingComment(Guid? menuItemIdentifier)
+        => menuItemIdentifier is { } identifier
+            && _myCommentsByItem.TryGetValue(identifier, out string? body)
+                ? body
+                : string.Empty;
+
+    private bool HasStandingComment(MenuItemSummary item)
+        => _myCommentsByItem.ContainsKey(item.MenuItemIdentifier);
+
+    private async Task SaveCommentAsync(MenuItemSummary item)
+    {
+        if (_person is not { } person)
+        {
+            return;
+        }
+
+        SubmitMenuItemCommentResult result = await MenuItemCommentWrites.SubmitAsync(
+            item.MenuItemIdentifier, person, _commentDraft, _stopping);
+
+        if (result.Submitted)
+        {
+            string stored = result.Body ?? string.Empty;
+
+            _myCommentsByItem[item.MenuItemIdentifier] = stored;
+            _commentDraft = stored;
+        }
+
+        _commentOutcome = result.Outcome.ToString();
+
+        _commentNotice = result.Outcome switch
+        {
+            SubmitMenuItemCommentOutcome.Submitted =>
+                "Saved. Only staff read it, and you can change it or withdraw it whenever you like.",
+            SubmitMenuItemCommentOutcome.NoChange =>
+                "That is word for word what you had already said, so nothing was written.",
+            SubmitMenuItemCommentOutcome.BodyBlank =>
+                "There is nothing here to save. Write something, or press Withdraw to take back what"
+                + " you said before.",
+            SubmitMenuItemCommentOutcome.BodyOverCap =>
+                "That is longer than this box can store. Shorten it and save again.",
+            _ => "This dish has come off the menu, so there is nothing left to say it about.",
+        };
+    }
+
+    private async Task WithdrawCommentAsync(MenuItemSummary item)
+    {
+        if (_person is not { } person)
+        {
+            return;
+        }
+
+        WithdrawMenuItemCommentOutcome outcome = await MenuItemCommentWrites.WithdrawAsync(
+            item.MenuItemIdentifier, person, _stopping);
+
+        if (outcome is WithdrawMenuItemCommentOutcome.Withdrawn)
+        {
+            _myCommentsByItem.Remove(item.MenuItemIdentifier);
+            _commentDraft = string.Empty;
+        }
+
+        _commentOutcome = outcome.ToString();
+
+        _commentNotice = outcome switch
+        {
+            WithdrawMenuItemCommentOutcome.Withdrawn =>
+                "Withdrawn. Staff no longer see it; that you wrote it and took it back stays in the log.",
+            WithdrawMenuItemCommentOutcome.NoComment =>
+                "You have not said anything about this one.",
+            _ => "This dish has come off the menu, so there is nothing left to withdraw.",
+        };
+    }
+
     private void ChooseItem(MenuItemSummary item)
     {
         _pickedMenuItemIdentifier =
             _pickedMenuItemIdentifier == item.MenuItemIdentifier ? null : item.MenuItemIdentifier;
 
         _stagingNotice = null;
+        _commentNotice = null;
+        _commentOutcome = null;
+        _commentDraft = StandingComment(_pickedMenuItemIdentifier);
     }
 
     private void StageItem()

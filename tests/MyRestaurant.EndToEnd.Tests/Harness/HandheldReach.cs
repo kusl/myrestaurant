@@ -68,6 +68,9 @@ internal sealed record HandheldSurface(
             HandheldSelector.Required("#table-order-surface button.order-menu-choice"),
             HandheldSelector.Required("#table-order-surface button.order-menu-inspect"),
             HandheldSelector.Required("#table-order-surface button.order-menu-like"),
+            HandheldSelector.Required("#table-order-surface button.order-menu-comment-save"),
+            HandheldSelector.Required("#table-order-surface button.order-menu-comment-withdraw"),
+            HandheldSelector.Required("#table-order-surface textarea.order-menu-comment-body"),
             HandheldSelector.Required("#table-order-surface .order-picker .form-actions button"),
             HandheldSelector.Required("#table-order-surface .order-basket-controls button"),
             HandheldSelector.Required("#table-order-surface .order-send button"),
@@ -78,6 +81,9 @@ internal sealed record HandheldSurface(
         [
             HandheldSelector.Required("#table-order-surface input[type=\"text\"]"),
             HandheldSelector.Required("#table-order-surface input[type=\"number\"]"),
+            HandheldSelector.Required("#table-order-surface textarea"),
+            HandheldSelector.Required("#table-order-surface .order-menu-detail-actions button"),
+            HandheldSelector.Required("#table-order-surface .order-menu-comment-actions button"),
         ],
         [
             HandheldSelector.Required("#table-order-surface img.order-menu-thumbnail"),

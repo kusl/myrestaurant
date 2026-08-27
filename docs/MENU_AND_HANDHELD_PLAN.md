@@ -33,11 +33,11 @@ A menu with headings, a description under each dish, a photograph beside it, and
 | **5a** | likes: the schema and the data access | landed, M6 Slice 57 |
 | **5b** | likes: the guest's control | landed, M6 Slice 58 |
 | **5c** | likes: a dish that is off tonight | landed, M6 Slice 60 |
-| **6** | guest comments | open (in progress) |
+| **6** | guest comments | open (its staff read is all that is left) |
 | **6a** | the rate limiter takes a second policy | landed, M6 Slice 62 (prerequisite 1) |
 | **6b** | the rendering rule stops being a sentence | landed, M6 Slice 63 (prerequisite 2) |
 | **6c** | comments: the schema and the data access | landed, M6 Slice 68 |
-| **6d** | comments: the guest's control | open |
+| **6d** | comments: the guest's control | landed, M6 Slice 71 |
 | **6e** | comments: the staff read | open |
 
 ## The rulings that outlive their stages
@@ -64,6 +64,11 @@ These are the parts of the plan worth keeping after the stage landed. Each is em
 | One standing comment per person per dish; editing is resubmission and every version is kept | §7, §8.2 |
 | A withdrawn comment stops being rendered and stays in the log | §7, §8.3 |
 | The comment length cap is the schema's and is stated once | §7, §8.2 |
+| The comment box is in the item's detail panel, never on its card — a textarea inside a button is markup a parser takes apart | §7, §11.1 |
+| A blank body is a refusal and never a withdrawal; the refusal names the control that does withdraw | §7, §11.1 |
+| The client's cap is an optimisation and every refusal is the server's, exactly as for a picture's bytes | §7, §11.1 |
+| The draft belongs to the chosen dish, and a menu re-read never overwrites what somebody is typing | §11.1 |
+| The surface declares the outcome beside the sentence, so a barrier never asserts the copywriting | §11.1, §16.3 |
 
 ## Stage 6 — guest comments, and what is settled
 
@@ -79,8 +84,8 @@ These are the parts of the plan worth keeping after the stage landed. Each is em
 | Attached to an item or to an order line? | the item | An opinion needs no purchase, which the like already settled; and an order line's log carries §6.7's correction rules a comment has no business inheriting. |
 | Who may read it, and for how long? | staff, and for as long as the log | §11.4's like-count ruling applied to text. Retention is the order log's, because inventing one policy for one table is how two policies start. |
 | May staff reply? | not built | A reply makes a thread, a thread makes a conversation, and a conversation needs a role, a notification and a moderation rule. Deferred, and named as deferred. |
-| What does moderation mean for an append-only log? | the question does not arise | Nothing a guest writes is rendered to another guest, so there is nobody to moderate on behalf of. Should Stage 6d or a later stage ever show one guest another's words, this row is what has to be reopened first — and it is the reason that surface is not in 6c. |
+| What does moderation mean for an append-only log? | the question does not arise | Nothing a guest writes is rendered to another guest, so there is nobody to moderate on behalf of. Stage 6d shipped a guest their own comment and nobody else's, so the question still does not arise; should any later stage ever show one guest another's words, this row is what has to be reopened first. |
 
-**What is left.** Stage 6d is the guest's own control, in §11.1's detail panel beside the like, on the same reasoning that put the like there. Stage 6e is the staff read. Neither is startable from `docs/TECHNICAL_SPECIFICATION.md` alone until the surface rulings are written, and both are ordinary stage work rather than blocked work.
+**What is left.** Stage 6e, the staff read. Stage 6d landed in Slice 71 with its five surface rulings in §7 and its six end-to-end claims on §16.3 scenario 21's arrangement; 6e is ordinary stage work whose surface rulings are not written yet, and the moderation row above is what has to be reopened first if it ever shows one guest another's words — which the staff read, by definition, does not.
 
 **Stage 6c was executed for the first time in Slice 69**, and the schema it declares is correct: the five things `menu_item_comment_event` refuses, it refuses by the name the writer recognises. What was wrong was one probe in the test, which offered a row breaking two CHECKs at once and asserted the name of the one PostgreSQL happens not to report (**F-123**). No ruling in the table above moved.
