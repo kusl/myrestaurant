@@ -7,17 +7,17 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-08-27T02:29:13-04:00
+  Generated at   : 2026-08-27T08:35:34-04:00
   Generator      : export.sh
 
 REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 08cb5bdb0a5b3615f850b21313c84a2cd42c7f90
-  Commit (short) : 08cb5bd
-  Commit date    : 2026-08-27 02:20:19 -0400
-  Commit message : run scripts
+  Commit (full)  : bbd22e92604e14106222c01722917953dd65ca60
+  Commit (short) : bbd22e9
+  Commit date    : 2026-08-27 08:35:25 -0400
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
   Files included : 388
   Withheld paths : docs/llm/, docs/progress/
@@ -34,7 +34,6 @@ NOT EVERYTHING TRACKED IS BELOW
 
 GIT WORKING TREE STATUS (first 20 lines)
 ═════════════════════════════════════════════════════════════════════════════════
- M docs/llm/dump.txt
  M docs/llm/vendor/claude-output.txt
 
 ################################################################################
@@ -2310,8 +2309,8 @@ ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
 
 --- METADATA ---
   Relative path:         Directory.Packages.props
-  Size:                  7.2 KiB (7339 bytes)
-  SHA-256:               b98fd6216b7499f922695d87ef241fe6480ecd17ad48531563c74741bfebe7ce
+  Size:                  7.9 KiB (8043 bytes)
+  SHA-256:               ff896aa6da9226d0205eb2c4c1ef93d62e00b31b8f8eda08e1c546da87812cca
 
 --- CONTENT ---
 <Project>
@@ -2321,10 +2320,13 @@ ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
     (TECHNICAL_SPECIFICATION §16; REQUIREMENTS §2). csproj files use versionless
     <PackageReference> entries.
 
-    Every version below is the latest STABLE (non-prerelease, non-nightly) release as
-    resolved on 2026-08-02, verified with `dotnet list package` in its outdated mode
-    against nuget.org. Confirm with `dotnet restore` on a networked machine; if a version
-    has moved on, bump it here only (BUILD_PROGRESS: first-build checklist).
+    Every version below is a STABLE (non-prerelease, non-nightly) release, verified with
+    `dotnet list package` in its outdated mode against nuget.org. There is no longer a date
+    on that claim: it used to say every pin had been resolved on one day, and three of the
+    annotations further down already contradicted it (F-126). Confirm with `dotnet restore`
+    on a networked machine; if a version has moved on, bump it here only
+    (BUILD_PROGRESS: first-build checklist) and read the API surface of what you bumped AT
+    the version you pinned rather than from memory.
 
     Note that outdated mode only inspects packages a project actually references, so it is
     silent about NSubstitute below — that entry is a version *pin standing ready* for
@@ -2397,6 +2399,12 @@ ENTRYPOINT ["dotnet", "MyRestaurant.WebApplication.dll"]
   </ItemGroup>
 
   <ItemGroup Label="Integration tests (MyRestaurant.DataAccess.Tests)">
+    <!-- Also referenced by MyRestaurant.EndToEnd.Tests, so one bump moves both fixtures.
+
+         4.x configures the container logger PER BUILDER: `WithLogger` on the chain that reaches
+         `Build`, seeded with the library's own console logger inside `Init`. The global
+         `TestcontainersSettings.Logger` that both fixtures used to assign does not exist at this
+         version, and neither did the gate that asserted they assigned it (F-126). -->
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />
   </ItemGroup>
 
@@ -3188,67 +3196,83 @@ This document describes how a report gets handled, not what anyone is entitled t
 
 --- METADATA ---
   Relative path:         _CHANGES.md
-  Size:                  4.5 KiB (4633 bytes)
-  SHA-256:               30f5e252053e5254073542bfe642a0a23163685c5f30ce3a14d789063e4439c7
+  Size:                  6.7 KiB (6876 bytes)
+  SHA-256:               3fc918eb118a16c2dd794fa3f447b1e5106b4784bc59d378f7c5005433346626
 
 --- CONTENT ---
-# Slice 69 — one CHECK per probe, and the proof that was written rather than run
+# Slice 70 — the gate that named an API the pinned package does not have
 
-Extract at the repository root. Spec goes to **v1.54**. Findings floor **F-125**.
+Extract at the repository root. Spec goes to **v1.55**. Findings floor **F-126**.
 
 ## Files in this archive
 
 | Path | State |
 |---|---|
-| `tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerLoggingContractTests.cs` | **new — needs `git add`** |
-| `tests/MyRestaurant.DataAccess.Tests/Menu/MenuItemCommentTests.cs` | changed |
-| `tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs` | changed |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs` | changed |
+| `tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerLoggingContractTests.cs` | changed — one fact instead of two |
+| `tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs` | changed — unused import dropped |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs` | changed — unused import dropped |
+| `Directory.Packages.props` | changed |
 | `docs/TECHNICAL_SPECIFICATION.md` | changed |
 | `docs/DOCUMENTATION_REVIEW.md` | changed |
 | `docs/BUILD_PROGRESS.md` | changed |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | changed |
 | `_CHANGES.md` | changed (this file) |
 
-**Nothing is deleted in this slice.** No production code changed: `0009_menu_item_comments.sql` and `Menu/MenuItemComments.cs` are untouched, and the schema they declare was correct all along.
+**Nothing is deleted in this slice.** No file is added and no file is removed, so nothing needs `git add` and nothing needs `git rm`. `docs/MENU_AND_HANDHELD_PLAN.md` is deliberately untouched: no stage moved and no menu ruling moved.
+
+Your two fixture edits are kept exactly as you made them — `.WithLogger(NullLogger.Instance)` on the builder chain — with one further change each: `using DotNet.Testcontainers.Configurations;` is dropped, because `TestcontainersSettings` was the only thing either file took from that namespace.
 
 ## Expected test count
 
-**1322.** 1320 + 2 (`ContainerLoggingContractTests`). `MenuItemCommentTests` still holds thirteen `[Fact]` — the fifth probe and the catalogue comparison are assertions inside the existing schema fact, so §16.4's count for that class does not move.
+**1321.** 1322 observed on your machine, one of them failing. `TheLoggerIsSilencedBeforeTheFirstContainerIsBuilt` is deleted and nothing is added, so one `[Fact]` leaves and none arrives. §16.4's paragraph for the class moves from 2 assertions to 1 in the same slice, which is the gate your removal tripped.
 
 Any other number is worth investigating before reading assertion text.
+
+## What the failure was
+
+`Testcontainers` moved logger configuration off the static `TestcontainersSettings.Logger` and onto the builder before 4.14.0, the version `Directory.Packages.props` pins. Your diagnosis and your fix were both right. What was left was the gate, which asserted the assignment your fix had to delete — and its second fact asserted the *position* of that assignment, which has no meaning once the logger is a per-builder value rather than a global setting.
+
+So the ordering fact is **deleted, not reworded**: a rule whose subject has ceased to exist is deleted rather than weakened into something that cannot fail (F-41). That was your instinct too; what stopped it being the fix was the §16.4 arithmetic, which this slice moves in the same commit.
+
+## What the surviving fact now says
+
+One `[Fact]`. Every `new PostgreSqlBuilder(` under `tests/` is walked forward to its `.Build()`, and a `.WithLogger(` must appear on that chain. Three consequences:
+
+- A fixture with two builders and one silencer now **fails**. The old file-level `Contains` passed it.
+- A builder with no `.Build()` after it is **reported** rather than treated as satisfied — the scan says it cannot decide instead of deciding permissively.
+- It keys on the call, not on the value, so Slice 69's veto point 1 survives: swap `NullLogger.Instance` for a warning-threshold `ILogger` and this stays green.
 
 ## What was verified, and how
 
 | Claim | How |
 |---|---|
-| Each of the five probe rows breaks exactly one CHECK | Executed against a real PostgreSQL carrying `0009`'s exact DDL. Five probes, five distinct constraint names. |
-| Each of the four control rows inserts | Same run, inside a transaction, rolled back; row count zero afterwards. |
-| The reported failure reproduces | Same run: `('loved', 'Anything')` reports `menu_item_comment_event_body_payload`, exactly as on your machine. |
-| `pg_constraint` returns the four names in that order | Same run. |
-| `ContainerLoggingContractTests` is sensitive | Emulated against the edited tree and two planted defects: assignment deleted (fact 1 reports the file), assignment moved below the builder (fact 1 passes, fact 2 reports it). |
+| `TestcontainersSettings` has no `Logger` at 4.14.0 | Read `src/Testcontainers/Configurations/TestcontainersSettings.cs` at tag `4.14.0`. Also absent at 4.13.0 and 4.12.0. |
+| `WithLogger` is callable on `PostgreSqlBuilder` | `public TBuilderEntity WithLogger(ILogger logger)` on `AbstractBuilder`, implicit implementation of `IAbstractBuilder`, so no using directive beyond what the fixtures already carry. |
+| An explicit `WithLogger` actually displaces something | `AbstractBuilder.Init()` seeds every builder with `ConsoleLogger.Instance`. That is the noise. |
+| The rewritten gate passes the delivered tree | Emulated in Python over the same walk and the same markers. |
+| It is sensitive | Five planted defects, all reported: silencer deleted from the fixture; deleted from the harness instead; a second unsilenced builder added beside the silenced one; `.Build()` renamed away; and the pre-slice tree with the static assignment in both files, which reproduces your failure. |
+| The second-builder defect is one the old shape missed | Checked directly: a file-level `Contains` passes that tree. |
 
-**Not verified:** nothing was compiled — no .NET SDK in the authoring environment, so 1322 is arithmetic. The PostgreSQL used was 16, not the pinned 17. The contract test was emulated in Python against the same file contents rather than run as C#.
+**Not verified:** nothing was compiled — no .NET SDK here, so 1321 is arithmetic off your observed 1322 and the rewritten gate has not run as C#. The API facts were read from the library's source at tag 4.14.0, not by compiling against the restored package.
 
 ## Gates emulated against the edited tree
 
 | Gate | Result |
 |---|---|
 | §16.4 counted-class census | 47 counted, floor 37, no disagreement, no ambiguity, no unresolved citation |
-| `SpecificationVersionTests` | header 1.54 = newest entry 1.54, history descends |
+| `SpecificationVersionTests` | header 1.55 = newest entry 1.55, history descends |
 | `MarkdownTableContractTests` | no malformed run of table lines in any edited document |
 | `ContextDumpExclusionContractTests` | every archived document still linked by exact path |
-| Byte hygiene | LF only, one final newline, no trailing whitespace, all nine files |
-| No comment in authored source | none in any of the four C# files |
-| `ContainerImageReferenceContractTests` | unchanged: the new file declares no `*Image` constant |
+| `SourceCommentContractTests` | no comment in any of the three C# files |
+| Byte hygiene | LF only, one final newline, no trailing whitespace, all eight files |
+| `Directory.Packages.props` | parses as XML; no doubled hyphen inside a comment |
 
 ## Veto points
 
-**1. The Testcontainers logger is silenced rather than thresholded.** `NullLogger.Instance` drops Warning and Error as well as the Information chatter. The argument for it is that a container failure here is diagnosed by `DescribeFailure`, which is several sentences and better than any log line the library emits. To keep warnings instead, replace `NullLogger.Instance` in both fixtures with a small `ILogger` whose `IsEnabled` returns `logLevel >= LogLevel.Warning`; `ContainerLoggingContractTests` keys on the assignment, not on what is assigned, so it stays green either way.
+**1. The ordering fact is gone rather than reformulated.** A per-chain formulation of it does exist — `.WithLogger(` must precede `.Build()` — but that is now *inside* the surviving fact rather than beside it, because the two cannot fail independently: a chain with the call after `Build` is the same string as a chain without the call before it. To have two facts again you would need a defect shape that satisfies one and not the other, and there isn't one. To reverse, split the walk into presence and position and take §16.4 back to 2 assertions and the count to 1322.
 
-**2. The catalogue comparison lists the four constraint names.** Subjects are computed elsewhere in this tree (F-47, F-58); here the *actual* set is computed and the expected set is written down, which is the shape of a census rather than a list. To reverse it, drop the `declared` array and the `Assert.Equal` beneath it; the five probes still cover the four constraints, but a fifth CHECK could then shadow one of them without anything turning red.
+**2. `Directory.Packages.props` loses its resolution date.** The file opened by claiming every pin was the latest stable release as resolved on 2026-08-02, and three annotations further down already contradicted it. Deleted on F-77 rather than re-dated, since the next bump falsifies any date written there. To keep a date instead, restore the sentence and add the bump date to the release procedure in `docs/OPERATIONS.md` §14 so something moves it.
 
-**3. Three findings ride in one slice.** They fail in three distinguishable places — one DataAccess integration assertion, two WebApplication source-scan assertions, and one documentation correction that cannot fail. To split, F-125 and its test are wholly separable: revert `PostgreSqlFixture.cs`, `RestaurantHarness.cs`, the new test file, and the `ContainerLoggingContractTests` paragraph in §16.4, the F-125 rows in Appendix A and the ledger, and take the census back to 46 and the count back to 1320.
+**3. The gate's marker is still a string the compiler does not hold.** Referencing `Testcontainers.PostgreSql` from `MyRestaurant.WebApplication.Tests` would let the marker be `nameof(PostgreSqlBuilder.WithLogger)`, and this exact failure could then not recur. Rejected: it fails in the same build as the fixtures already do, so it buys a redundant check rather than an earlier one, and it puts Docker.DotNet and SSH.NET into an assembly that starts no container. Recorded as an open residual instead, with the §18 habit in its place. To reverse, add the package reference and build the marker from `nameof`.
 
 ################################################################################
 # FILE: compose.yaml
@@ -3428,8 +3452,8 @@ volumes:
 
 --- METADATA ---
   Relative path:         docs/BUILD_PROGRESS.md
-  Size:                  23.1 KiB (23700 bytes)
-  SHA-256:               02a8bd9bd0839b47b94841b874752ee076bff1956408112fa30fc1a80a8b0e3c
+  Size:                  29.4 KiB (30079 bytes)
+  SHA-256:               2ecc053906d38c633f0814667d454d21b1f9ae34093d2120400b7a87ee0f8caa
 
 --- CONTENT ---
 # Build progress
@@ -3550,17 +3574,41 @@ volumes:
 
 **F-124 is the reason F-123 shipped.** Slice 68's sensitivity paragraph described four mutation runs, and Slice 68's *What was NOT verified* paragraph, six paragraphs below it, says no container engine ran and that the class had never executed. A mutation proof presupposes a green baseline; this baseline was red. The rule F-41 states was satisfied on paper. §18 now carries the distinction — a proof is an execution, and a slice that cannot execute names the defect the assertion is *reasoned* to catch and says it was not run — and Slice 68's paragraph above is corrected in place rather than annotated (**F-114**).
 
-**F-125 is why the failure was hard to find.** Testcontainers logs each container created, each `pg_isready` probe and each container deleted at Information, which across the integration classes is several hundred lines carrying the one failing assertion somewhere inside. Both fixtures now assign `TestcontainersSettings.Logger = NullLogger.Instance` as the first statement of the `try` that already turns a container failure into a skip, so the assignment cannot itself crash an assembly, and it runs after `ContainerEngineDiscovery` has set `DOCKER_HOST` — touching `TestcontainersSettings` snapshots the endpoint, which is why the order is asserted and not merely written. Nothing is lost that anybody reads: a container that will not start is diagnosed by `DescribeFailure`, which names the image, the short-name resolution rule and the socket to activate.
+**F-125 is why the failure was hard to find.** Testcontainers logs each container created, each `pg_isready` probe and each container deleted at Information, which across the integration classes is several hundred lines carrying the one failing assertion somewhere inside. Both fixtures now install `WithLogger(NullLogger.Instance)` on the builder chain, inside the `try` that already turns a container failure into a skip, so the call cannot itself crash an assembly. It was first written as an assignment to the static `TestcontainersSettings.Logger`, and asserted as one — a member the pinned Testcontainers does not have, so neither container assembly compiled (**F-126**, Slice 70). Nothing is lost that anybody reads: a container that will not start is diagnosed by `DescribeFailure`, which names the image, the short-name resolution rule and the socket to activate.
 
 **Three findings in one slice, and the distinguishable-failure rule governs all three.** F-123 fails as one integration assertion in `MyRestaurant.DataAccess.Tests` naming a constraint. F-125 fails as two source-scan assertions in `MyRestaurant.WebApplication.Tests` naming a file. F-124 is a documentation correction with no gate and cannot fail. F-124 is not separable from F-123 under the atomic-documentation rule — it is a claim *about the assertion F-123 repairs*, in the slice narrative that shipped it.
 
 **Test count arithmetic.** 1320 + 2 = **1322**. Two `[Fact]` in the new `ContainerLoggingContractTests` in `MyRestaurant.WebApplication.Tests`. `MenuItemCommentTests` still holds thirteen: the fifth probe and the catalogue comparison are assertions inside an existing fact, so §16.4's thirteen for that class does not move. No test was deleted. §16.4's counted-class census goes 46 → 47 over a floor of 37.
 
-**Sensitivity — run, this time, and the two halves are labelled.** `ContainerLoggingContractTests` was emulated mechanically against the edited tree and against two planted defects: with the assignment deleted from `PostgreSqlFixture`, the first fact reports that file by name; with the assignment moved below `new PostgreSqlBuilder(`, the first fact passes and the second reports it, which is what makes them two facts. The repaired schema fact was executed against a real PostgreSQL carrying the exact DDL of `0009`: five probes, five distinct constraint names, four controls accepted, zero rows left. The pre-repair probe row was run in the same session and reports `body_payload`, which is the failure this slice closes.
+**Sensitivity — the schema half was run; the contract half was emulated and the emulation was empty.** `ContainerLoggingContractTests` was emulated mechanically against the edited tree and two planted defects, which established that two facts about the string `TestcontainersSettings.Logger =` decide different things — on a tree in which that string did not compile. F-124's rule was obeyed and the proof was still worth nothing (**F-126**, Slice 70). The repaired schema fact was executed against a real PostgreSQL carrying the exact DDL of `0009`: five probes, five distinct constraint names, four controls accepted, zero rows left. The pre-repair probe row was run in the same session and reports `body_payload`, which is the failure this slice closes.
 
-**What was NOT verified.** Nothing was compiled: no .NET SDK was available in the authoring environment, so `dotnet build` and `dotnet test` have not run and 1322 is arithmetic rather than an observation. The PostgreSQL used to verify the schema fact was 16, not the 17 the fixture starts; CHECK constraints are sorted by name in both and have been since the behaviour existed, but the run was not against the pinned image. `ContainerLoggingContractTests` was emulated in Python against the same file contents rather than executed as C#. The claim that `NullLogger.Instance` silences Testcontainers is read from the library's use of `TestcontainersSettings.Logger` and was not observed.
+**What was NOT verified.** Nothing was compiled: no .NET SDK was available in the authoring environment, so `dotnet build` and `dotnet test` have not run and 1322 is arithmetic rather than an observation. The PostgreSQL used to verify the schema fact was 16, not the 17 the fixture starts; CHECK constraints are sorted by name in both and have been since the behaviour existed, but the run was not against the pinned image. `ContainerLoggingContractTests` was emulated in Python against the same file contents rather than executed as C#. The claim that `NullLogger.Instance` silences Testcontainers was read out of a remembered API surface rather than out of the pinned package, which does not have the member it was read from (**F-126**, Slice 70).
 
 **Still open.** Stage 6d (the guest's control in §11.1's detail panel) and Stage 6e (the staff read), both unchanged by this slice. The fourth Stage 6 question — staff replies — stays open.
+
+## Slice 70 — the gate that named an API the pinned package does not have
+
+| Slice | What landed | Findings closed |
+|---|---|---|
+| 70 | `ContainerLoggingContractTests` rewritten as one per-builder fact against the builder-scoped logger API; the ordering fact deleted; the unused `DotNet.Testcontainers.Configurations` import dropped from both fixtures; `Directory.Packages.props` records the per-builder mechanism and loses a date it had already contradicted; §18 gains the rule the failure produced | F-126 |
+
+**What is in this slice.** The one defect Slice 69 introduced while closing three, found by running the suite on a machine that has an SDK. No production code changed and no schema changed. `Testcontainers.PostgreSql` is pinned at 4.14.0, and Testcontainers moved logger configuration off the static `TestcontainersSettings.Logger` and onto the builder before that release: the property is gone, `AbstractBuilder.WithLogger(ILogger)` replaces it, and `Init()` seeds every builder with the library's own console logger. Slice 69 wrote the assignment into both fixtures *and* wrote a gate asserting the assignment, so the two container assemblies did not compile — and the repair that made them compile is what turned the gate red. That is the whole of **F-126**.
+
+**The ordering fact is deleted rather than reworded.** `TheLoggerIsSilencedBeforeTheFirstContainerIsBuilt` asserted a position: the assignment above the builder, because touching the static class snapshots the Docker endpoint. There is no static class in the mechanism any more, and therefore no position — the logger is a value on one builder's own resource configuration, cloned into it by `WithLogger` and read when that builder's container is created. A rule whose subject has ceased to exist is deleted rather than weakened into something that cannot fail (**F-41**). This is also what the person's own first instinct was; what stopped deleting the test being the fix was the arithmetic, which is repaired below rather than worked around.
+
+**What survives is stronger than what it replaces.** The surviving fact was a `Contains` over a whole file, so a fixture holding two builders and one silencer passed. It now walks each `new PostgreSqlBuilder(` forward to its `.Build()` and requires a `.WithLogger(` on that chain. A second builder therefore cannot arrive unsilenced, and a builder with no `.Build()` after it is *reported* rather than treated as satisfied — the scan says it cannot decide rather than deciding permissively. It keys on the call and not on the value (**F-67**), so Slice 69's first veto point survives intact: swapping `NullLogger.Instance` for a warning-threshold logger stays green.
+
+**The rule §18 gains, and the residual that comes with it.** A tree-scan gate keys on a string, the code it scans is a second copy of that string, and nothing in this repository holds the two together — only the compiler does. Slice 69 obeyed F-124: it labelled its proof an emulation rather than a run. The emulation still passed against a tree that did not build, because file text cannot say whether a marker names a member that exists. The habit is to read the API surface **at the pinned version** and say which version was read; this slice read `testcontainers/testcontainers-dotnet` at tag `4.14.0`, which is where `TestcontainersSettings` is missing a `Logger`, where `WithLogger` is a public member of `AbstractBuilder`, and where `Init()` seeds `ConsoleLogger.Instance`. Making the marker compiler-held was considered and **rejected**: referencing Testcontainers from `MyRestaurant.WebApplication.Tests` in order to hold `WithLogger` inside a `nameof` fails in the same build as the fixtures already do, so it is a redundant check rather than an earlier one, bought with a package reference in an assembly that starts no container.
+
+**One further deletion, on F-77's ruling.** `Directory.Packages.props` opened by saying every version below was the latest stable release *as resolved on 2026-08-02*. Three annotations in the same file already contradicted it: `xunit.v3` 4.0.0 is annotated as published 2026-08-14, the SSH.NET advisory as published 2026-08-12, and Testcontainers 4.14.0 postdates the date as well. The sentence is deleted rather than re-dated, and what stays is the instruction it should have carried — bump here only, and read the API surface of what you bumped at the version you pinned.
+
+**Test count arithmetic.** **1322 observed**, one failing, which is the first count in eight slices that is a measurement rather than arithmetic. One `[Fact]` is deleted and none added: **predicted 1321, all passing.** §16.4's paragraph for the class goes from 2 assertions to 1, and the counted-class census stays at 47 over a floor of 37. A deviation from 1321 is the first thing to investigate.
+
+**Sensitivity — emulated against the edited tree and five planted defects, and the emulation's limit is the finding above.** The delivered tree passes. `.WithLogger(NullLogger.Instance)` deleted from `PostgreSqlFixture`: reported by name. Deleted from `RestaurantHarness` instead: reported by name. A second, unsilenced `new PostgreSqlBuilder(` added to `PostgreSqlFixture` beside the silenced one: reported — and confirmed to be the case a file-level `Contains` passes, which is what makes the per-chain walk stronger rather than merely longer. `.Build()` renamed on the harness chain: reported as a builder this scan cannot decide about. The pre-slice tree, with the static assignment in both fixtures: both reported, which is the failure the person observed. The floor is exercised by the two fixtures the walk finds.
+
+**What was NOT verified.** Nothing was compiled: no .NET SDK in the authoring environment, so 1321 is arithmetic off an observed 1322 rather than an observation of its own, and the rewritten gate has not executed as C#. The API facts above were read from the library's source at tag 4.14.0 over the network, not from the restored package on the person's machine, and not by compiling against it. No container engine and no browser ran here.
+
+**Still open.** Stage 6d (the guest's control in §11.1's detail panel) and Stage 6e (the staff read), both unchanged. The fourth Stage 6 question — staff replies — stays open.
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -3568,13 +3616,13 @@ volumes:
 
 --- METADATA ---
   Relative path:         docs/DOCUMENTATION_REVIEW.md
-  Size:                  42.9 KiB (43972 bytes)
-  SHA-256:               3f320868045c9fd5f04bb25bf2ed8c48097841a176361fdf13790fca95d4bb2c
+  Size:                  45.4 KiB (46458 bytes)
+  SHA-256:               d7eff683d9fe6ade86eb85e7b8aff612193f028c8fdf2b5b0b4850c7f8ea3cdf
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
 
-**All findings F-01 through F-125 are resolved.** This is the numbered ledger: one row per finding,
+**All findings F-01 through F-126 are resolved.** This is the numbered ledger: one row per finding,
 stating what was wrong, what was ruled, and where the ruling lives. It is a register rather than an
 essay — the reasoning that produced each ruling is in the commit that closed it and in the archived
 long form, and the specification carries the mechanism.
@@ -3603,6 +3651,7 @@ mechanical holds it there; Appendix A of the specification maps every ruling to 
 | A correction replaces the claim it corrects | F-114, F-122 | It does not sit beneath it. Two accounts of one thing read as diligence and neither can be dated by the reader. A discharged deferral is deleted, not annotated. |
 | An assertion decides one thing | F-123 | A subject broken in two ways is named by whichever failure the tool reports first. Break one thing, and prove it with a control that differs in one attribute and must succeed. |
 | A sensitivity proof is an execution | F-124 | Narrating planted-defect runs presupposes a green baseline. A slice that cannot execute says which defect the assertion is *reasoned* to catch, and says it was not run. |
+| An emulated proof is not a compilation | F-126 | A tree-scan gate's marker is a second copy of the code it scans for, and only the compiler holds them together. A slice that cannot build reads the API surface at the pinned version and says which version it read. |
 | One change, one green run | — | Two changes ride together only when their failure modes are distinguishable by name. |
 
 ---
@@ -3754,7 +3803,8 @@ mechanical holds it there; Appendix A of the specification maps every ruling to 
 | **F-122** | **A deferral that had been discharged eleven slices earlier was still recorded as pending in two places, and one of them is what a session reads to decide what to build next.** §17 carried the corrected account of the rate limiter — *"The mechanism, kept because it is the reason a second policy is still not a two-line addition anywhere else"* — and then, four paragraphs below it, the **pre-fix** account of the same mechanism in future tense: *"When it lands, §13 gains the window and permit count beside `DISPLAY_PAIRING_*`."* §13 has had them since v1.47. §19's M7 bullet, separately, still recorded Stage 6 as *not startable* until that ruling was revisited. And §17 stated that the habit F-115 produced *"is stated in §18 rather than left here"* — §18 did not state it. Found by the slice that went to start Stage 6 and was told by the specification that it could not | **All three are deletions or replacements, not annotations.** §17's pre-fix paragraph is deleted on **F-114**'s ruling — a correction replaces the claim it corrects and does not sit above it, which is the same error in the other direction. §19's clause is rewritten to what is true rather than struck through. §18 gains the sentence §17 was pointing at: an accepted risk that names its own remedy is a **deferral**, it belongs where deferrals are tracked, and when the remedy lands the promise is deleted. **No gate holds this**, and the reason is recorded as a residual rather than left as an omission: a gate that catches a stale promise has to read prose, which **F-116** and **F-119** forbid | S§17, S§18, S§19 · F-114, F-115, F-116 |
 | **F-123** | **A schema probe asserted the name of a constraint PostgreSQL was under no obligation to report.** `TheSchemaRefusesEveryForbiddenShapeOfAnEventRow` offered `('loved', 'Anything')` and expected `menu_item_comment_event_type_vocabulary`. That row breaks the vocabulary CHECK *and* `menu_item_comment_event_body_payload`, whose biconditional reads `false = true`. PostgreSQL sorts a relation's CHECKs by name and evaluates them in that order, so `body_payload` is reported and the fact failed against a schema that is entirely correct — the observed failure, on the person's machine, on the slice that shipped it. Two of the remaining three probes were correct by luck rather than by construction, and the fourth constraint, the cap, had no schema-level probe at all despite the fact being named *every forbidden shape* | **The probe row is constructed so that exactly one thing about it is wrong, and that is proven rather than assumed.** Each of the five probes is now paired with a **control** row differing from it in one attribute, inserted inside a transaction and rolled back; if the probe were over-determined the control would be refused too, and the fact says so by name. The four constraint names are read out of `pg_constraint` and compared against the set the probes cover, so a fifth CHECK cannot silently shadow one of them, and the cap gets the probe the fact's name had been promising. §18 states the general rule: an assertion may not depend on which of several simultaneous failures a tool reports first | S§16.4, S§18 · F-41 |
 | **F-124** | **A sensitivity proof was recorded for assertions that had never been executed, in the same slice whose own verification paragraph said no container ran.** Slice 68's narrative describes `TheSchemaRefusesEveryForbiddenShapeOfAnEventRow` run against four mutations of `0009` and reports what each one named. Six paragraphs later the same slice states that no container engine was available and that the class *has never executed against a real PostgreSQL*. Both cannot be true, and the second is: a mutation proof presupposes a green baseline, and this baseline was red — F-123 was in the file the whole time and the first real run found it. The rule F-41 states, *every assertion is proven able to fail against a planted defect*, had been satisfied on paper | **The paragraph is corrected in place** rather than annotated (**F-114**), and §18 gains the distinction it was missing: a sensitivity proof is a record of an **execution**, and where the authoring environment cannot execute the assertion, the paragraph names the defect the assertion is *reasoned* to catch and says it was not run. The two are different claims and only one is evidence. **No gate holds this** — telling a described run from a performed one means reading prose for a tense, which **F-116** and **F-119** forbid | S§18 · F-41, F-114, F-116 |
-| **F-125** | **The suite's own output buried the assertion that failed.** Testcontainers logs every container created, every `pg_isready` probe and every container deleted at Information through its console logger. Across the integration classes that is several hundred lines per run, interleaved with the runner's own output, and the single line reporting the F-123 failure sat inside it. The fixtures already turn a container problem into a skip carrying several sentences of diagnosis — `DescribeFailure` names the image, the resolution rule and the socket to activate — so the log lines were not what anybody would read to fix a container either | Both fixtures assign `TestcontainersSettings.Logger = NullLogger.Instance` as the first statement of the `try` that already converts a container failure into a skip reason, so the assignment cannot itself turn a skip into a crashed assembly, and it runs after `ContainerEngineDiscovery` has set `DOCKER_HOST` — touching `TestcontainersSettings` snapshots the endpoint, so the order is load-bearing. `ContainerLoggingContractTests` holds both halves over a subject set **computed** from the files that construct a builder (**F-47**), with the scanner excluding its own source by `nameof` | S§16.4 · F-41, F-47 |
+| **F-125** | **The suite's own output buried the assertion that failed.** Testcontainers logs every container created, every `pg_isready` probe and every container deleted at Information through its console logger. Across the integration classes that is several hundred lines per run, interleaved with the runner's own output, and the single line reporting the F-123 failure sat inside it. The fixtures already turn a container problem into a skip carrying several sentences of diagnosis — `DescribeFailure` names the image, the resolution rule and the socket to activate — so the log lines were not what anybody would read to fix a container either | Both fixtures install `WithLogger(NullLogger.Instance)` on the builder chain that reaches `Build`, inside the `try` that already converts a container failure into a skip reason, so the call cannot itself turn a skip into a crashed assembly. `ContainerLoggingContractTests` holds the rule over a subject set **computed** from the files that construct a builder (**F-47**), with the scanner excluding its own source by `nameof`. The mechanism was first written as an assignment to a static setting the pinned version does not have, and the two facts it was first written as are now one (**F-126**) | S§16.4 · F-41, F-47, F-126 |
+| **F-126** | **A gate and the two fixtures it holds were written against a Testcontainers API the pinned version does not have, and the proof of the gate could not have noticed.** Testcontainers moved logger configuration off the static `TestcontainersSettings.Logger` and onto the builder before 4.14.0, the version `Directory.Packages.props` pins. Both fixtures assigned the static property, so neither test assembly compiled; repairing them to `WithLogger` on the builder chain then turned `ContainerLoggingContractTests` red, because the gate asserted the assignment it had just been necessary to delete — one build error and one failing gate, from one remembered API. F-124's rule was followed: the gate's sensitivity was labelled as an emulation over file text rather than as a run. That is exactly what the emulation cannot decide. A string can name a member that does not exist, and only a compiler says so | **The fixtures keep the mechanism and change the call**, and the gate's second fact is **deleted rather than reworded**: an ordering assertion over a global assignment has no subject once the logger is a per-builder value, and a rule that can no longer fail is the vacuous gate **F-41** forbids. The one fact that remains is *stronger* than the fact it replaces — every `new PostgreSqlBuilder(` must reach its `.Build()` through a `.WithLogger(`, rather than merely share a file with one, so a second builder cannot arrive unsilenced. §18 states the general rule, and the residual below records why no gate holds it | S§16.4, S§18 · F-41, F-47, F-77, F-124, F-125 |
 ---
 
 ## Open residuals
@@ -3767,6 +3817,7 @@ These are stated rather than closed, because each is a limit of what text can de
 | A gate walking `src/` for `*.cs` also reaches `obj/**/*.g.cs` | F-120 | Generated code is not authored and carries generated comments. `SourceCommentContractTests` excludes `bin` and `obj` by path segment; the older walks are unaffected because their assertions are floors on files, or absences of patterns generated code does not contain. |
 | A predicate over a **collection** is not brought under the atomic-reading rule | F-121 | `Func<IReadOnlyList<T>, bool>` is excluded because a list read is a count followed by one read per row, and making it one evaluation is a larger change than this rule. The excluded readers poll a surface that has already stopped changing, which is why none of them has produced a flake. |
 | `HarnessSnapshotContractTests` delimits a method body by matching braces, which a stray brace inside a string literal would truncate | F-121 | A truncated body contains no browser read and therefore passes. The floor on total body bytes is what reports it; the failure direction is a loud floor rather than a silent pass. |
+| A gate's marker can name a member that does not exist | F-126 | The marker and the code it scans for are two copies of one fact, held together by the compiler and by nothing in this tree. A gate in `MyRestaurant.WebApplication.Tests` cannot type-check a file in another assembly, and referencing Testcontainers there to hold the name in a `nameof` buys nothing the fixtures' own compilation does not already buy — both fail in the same build, so the second check is redundant rather than earlier. What replaces the gate is the §18 habit: read the API at the pinned version, and say which version was read. |
 | A described sensitivity proof cannot be told from a performed one | F-124 | Distinguishing them means reading prose for a tense, which F-116 and F-119 forbid. What replaces the gate is the §18 habit and the arithmetic: a slice states its predicted test count, and the first run that disagrees is where the paper proof is found out. |
 | A stale promise about work that has landed is held by nothing | F-122 | Catching one mechanically means reading prose for a tense, which F-116 and F-119 forbid — and a lint on future-tense sentences would fire on every legitimate one in §19's build order. What replaces the gate is the §18 habit: the promise is deleted by the slice that discharges it, in the same slice, under the atomic-documentation rule. |
 | LAN ordering depends on WAN health | F-06 | One origin, hairpinned through Cloudflare. Accepted risk, recorded in S§17. |
@@ -4588,13 +4639,13 @@ License: **AGPL-3.0-only** (`LICENSE`). Governance: single-owner project, no out
 
 --- METADATA ---
   Relative path:         docs/TECHNICAL_SPECIFICATION.md
-  Size:                  178.9 KiB (183159 bytes)
-  SHA-256:               2e160b7f422a0837b372af1671437bf18e638444ed98a0d0bf23a9adb70bdfbd
+  Size:                  181.2 KiB (185538 bytes)
+  SHA-256:               8a201dc9bda4c3d77c12ee94b0598f0857cc159961fb38e20979bb6f5188572d
 
 --- CONTENT ---
 # myrestaurant — Technical Specification
 
-**Version 1.54 — 2026-08-27 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
+**Version 1.55 — 2026-08-27 — Status: accepted, implementation-ready.** (Changelog at the bottom; v1.0 was 2026-07-17.)
 
 This document is the normative implementation contract for the system described in `docs/REQUIREMENTS.md`. It is written so that a person or an LLM who has never seen the project can implement it without asking questions. The words **must**, **must not**, **should**, and **may** are used in their RFC 2119 sense. Where this specification and an ADR describe the same decision, they agree by construction; the ADRs in `docs/adr/` carry the rationale, this document carries the mechanism. Appendix A maps every ruling to its embodiment.
 
@@ -5840,7 +5891,7 @@ CI builds with `-p:ContinuousIntegrationBuild=true`, which flips `TreatWarningsA
 
 `tests/MyRestaurant.Domain.Tests/UuidV7IdentifierFactoryTests.cs` — 7 assertions: identifiers are monotonic within a millisecond, which `Guid.CreateVersion7()` alone does not give, and order is compared big-endian because `Guid.CompareTo` disagrees with PostgreSQL (**F-45**).
 
-`tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerLoggingContractTests.cs` — 2 assertions: every fixture that builds a container silences the Testcontainers logger, and silences it before it builds, over a subject set computed from the sources that construct a builder (**F-125**).
+`tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerLoggingContractTests.cs` — 1 assertion: every `new PostgreSqlBuilder(` under `tests/` reaches its `.Build()` through a `.WithLogger(`, over a subject set computed from the sources that construct a builder (**F-125**, **F-126**). Testcontainers seeds each builder with its own console logger, so the silencer is a value on that builder's configuration and there is no global setting left to assign, nor any order to assign it in (**F-41**).
 
 `tests/MyRestaurant.WebApplication.Tests/Deployment/ComposeDependencyContractTests.cs` — 3 assertions: every service the canonical stack needs is declared with the dependency ordering that lets it start.
 
@@ -5893,6 +5944,8 @@ Accepted, by ruling or by design: token replay within ≤120 s (bounded by membe
 **Every gate is proven able to fail** before it ships, against a planted defect (F-41). A gate whose subject ceases to exist is **deleted rather than weakened**: a floor over a set that can no longer be non-empty is the vacuous gate this rule exists to forbid.
 
 **A sensitivity proof is a record of an execution, and a slice that could not execute says so instead of describing runs.** A planted-defect proof presupposes a green baseline, so a slice narrating four mutations of a file it never ran is narrating four runs of a red suite. Where the authoring environment cannot execute the assertion, the paragraph states which defect the assertion is *reasoned* to catch and says it was not run — the two are different claims and only one of them is evidence (**F-124**).
+
+**An emulated proof establishes what an assertion decides; it does not establish that the source it scans compiles.** A tree-scan gate keys on a string, the code it scans is a second copy of that string, and nothing in this tree holds the two together — only the compiler does. A marker naming a member the pinned package does not have therefore passes the emulation and fails the build. `ContainerLoggingContractTests` named `TestcontainersSettings.Logger`, removed from Testcontainers before the version `Directory.Packages.props` pins; the two fixtures that assigned it did not compile, and an emulation over file text could not have said so (**F-126**). Where a slice cannot compile, the API surface of every new marker is read **at the pinned version**, and the paragraph says which version was read.
 
 **An assertion may not depend on which of several simultaneous failures a tool reports first.** A row breaking two CHECKs is named by whichever constraint sorts first, because PostgreSQL evaluates them in name order; the assertion then decides a fact about a sort rather than about the schema. Construct the subject so exactly one thing about it is wrong, and prove that by a **control** differing in one attribute that must succeed (**F-123**).
 
@@ -6047,7 +6100,8 @@ One row per ruling: what was decided, and where in this document or which ADR ca
 | F-122 | The pre-fix paragraph is **deleted rather than left beneath the account of the landing** (F-114), §19's *not startable* clause is rewritten to what is true, and §18 gains the deferral habit §17 had been pointing at | §17, §18, §19 |
 | F-123 | Every probe row breaks exactly one CHECK, and a **control** row differing in one attribute proves it; the four constraint names are read out of `pg_constraint` rather than listed, so a fifth cannot silently shadow a probe. §18 gains the general rule | §16.4, §18 |
 | F-124 | Slice 68's sensitivity paragraph is **corrected in place** on F-114's ruling, and §18 gains the distinction it was missing: a proof is an execution, and a slice that could not execute says *reasoned, not run* | §18 · BUILD_PROGRESS M6 Slice 68 |
-| F-125 | Both fixtures assign `TestcontainersSettings.Logger` before they build, inside the `try` that already turns a container failure into a skip; `ContainerLoggingContractTests` holds it over a computed subject set | §16.4 |
+| F-125 | Both fixtures install `WithLogger(NullLogger.Instance)` on the builder chain that reaches `Build`, inside the `try` that already turns a container failure into a skip; `ContainerLoggingContractTests` holds it over a computed subject set | §16.4 |
+| F-126 | The fixtures keep the mechanism and change the call; the gate's ordering fact is **deleted rather than reworded**, because a per-builder value has no global assignment to be late (F-41), and the fact that remains is per-builder rather than per-file. §18 gains the rule the failure produced | §16.4, §18 · `Directory.Packages.props` |
 | F-21 – F-24 | Editorial: four experiences + display; abbreviation carve-out; generic paths; directives resolved | REQUIREMENTS rev 2 |
 | F-25 – F-33 | export.sh fixes; REQUIREMENTS tracked in docs/ | export.sh header; repo layout |
 | Claude judgment calls (owner-vetoable, recorded) | Reminder = once at threshold iff no line of the send fulfilled/removed; counter/admin line-changing staff edits also alert loudly; reset forces TOTP… | §10.1–10.2, §3.5, §3.7, §4.5 |
@@ -6056,6 +6110,7 @@ One row per ruling: what was decided, and where in this document or which ADR ca
 
 **The full changelog through v1.50 is archived** in [`docs/progress/TECHNICAL_SPECIFICATION_THROUGH_V1_50.md`](progress/TECHNICAL_SPECIFICATION_THROUGH_V1_50.md), and every entry it holds is also a commit. The most recent are kept here because `SpecificationVersionTests` reads the newest one as this document's current version and asserts the header agrees with it. How many is not written down: nothing can check it, and it had already drifted by one (**F-77**).
 
+- **v1.55 — 2026-08-27.** A gate that named an API the pinned package does not have. Testcontainers moved logger configuration off the static `TestcontainersSettings.Logger` and onto the builder before 4.14.0, the version this tree pins: both container fixtures assigned the static property and neither assembly compiled, and `ContainerLoggingContractTests` asserted that they assigned it (**F-126**). The fixtures install `WithLogger` on the chain that reaches `Build`; **§16.4**'s paragraph becomes **one** assertion over the same computed subject set, per builder rather than per file, and the ordering half is **deleted rather than reworded** because a per-builder value has no global assignment to be late (**F-41**). **§18** gains the rule: an emulated proof establishes what an assertion decides, not that the source it scans compiles. `Directory.Packages.props` records the per-builder mechanism and loses the sentence claiming every pin was resolved on one date (**F-77**).
 - **v1.54 — 2026-08-27.** An assertion that decided a fact about a sort order, and the proof that was recorded rather than run. `TheSchemaRefusesEveryForbiddenShapeOfAnEventRow` probed the vocabulary CHECK with a row that broke the payload CHECK as well; PostgreSQL evaluates CHECKs in name order, so it named the one that sorts first and the fact failed on a correct schema (**F-123**). Every probe now breaks one CHECK and carries a control row that proves it, the constraint inventory is read out of `pg_constraint`, and the cap gets the fifth probe the fact's name had been promising. **§18** gains two rules: an assertion may not depend on which of several simultaneous failures is reported first, and a sensitivity proof is a record of an execution — which Slice 68's was not (**F-124**). **§16.4** gains `ContainerLoggingContractTests`; both container fixtures silence the Testcontainers logger, whose several hundred Information lines per run were what buried the failing assertion (**F-125**).
 - **v1.53 — 2026-08-26.** The last stage the menu plan carried, started, and the two documents that still said it could not be. **§7** gains the six comment rulings, **§8.2** gains `menu_item_comment_event` with four named constraints over one nullable column, and **§8.3** gains the fold that has no `WHERE` clause on purpose. **§17 loses the paragraph that promised the rate limiter it already had** and **§19 loses the clause that called Stage 6 unstartable** — both eleven slices stale, both deleted rather than annotated (**F-122**); **§18** gains the habit §17 had been claiming was stated there. **§16.4** gains `MenuItemCommentTests`.
 - **v1.52 — 2026-08-26.** A reading composed out of two instants, and the flake it had been producing since the harness was written. **§16.4** gains `HarnessSnapshotContractTests`: a composite that a `Func<T, bool>` is evaluated against is read in one `EvaluateAsync`, over a subject set computed from the harness rather than listed. `KitchenJourneys.ReadBoardAsync` and `TableOrderJourneys.ReadBasketAsync` are rewritten to one evaluation each (**F-121**). No production code changed.
@@ -59614,11 +59669,10 @@ public sealed class OrderVisibilityTests : IClassFixture<PostgreSqlFixture>, IAs
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs
-  Size:                  3.4 KiB (3526 bytes)
-  SHA-256:               173805ad64a22a3ea780fa8e6948f28e8fb0079399e07a284c3a4a8d7e38f6d4
+  Size:                  3.4 KiB (3482 bytes)
+  SHA-256:               4b17723a497215567f4e73208dc329c7f487ae552ca416d088af66c483102e69
 
 --- CONTENT ---
-using DotNet.Testcontainers.Configurations;
 using Microsoft.Extensions.Logging.Abstractions;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -71137,11 +71191,10 @@ internal static class PictureFixtures
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs
-  Size:                  7.0 KiB (7161 bytes)
-  SHA-256:               9de33021f6c4769a4e1a2327b64270c3709a0e08508076bbbda3cda582dc66b2
+  Size:                  7.0 KiB (7117 bytes)
+  SHA-256:               02eb158eb9140f8bd4e65afb3004086dee86ca049699be0b3dba4ac52cd0465b
 
 --- CONTENT ---
-using DotNet.Testcontainers.Configurations;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Playwright;
 using Testcontainers.PostgreSql;
@@ -77558,10 +77611,11 @@ public sealed class ContainerImageReferenceContractTests
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerLoggingContractTests.cs
-  Size:                  5.1 KiB (5251 bytes)
-  SHA-256:               117765f9006daa8b33e5e87746e8ea7b89fcfc2d7087923aed30f2e000046a2b
+  Size:                  5.9 KiB (6025 bytes)
+  SHA-256:               f11be4c4736d018549d7ef93fd6e1fe55954553129b51a8889f99daea134baf4
 
 --- CONTENT ---
+using System.Globalization;
 using Xunit;
 
 namespace MyRestaurant.WebApplication.Tests.Deployment;
@@ -77572,63 +77626,71 @@ public sealed class ContainerLoggingContractTests
     private const string TestsRelativePath = "tests";
 
     private const string BuilderConstruction = "new PostgreSqlBuilder(";
-    private const string LoggerInstallation = "TestcontainersSettings.Logger =";
+    private const string BuilderCompletion = ".Build()";
+    private const string LoggerInstallation = ".WithLogger(";
 
     private const int MinimumFixtures = 2;
 
     [Fact]
-    public void EveryFixtureThatBuildsAContainerSilencesTheContainerLogger()
+    public void EveryContainerBuilderInstallsItsOwnLoggerBeforeItBuilds()
     {
         IReadOnlyList<string> fixtures = FixtureSources();
 
         Assert.True(
             fixtures.Count >= MinimumFixtures,
-            $"Only {fixtures.Count} source file(s) under {TestsRelativePath}/ construct a"
-                + $" Testcontainers builder, and this tree has {MinimumFixtures}: the DataAccess"
-                + " fixture and the end-to-end harness. The walk is not reading the files it is"
-                + " about, so every fact below would pass on nothing (F-41).");
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"Only {fixtures.Count} source file(s) under {TestsRelativePath}/ construct a"
+                    + $" Testcontainers builder, and this tree has {MinimumFixtures}: the DataAccess"
+                    + $" fixture and the end-to-end harness. The walk is not reading the files it is"
+                    + $" about, so the fact below would pass on nothing (F-41)."));
 
-        List<string> loud = fixtures
-            .Where(path => !File.ReadAllText(path).Contains(LoggerInstallation, StringComparison.Ordinal))
-            .Select(Relative)
-            .ToList();
+        List<string> problems = [];
 
-        Assert.True(
-            loud.Count == 0,
-            $"These fixture(s) build a container without assigning '{LoggerInstallation}':"
-                + $" {Format(loud)}. Testcontainers logs every create, every readiness probe and"
-                + " every delete at Information through its own console logger, which on this suite"
-                + " is several hundred lines per run and buries the one assertion that failed. What"
-                + " diagnoses a container that will not start here is the fixture's own"
-                + " DescribeFailure prose, not those lines (F-124).");
-    }
-
-    [Fact]
-    public void TheLoggerIsSilencedBeforeTheFirstContainerIsBuilt()
-    {
-        List<string> late = [];
-
-        foreach (string path in FixtureSources())
+        foreach (string path in fixtures)
         {
             string source = File.ReadAllText(path);
 
-            int installed = source.IndexOf(LoggerInstallation, StringComparison.Ordinal);
-            int built = source.IndexOf(BuilderConstruction, StringComparison.Ordinal);
-
-            if (installed < 0 || built < 0 || installed < built)
+            for (int constructed = source.IndexOf(BuilderConstruction, StringComparison.Ordinal);
+                 constructed >= 0;
+                 constructed = source.IndexOf(
+                     BuilderConstruction,
+                     constructed + BuilderConstruction.Length,
+                     StringComparison.Ordinal))
             {
-                continue;
-            }
+                int completed = source.IndexOf(BuilderCompletion, constructed, StringComparison.Ordinal);
 
-            late.Add(Relative(path));
+                if (completed < 0)
+                {
+                    problems.Add(
+                        $"{Relative(path)} constructs a builder that no '{BuilderCompletion}' follows, so"
+                            + $" this scan cannot decide which logger the container it produces is given");
+                    continue;
+                }
+
+                if (!source[constructed..completed].Contains(LoggerInstallation, StringComparison.Ordinal))
+                {
+                    problems.Add(
+                        $"{Relative(path)} constructs a builder and reaches '{BuilderCompletion}' without"
+                            + $" calling '{LoggerInstallation}'");
+                }
+            }
         }
 
         Assert.True(
-            late.Count == 0,
-            $"These fixture(s) assign '{LoggerInstallation}' after they construct a builder:"
-                + $" {Format(late)}. The setting is read when a container is created, so a container"
-                + " built above the assignment logs anyway and the first run of a session is the"
-                + " noisy one — which is the run somebody is reading.");
+            problems.Count == 0,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"{problems.Count} container builder(s) here do not choose their own logger:"
+                    + $" {Format(problems)}. Testcontainers seeds every builder with its console logger"
+                    + $" and then reports each container created, each readiness probe and each container"
+                    + $" deleted at Information through it — several hundred lines per run of this suite,"
+                    + $" with the one assertion that failed somewhere inside. The logger is a value on"
+                    + $" the builder's own resource configuration rather than a global setting, so it has"
+                    + $" to be installed on the chain that reaches {BuilderCompletion} and installing it"
+                    + $" anywhere else silences nothing (F-126). What diagnoses a container that will not"
+                    + $" start here is the fixture's own DescribeFailure prose, not those lines"
+                    + $" (F-125)."));
     }
 
     private static IReadOnlyList<string> FixtureSources()
@@ -89721,9 +89783,9 @@ public sealed class RestaurantTimeTests
 # DUMP SUMMARY
 ################################################################################
   Files dumped   : 388
-  Total size     : 3.4 MiB (3530020 bytes)
+  Total size     : 3.4 MiB (3544897 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-08-27T02:29:19-04:00
+  Completed at   : 2026-08-27T08:35:40-04:00
 ################################################################################
 # END OF DUMP
 ################################################################################
