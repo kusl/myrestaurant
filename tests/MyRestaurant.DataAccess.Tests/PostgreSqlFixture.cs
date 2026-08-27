@@ -1,3 +1,5 @@
+using DotNet.Testcontainers.Configurations;
+using Microsoft.Extensions.Logging.Abstractions;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -24,6 +26,8 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
     {
         try
         {
+            TestcontainersSettings.Logger = NullLogger.Instance;
+
             _container = new PostgreSqlBuilder(PostgreSqlImage)
                 .WithDatabase("myrestaurant")
                 .WithUsername("myrestaurant")

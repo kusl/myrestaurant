@@ -82,3 +82,5 @@ These are the parts of the plan worth keeping after the stage landed. Each is em
 | What does moderation mean for an append-only log? | the question does not arise | Nothing a guest writes is rendered to another guest, so there is nobody to moderate on behalf of. Should Stage 6d or a later stage ever show one guest another's words, this row is what has to be reopened first — and it is the reason that surface is not in 6c. |
 
 **What is left.** Stage 6d is the guest's own control, in §11.1's detail panel beside the like, on the same reasoning that put the like there. Stage 6e is the staff read. Neither is startable from `docs/TECHNICAL_SPECIFICATION.md` alone until the surface rulings are written, and both are ordinary stage work rather than blocked work.
+
+**Stage 6c was executed for the first time in Slice 69**, and the schema it declares is correct: the five things `menu_item_comment_event` refuses, it refuses by the name the writer recognises. What was wrong was one probe in the test, which offered a row breaking two CHECKs at once and asserted the name of the one PostgreSQL happens not to report (**F-123**). No ruling in the table above moved.

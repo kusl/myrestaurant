@@ -23,6 +23,14 @@ public sealed class MenuItemCommentTests : IClassFixture<PostgreSqlFixture>, IAs
             @PersonIdentifier, @EventType, @Body::text, @OccurredAt);
         """;
 
+    private const string CheckConstraintNamesSql = """
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'menu_item_comment_event'::regclass
+          AND contype = 'c'
+        ORDER BY conname;
+        """;
+
     private readonly PostgreSqlFixture _fixture;
     private readonly FixedClock _clock = new(new DateTimeOffset(2026, 5, 14, 18, 0, 0, TimeSpan.Zero));
     private readonly UuidV7IdentifierFactory _identifiers = new();
@@ -300,21 +308,56 @@ public sealed class MenuItemCommentTests : IClassFixture<PostgreSqlFixture>, IAs
 
         Guid salmon = await World().AddMenuItemAsync("Salmon", 18.00m, cancellationToken);
 
-        Assert.Equal(
-            "menu_item_comment_event_type_vocabulary",
-            await RefusedConstraintAsync(salmon, "loved", "Anything", cancellationToken));
+        int? cap = await Directory().ReadDeclaredBodyCapAsync(cancellationToken);
 
-        Assert.Equal(
-            "menu_item_comment_event_body_payload",
-            await RefusedConstraintAsync(salmon, "submitted", null, cancellationToken));
+        Assert.NotNull(cap);
 
-        Assert.Equal(
-            "menu_item_comment_event_body_payload",
-            await RefusedConstraintAsync(salmon, "withdrawn", "Anything", cancellationToken));
-
-        Assert.Equal(
+        string[] declared =
+        [
             "menu_item_comment_event_body_not_blank",
-            await RefusedConstraintAsync(salmon, "submitted", "   ", cancellationToken));
+            "menu_item_comment_event_body_payload",
+            "menu_item_comment_event_body_within_cap",
+            "menu_item_comment_event_type_vocabulary",
+        ];
+
+        Assert.Equal<string>(
+            declared,
+            await World().QueryAsync<string>(CheckConstraintNamesSql, null, cancellationToken));
+
+        await RefusesOnlyAsync(
+            salmon,
+            "menu_item_comment_event_type_vocabulary",
+            ("loved", null),
+            ("withdrawn", null),
+            cancellationToken);
+
+        await RefusesOnlyAsync(
+            salmon,
+            "menu_item_comment_event_body_payload",
+            ("submitted", null),
+            ("submitted", "Anything"),
+            cancellationToken);
+
+        await RefusesOnlyAsync(
+            salmon,
+            "menu_item_comment_event_body_payload",
+            ("withdrawn", "Anything"),
+            ("withdrawn", null),
+            cancellationToken);
+
+        await RefusesOnlyAsync(
+            salmon,
+            "menu_item_comment_event_body_not_blank",
+            ("submitted", "   "),
+            ("submitted", " Anything "),
+            cancellationToken);
+
+        await RefusesOnlyAsync(
+            salmon,
+            "menu_item_comment_event_body_within_cap",
+            ("submitted", new string('a', cap.Value + 1)),
+            ("submitted", new string('a', cap.Value)),
+            cancellationToken);
 
         Assert.Equal(0, await World().CountAsync(CountCommentEventsSql, cancellationToken));
     }
@@ -388,6 +431,29 @@ public sealed class MenuItemCommentTests : IClassFixture<PostgreSqlFixture>, IAs
         Assert.Equal("Second", standing.Body);
     }
 
+    private async Task RefusesOnlyAsync(
+        Guid menuItemIdentifier,
+        string constraintName,
+        (string EventType, string? Body) refused,
+        (string EventType, string? Body) accepted,
+        CancellationToken cancellationToken)
+    {
+        Assert.Equal(
+            constraintName,
+            await RefusedConstraintAsync(
+                menuItemIdentifier, refused.EventType, refused.Body, cancellationToken));
+
+        Exception? control = await RolledBackInsertAsync(
+            menuItemIdentifier, accepted.EventType, accepted.Body, cancellationToken);
+
+        Assert.True(
+            control is null,
+            $"The control row for {constraintName} differs from the refused row in one attribute and"
+                + " has to be accepted; it was refused instead. That means the refused row broke more"
+                + " than one CHECK, and PostgreSQL evaluates them in name order, so the name asserted"
+                + $" above is whichever sorts first rather than the one under test (F-123). {control}");
+    }
+
     private async Task<string?> RefusedConstraintAsync(
         Guid menuItemIdentifier,
         string eventType,
@@ -400,21 +466,48 @@ public sealed class MenuItemCommentTests : IClassFixture<PostgreSqlFixture>, IAs
         PostgresException refusal = await Assert.ThrowsAsync<PostgresException>(
             async () => await connection.ExecuteAsync(new CommandDefinition(
                 InsertCommentEventSql,
-                new
-                {
-                    MenuItemCommentEventIdentifier = _identifiers.Create(),
-                    MenuItemIdentifier = menuItemIdentifier,
-                    PersonIdentifier = _adaIdentifier,
-                    EventType = eventType,
-                    Body = body,
-                    OccurredAt = _clock.UtcNow,
-                },
+                EventRow(menuItemIdentifier, eventType, body),
                 cancellationToken: cancellationToken)));
 
         Assert.Equal(PostgresErrorCodes.CheckViolation, refusal.SqlState);
 
         return refusal.ConstraintName;
     }
+
+    private async Task<Exception?> RolledBackInsertAsync(
+        Guid menuItemIdentifier,
+        string eventType,
+        string? body,
+        CancellationToken cancellationToken)
+    {
+        await using NpgsqlConnection connection = new(_fixture.ConnectionString!);
+        await connection.OpenAsync(cancellationToken);
+
+        await using NpgsqlTransaction transaction =
+            await connection.BeginTransactionAsync(cancellationToken);
+
+        Exception? refusal = await Record.ExceptionAsync(
+            async () => await connection.ExecuteAsync(new CommandDefinition(
+                InsertCommentEventSql,
+                EventRow(menuItemIdentifier, eventType, body),
+                transaction,
+                cancellationToken: cancellationToken)));
+
+        await transaction.RollbackAsync(cancellationToken);
+
+        return refusal;
+    }
+
+    private object EventRow(Guid menuItemIdentifier, string eventType, string? body)
+        => new
+        {
+            MenuItemCommentEventIdentifier = _identifiers.Create(),
+            MenuItemIdentifier = menuItemIdentifier,
+            PersonIdentifier = _adaIdentifier,
+            EventType = eventType,
+            Body = body,
+            OccurredAt = _clock.UtcNow,
+        };
 
     private void SkipIfNoContainer()
         => Assert.SkipUnless(_fixture.ConnectionString is not null, _fixture.SkipReason ?? "No container engine.");

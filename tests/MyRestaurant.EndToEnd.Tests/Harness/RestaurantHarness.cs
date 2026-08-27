@@ -1,3 +1,5 @@
+using DotNet.Testcontainers.Configurations;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Playwright;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -74,6 +76,8 @@ public sealed class RestaurantHarness : IAsyncLifetime
 
         try
         {
+            TestcontainersSettings.Logger = NullLogger.Instance;
+
             _container = new PostgreSqlBuilder(PostgreSqlImage)
                 .WithDatabase("postgres")
                 .WithUsername("myrestaurant")
