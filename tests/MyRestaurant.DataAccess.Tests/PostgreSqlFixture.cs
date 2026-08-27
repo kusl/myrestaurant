@@ -26,12 +26,11 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
     {
         try
         {
-            TestcontainersSettings.Logger = NullLogger.Instance;
-
             _container = new PostgreSqlBuilder(PostgreSqlImage)
                 .WithDatabase("myrestaurant")
                 .WithUsername("myrestaurant")
                 .WithPassword("myrestaurant")
+                .WithLogger(NullLogger.Instance)
                 .Build();
 
             await _container.StartAsync();

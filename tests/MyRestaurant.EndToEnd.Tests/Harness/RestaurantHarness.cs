@@ -76,12 +76,11 @@ public sealed class RestaurantHarness : IAsyncLifetime
 
         try
         {
-            TestcontainersSettings.Logger = NullLogger.Instance;
-
             _container = new PostgreSqlBuilder(PostgreSqlImage)
                 .WithDatabase("postgres")
                 .WithUsername("myrestaurant")
                 .WithPassword("myrestaurant")
+                .WithLogger(NullLogger.Instance)
                 .Build();
 
             await _container.StartAsync();
