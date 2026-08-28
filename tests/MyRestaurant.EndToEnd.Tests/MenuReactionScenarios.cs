@@ -19,7 +19,7 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
     public MenuReactionScenarios(RestaurantHarness harness) => _harness = harness;
 
     [Fact]
-    public async Task Guest_LikesADish_SaysWhatTheyThought_AndBothSurviveAReload()
+    public async Task Guest_LikesADish_SaysWhatTheyThought_AndStaffReadTheSentence()
     {
         SkipUnlessHarnessAvailable();
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -97,6 +97,9 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
 
         Assert.Equal(string.Empty, await TableOrderJourneys.ReadChosenItemCommentAsync(guest));
 
+        Assert.Null(await AdministrationJourneys.ReadMenuIndexCommentAsync(
+            administrator, salmon.Identifier));
+
         Assert.Equal(
             "Submitted",
             await TableOrderJourneys.SaveCommentAsync(
@@ -116,6 +119,13 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
 
         Assert.Equal(FirstComment, await TableOrderJourneys.ReadChosenItemCommentAsync(guest));
 
+        Assert.Equal(FirstComment, await AdministrationJourneys.ReadMenuIndexCommentAsync(
+            administrator, salmon.Identifier));
+        Assert.Equal(1, await AdministrationJourneys.ReadMenuIndexCommentCountAsync(
+            administrator, salmon.Identifier));
+        Assert.Null(await AdministrationJourneys.ReadMenuIndexCommentAsync(
+            administrator, pudding.Identifier));
+
         Assert.Equal(
             "NoChange",
             await TableOrderJourneys.SaveCommentAsync(guest, FirstComment, InteractivityPatience));
@@ -127,6 +137,11 @@ public sealed class MenuReactionScenarios : IClassFixture<RestaurantHarness>
         await ReopenTheMenuAsync(guest, salmon);
 
         Assert.Equal(string.Empty, await TableOrderJourneys.ReadChosenItemCommentAsync(guest));
+
+        Assert.Null(await AdministrationJourneys.ReadMenuIndexCommentAsync(
+            administrator, salmon.Identifier));
+        Assert.Null(await AdministrationJourneys.ReadMenuIndexCommentCountAsync(
+            administrator, salmon.Identifier));
 
         Assert.Equal(
             "Submitted",

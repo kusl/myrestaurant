@@ -33,12 +33,12 @@ A menu with headings, a description under each dish, a photograph beside it, and
 | **5a** | likes: the schema and the data access | landed, M6 Slice 57 |
 | **5b** | likes: the guest's control | landed, M6 Slice 58 |
 | **5c** | likes: a dish that is off tonight | landed, M6 Slice 60 |
-| **6** | guest comments | open (its staff read is all that is left) |
+| **6** | guest comments | closed, M6 Slice 72 |
 | **6a** | the rate limiter takes a second policy | landed, M6 Slice 62 (prerequisite 1) |
 | **6b** | the rendering rule stops being a sentence | landed, M6 Slice 63 (prerequisite 2) |
 | **6c** | comments: the schema and the data access | landed, M6 Slice 68 |
 | **6d** | comments: the guest's control | landed, M6 Slice 71 |
-| **6e** | comments: the staff read | open |
+| **6e** | comments: the staff read | landed, M6 Slice 72 |
 
 ## The rulings that outlive their stages
 
@@ -69,6 +69,9 @@ These are the parts of the plan worth keeping after the stage landed. Each is em
 | The client's cap is an optimisation and every refusal is the server's, exactly as for a picture's bytes | §7, §11.1 |
 | The draft belongs to the chosen dish, and a menu re-read never overwrites what somebody is typing | §11.1 |
 | The surface declares the outcome beside the sentence, so a barrier never asserts the copywriting | §11.1, §16.3 |
+| The staff read is the whole-menu read; a dish's own page carries no list of its own | §7, §11.4 |
+| The comment block is grouped by dish in the menu's own order, because the read's own order is a UUID ordering | §7, §11.4 |
+| A count chip is absent rather than zero where nobody has spoken | §7, §11.4 |
 
 ## Stage 6 — guest comments, and what is settled
 
@@ -86,6 +89,6 @@ These are the parts of the plan worth keeping after the stage landed. Each is em
 | May staff reply? | not built | A reply makes a thread, a thread makes a conversation, and a conversation needs a role, a notification and a moderation rule. Deferred, and named as deferred. |
 | What does moderation mean for an append-only log? | the question does not arise | Nothing a guest writes is rendered to another guest, so there is nobody to moderate on behalf of. Stage 6d shipped a guest their own comment and nobody else's, so the question still does not arise; should any later stage ever show one guest another's words, this row is what has to be reopened first. |
 
-**What is left.** Stage 6e, the staff read. Stage 6d landed in Slice 71 with its five surface rulings in §7 and its six end-to-end claims on §16.3 scenario 21's arrangement; 6e is ordinary stage work whose surface rulings are not written yet, and the moderation row above is what has to be reopened first if it ever shows one guest another's words — which the staff read, by definition, does not.
+**What is left: nothing in this plan.** Stage 6e landed in Slice 72 with its four rulings in §7, its block and chip on §11.4's menu index, and six end-to-end claims on §16.3 scenario 21's arrangement. Every stage this plan opened on 2026-08-11 is now closed, and the enhancement request that produced it — headings, a description, a photograph, and somewhere to say what you thought — is answered end to end. The moderation row above stays as written: the staff read shows staff one guest's words and shows no guest another's, so the question still does not arise, and that row is what has to be reopened before any surface changes it. The fourth Stage 6 question — staff replies — is still deliberately not built.
 
 **Stage 6c was executed for the first time in Slice 69**, and the schema it declares is correct: the five things `menu_item_comment_event` refuses, it refuses by the name the writer recognises. What was wrong was one probe in the test, which offered a row breaking two CHECKs at once and asserted the name of the one PostgreSQL happens not to report (**F-123**). No ruling in the table above moved.

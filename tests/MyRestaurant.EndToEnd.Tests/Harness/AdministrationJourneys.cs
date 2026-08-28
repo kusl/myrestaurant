@@ -520,6 +520,68 @@ internal static class AdministrationJourneys
                     $"§11.4's like chip carries data-like-count=\"{declared}\", which is not an integer."));
     }
 
+    internal static async Task<string?> ReadMenuIndexCommentAsync(IPage page, Guid menuItemIdentifier)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await OpenMenuCommentsAsync(page);
+
+        ILocator cell = page.Locator(
+            $"#menu-comments tr[data-comment-item='{menuItemIdentifier:D}'] td[data-comment-body]");
+
+        return await cell.CountAsync() == 0 ? null : await ScreenText.DeclaredAsync(cell.First);
+    }
+
+    internal static async Task<int?> ReadMenuIndexCommentCountAsync(
+        IPage page,
+        Guid menuItemIdentifier)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await OpenMenuCommentsAsync(page);
+
+        ILocator row = page
+            .Locator($"div.menu-group-body tr:has(a.record-link[href*='{menuItemIdentifier:D}'])")
+            .First;
+
+        ILocator chip = row.Locator("td.record-primary span.chip[data-comment-count]");
+
+        if (await chip.CountAsync() == 0)
+        {
+            return null;
+        }
+
+        string? declared = await chip.First.GetAttributeAsync("data-comment-count");
+
+        return int.TryParse(declared, NumberStyles.Integer, CultureInfo.InvariantCulture, out int said)
+            ? said
+            : throw new InvalidOperationException(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"§11.4's comment chip carries data-comment-count=\"{declared}\", which is not an"
+                    + " integer."));
+    }
+
+    private static async Task OpenMenuCommentsAsync(IPage page)
+    {
+        await page.GotoAsync(MenuPath);
+
+        ILocator block = page.Locator("#menu-comments").First;
+
+        try
+        {
+            await block.WaitForAsync(new LocatorWaitForOptions { Timeout = 30_000 });
+        }
+        catch (PlaywrightException exception)
+        {
+            throw new InvalidOperationException(
+                "§11.4's menu index rendered no comment block at all, so Stage 6e is either unbuilt or"
+                + " the page failed before it. "
+                + await DescribeFailureAsync(page),
+                exception);
+        }
+    }
+
     internal static async Task<IReadOnlyList<MenuHeadingOnTheIndex>> ReadMenuIndexAsync(IPage page)
     {
         ArgumentNullException.ThrowIfNull(page);

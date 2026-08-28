@@ -7,6 +7,7 @@
 @inject IMenuSectionDirectory MenuSections
 @inject IMenuDirectory MenuItems
 @inject IMenuItemReactionDirectory MenuItemReactionReads
+@inject IMenuItemCommentDirectory MenuItemCommentReads
 @inject IMenuEventLog MenuEvents
 @inject IMenuWorkflow MenuChanges
 @inject NavigationManager Navigation
@@ -128,6 +129,13 @@
                                                     {
                                                         <span class="chip" data-like-count="@likes">
                                                             @likes @(likes == 1 ? "like" : "likes")
+                                                        </span>
+                                                    }
+
+                                                    @if (CommentCount(item) is { } comments)
+                                                    {
+                                                        <span class="chip" data-comment-count="@comments">
+                                                            @comments @(comments == 1 ? "comment" : "comments")
                                                         </span>
                                                     }
 
@@ -258,6 +266,65 @@
         </p>
     }
 
+    <hr class="record-rule" />
+
+    <h2 class="record-heading">What guests have said</h2>
+    <p class="lede">
+        Every standing comment, grouped by dish and in the menu's own order, newest first within a
+        dish. A guest sees only their own, so this page is the whole of who can read these. A
+        withdrawn comment is not here and has not left the log.
+    </p>
+
+    <div id="menu-comments">
+        @if (_comments is null)
+        {
+            <p class="record-empty">Loading…</p>
+        }
+        else if (_comments.Count == 0)
+        {
+            <p class="record-empty">Nobody has said anything about a dish yet.</p>
+        }
+        else
+        {
+            <div class="record-list">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Item</th>
+                            <th scope="col">What they said</th>
+                            <th scope="col">By</th>
+                            <th scope="col">When</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (MenuItemComment comment in _comments)
+                        {
+                            <tr @key="CommentKey(comment)"
+                                data-comment-item="@comment.MenuItemIdentifier">
+                                <td class="record-primary" data-label="">
+                                    <a class="record-link" href="@ManagePath(comment.MenuItemIdentifier)">@ItemName(comment.MenuItemIdentifier)</a>
+                                </td>
+                                <td class="record-secondary" data-label="What they said"
+                                    data-comment-body="">@comment.Body</td>
+                                <td data-label="By">@comment.AuthorName</td>
+                                <td data-label="When">@RestaurantClock.DateAndTime(comment.OccurredAt)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <p class="record-note">
+                One standing comment per person per dish, so a dish with three of these has been spoken
+                about by three people. Editing is resubmission and withdrawal is an event, so
+                `menu_item_comment_event` still holds every version of every sentence here and every
+                one that has been taken down — this is the read of what stands, not the record. A dish's
+                own page carries no list of its own: this is a whole-menu read, and a second one
+                narrowed to one item would be a second query over the same rows for one surface.
+            </p>
+        }
+    </div>
+
     <p><a href="/administration">Back to administration</a></p>
 </section>
 
@@ -268,6 +335,10 @@
     private IReadOnlyList<MenuItemSummary> _items = [];
 
     private Dictionary<Guid, int> _likeCounts = new();
+
+    private Dictionary<Guid, int> _commentCounts = new();
+    private Dictionary<Guid, string> _itemNames = new();
+    private IReadOnlyList<MenuItemComment>? _comments;
 
     private IReadOnlyList<MenuItemEventEntry>? _recent;
     private int _itemCount;
@@ -289,6 +360,22 @@
 
         _likeCounts = (await MenuItemReactionReads.ListLikeCountsAsync(HttpContext.RequestAborted))
             .ToDictionary(count => count.MenuItemIdentifier, count => count.LikeCount);
+
+        IReadOnlyList<MenuItemComment> standing =
+            await MenuItemCommentReads.ListAsync(HttpContext.RequestAborted);
+
+        ILookup<Guid, MenuItemComment> standingByItem =
+            standing.ToLookup(comment => comment.MenuItemIdentifier);
+
+        _comments = _items
+            .SelectMany(item => standingByItem[item.MenuItemIdentifier])
+            .ToArray();
+
+        _commentCounts = standing
+            .GroupBy(comment => comment.MenuItemIdentifier)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        _itemNames = _items.ToDictionary(item => item.MenuItemIdentifier, item => item.Name);
 
         _itemCount = _items.Count;
         _activeItemCount = _items.Count(item => item.IsActive);
@@ -464,6 +551,15 @@
 
     private int? LikeCount(MenuItemSummary item)
         => _likeCounts.TryGetValue(item.MenuItemIdentifier, out int likes) ? likes : null;
+
+    private int? CommentCount(MenuItemSummary item)
+        => _commentCounts.TryGetValue(item.MenuItemIdentifier, out int comments) ? comments : null;
+
+    private static string CommentKey(MenuItemComment comment)
+        => $"{comment.MenuItemIdentifier:D}:{comment.PersonIdentifier:D}";
+
+    private string ItemName(Guid menuItemIdentifier)
+        => _itemNames.TryGetValue(menuItemIdentifier, out string? name) ? name : string.Empty;
 
     private string Money(decimal amount) => MoneyText.Format(amount, Options.CurrencyCode);
 
