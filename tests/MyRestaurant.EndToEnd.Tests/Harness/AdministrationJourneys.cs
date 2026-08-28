@@ -558,8 +558,7 @@ internal static class AdministrationJourneys
             : throw new InvalidOperationException(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"§11.4's comment chip carries data-comment-count=\"{declared}\", which is not an"
-                    + " integer."));
+                    $"§11.4's comment chip carries data-comment-count=\"{declared}\", which is not an integer."));
     }
 
     private static async Task OpenMenuCommentsAsync(IPage page)
