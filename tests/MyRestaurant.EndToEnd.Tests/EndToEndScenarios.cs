@@ -72,6 +72,12 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
     private const decimal HandheldMenuItemPrice = 6.50m;
 
+    private const string HandheldKitchenUsername = "e2e.six.kitchen";
+
+    private const string HandheldKitchenDisplayName = "Six Kitchen";
+
+    private const string HandheldKitchenPassword = "away on the pass in thirty seconds";
+
     private readonly RestaurantHarness _harness;
 
     public EndToEndScenarios(RestaurantHarness harness) => _harness = harness;
@@ -494,7 +500,7 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     }
 
     [Fact]
-    public async Task Kitchen_FulfillsLine_GuestSeesFulfilledBadge()
+    public async Task Kitchen_FulfillsLineFromAHandheld_GuestSeesFulfilledBadge()
     {
         SkipUnlessHarnessAvailable();
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -508,6 +514,23 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
         ArrangedService service = await ArrangeServiceAsync(
             instance, tableLabel, guestAccount, cancellationToken);
 
+        StaffAccount kitchenAccount = await AdministrationJourneys.CreateStaffAccountAsync(
+            service.Kitchen, HandheldKitchenUsername, HandheldKitchenDisplayName, StaffRoles.Kitchen);
+
+        await KitchenJourneys.OpenAsync(service.Kitchen, InteractivityPatience);
+
+        IPage handheld = await instance.OpenIsolatedPageAsync(handheld: true);
+
+        await AccountJourneys.SignInWithPasswordAsync(
+            handheld, kitchenAccount.Username, kitchenAccount.TemporaryPassword);
+
+        Assert.Contains(AccountRoutes.ForcedPasswordChange, handheld.Url, StringComparison.Ordinal);
+
+        await AccountJourneys.CompleteForcedPasswordChangeAsync(
+            handheld, kitchenAccount.TemporaryPassword, HandheldKitchenPassword);
+
+        await KitchenJourneys.OpenAsync(handheld, InteractivityPatience);
+
         await TableOrderJourneys.StageAsync(service.Guest, service.Soup, 1);
         await TableOrderJourneys.StageAsync(service.Guest, service.Pie, 1);
         await TableOrderJourneys.SendAsync(service.Guest);
@@ -519,6 +542,15 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
             "both of the guest's lines on the pass",
             cancellationToken);
 
+        KitchenBoardSnapshot onTheHandheld = await KitchenJourneys.WaitForBoardAsync(
+            handheld,
+            snapshot => snapshot.PendingLines.Count == 2 && snapshot.UnseenAlertCount >= 1,
+            LiveUpdatePatience,
+            "both lines, and the alert that brought them, on the handheld board",
+            cancellationToken);
+
+        Assert.Equal(0, onTheHandheld.UnseenReminderCount);
+
         IReadOnlyList<GuestOrderLine> beforeFulfillment = await TableOrderJourneys.WaitForCommittedLinesAsync(
             service.Guest,
             lines => lines.Count == 2,
@@ -528,7 +560,26 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
         Assert.All(beforeFulfillment, line => Assert.Equal(GuestLineBadge.WithTheKitchen, line.Badge));
 
-        await KitchenJourneys.FulfillLineAsync(service.Kitchen, service.Soup.Name);
+        AssertHandheldBarrier(
+            await HandheldReach.MeasureHereAsync(
+                handheld, KitchenJourneys.BoardPath, HandheldSurface.KitchenPass),
+            "§11.2's kitchen board with work waiting");
+
+        await KitchenJourneys.FulfillLineAsync(handheld, service.Soup.Name);
+
+        KitchenBoardSnapshot afterTheAway = await KitchenJourneys.WaitForBoardAsync(
+            handheld,
+            snapshot => snapshot.PendingLines.Count == 1 && snapshot.UnseenAlertCount == 0,
+            LiveUpdatePatience,
+            "one line left on the handheld board, and the alert cleared by working it",
+            cancellationToken);
+
+        Assert.Equal(service.Pie.Name, Assert.Single(afterTheAway.PendingLines).Name);
+
+        AssertHandheldBarrier(
+            await HandheldReach.MeasureHereAsync(
+                handheld, KitchenJourneys.BoardPath, HandheldSurface.KitchenRecall),
+            "§11.2's kitchen board once a line is away");
 
         IReadOnlyList<GuestOrderLine> afterFulfillment = await TableOrderJourneys.WaitForCommittedLinesAsync(
             service.Guest,
@@ -1856,7 +1907,7 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
             report.ClientWidth <= RestaurantInstance.HandheldViewportWidth
                 && report.ClientWidth >= RestaurantInstance.HandheldViewportWidth - ScrollbarAllowancePixels,
             $"{subject} was measured in a {report.ClientWidth}px viewport, and this step is about"
-                + $" {RestaurantInstance.HandheldViewportWidth}px. Either the counter's context was not"
+                + $" {RestaurantInstance.HandheldViewportWidth}px. Either that surface's context was not"
                 + " created handheld, or something resized it — and at any wider width every assertion"
                 + " below passes on a page nobody claims is reachable.");
 

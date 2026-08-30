@@ -120,6 +120,44 @@ internal sealed record HandheldSurface(
             HandheldSelector.Required("#counter-sitting-surface .counter-line button"),
         ],
         []);
+
+    internal static HandheldSurface KitchenPass { get; } = new(
+        "§11.2's kitchen board with work waiting",
+
+        "#kitchen-board-surface[data-live='true'][data-loaded='true']",
+        [
+            HandheldSelector.Required("#kitchen-board-surface button.kitchen-alert-badge"),
+            HandheldSelector.Required("#kitchen-board-surface button.kitchen-arm"),
+            HandheldSelector.Required("#kitchen-board-surface button.kitchen-fulfill-all"),
+            HandheldSelector.Required("#kitchen-board-surface li.kitchen-line button.kitchen-line-button"),
+            HandheldSelector.Required("#kitchen-board-surface li.kitchen-menu-item button"),
+        ],
+        [],
+        [
+            HandheldSelector.Required("#kitchen-board-surface button.kitchen-alert-badge"),
+            HandheldSelector.Required("#kitchen-board-surface button.kitchen-arm"),
+            HandheldSelector.Required("#kitchen-board-surface button.kitchen-fulfill-all"),
+            HandheldSelector.Required("#kitchen-board-surface li.kitchen-line button.kitchen-line-button"),
+            HandheldSelector.Required("#kitchen-board-surface li.kitchen-menu-item button"),
+        ],
+        []);
+
+    internal static HandheldSurface KitchenRecall { get; } = new(
+        "§11.2's kitchen board once a line is away",
+
+        "#kitchen-board-surface[data-live='true'][data-loaded='true']",
+        [
+            HandheldSelector.Required("#kitchen-board-surface li.kitchen-recent-line button.link-button"),
+            HandheldSelector.Required("#kitchen-board-surface li.kitchen-line button.kitchen-line-button"),
+            HandheldSelector.Required("#kitchen-board-surface button.kitchen-fulfill-all"),
+        ],
+        [],
+        [
+            HandheldSelector.Required("#kitchen-board-surface li.kitchen-recent-line button.link-button"),
+            HandheldSelector.Required("#kitchen-board-surface li.kitchen-line button.kitchen-line-button"),
+            HandheldSelector.Required("#kitchen-board-surface button.kitchen-fulfill-all"),
+        ],
+        []);
 }
 
 internal sealed record HandheldReachReport(

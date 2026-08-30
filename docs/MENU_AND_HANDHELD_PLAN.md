@@ -12,14 +12,14 @@ A menu with headings, a description under each dish, a photograph beside it, and
 
 | Stage | What it is | Status |
 |---|---|---|
-| **1** | the handheld contract | open (its sub-stages are complete) |
+| **1** | the handheld contract | closed, M6 Slice 74 |
 | **1a** | the vocabulary and the four index pages | landed, M6 Slice 30 |
-| **1b** | the remaining surfaces | administration half landed, M6 Slice 34; staff stations are 1f and 1g |
+| **1b** | the remaining surfaces | landed across 34 (administration), 73 (counter) and 74 (kitchen) |
 | **1c** | an end-to-end barrier at 375px | landed, M6 Slice 32 |
 | **1d** | the guest's own menu, at the width it is read at | landed, M6 Slice 64 |
 | **1e** | the picture on a card, at the width it is read at | landed, M6 Slice 65 |
 | **1f** | the counter, at the width it is settled from | landed, M6 Slice 73 |
-| **1g** | the kitchen, at the width it is worked from | open |
+| **1g** | the kitchen, at the width it is worked from | landed, M6 Slice 74 |
 | **2** | sections and descriptions: schema and data access | closed, M6 Slice 40 |
 | **3** | sections and descriptions: the surfaces | landed across 39, 47, 48, 50, 61 |
 | **3a** | the resequencing verb | landed, M6 Slice 47 |
@@ -75,6 +75,7 @@ These are the parts of the plan worth keeping after the stage landed. Each is em
 | The comment block is grouped by dish in the menu's own order, because the read's own order is a UUID ordering | §7, §11.4 |
 | A count chip is absent rather than zero where nobody has spoken | §7, §11.4 |
 | The browser level reaches the surfaces the barrier names, and a surface outside them is named rather than inferred | §11.12, §16.3 |
+| The surface set is a list and never a count, because the number is a second copy no gate can read | §11.12 |
 | A control is what a person presses; a link inside a sentence is body text and is measured by nothing | §11.12 |
 
 ## Stage 6 — guest comments, and what is settled
@@ -93,6 +94,8 @@ These are the parts of the plan worth keeping after the stage landed. Each is em
 | May staff reply? | not built | A reply makes a thread, a thread makes a conversation, and a conversation needs a role, a notification and a moderation rule. Deferred, and named as deferred. |
 | What does moderation mean for an append-only log? | the question does not arise | Nothing a guest writes is rendered to another guest, so there is nobody to moderate on behalf of. Stage 6d shipped a guest their own comment and nobody else's, so the question still does not arise; should any later stage ever show one guest another's words, this row is what has to be reopened first. |
 
-**What is left: Stage 1g, and nothing else.** The enhancement request that produced this plan — headings, a description, a photograph, and somewhere to say what you thought — is answered end to end, and every stage numbered 2 or above is closed. **Stage 1 is not**, and for four slices this paragraph said it was while the table above said *open* and *administration half landed* (**F-128**). The half that was missing is the two staff stations. §11.3's board and bill are measured at 375×667 from Slice 73; §11.2's kitchen board is not, and the reason is arrangement rather than layout — a handheld kitchen page needs a kitchen credential on a second browser context, and no scenario holds one. That is Stage 1g, it is a deferral rather than a decision, and §11.12 names it so a reader of the specification alone can see it. The moderation row above stays as written: the staff read shows staff one guest's words and shows no guest another's, so the question still does not arise, and that row is what has to be reopened before any surface changes it. The fourth Stage 6 question — staff replies — is still deliberately not built.
+**What is left: nothing this plan opened.** The enhancement request that produced it — headings, a description, a photograph, and somewhere to say what you thought — was answered end to end in Slice 72, and **Stage 1, the handheld contract, closes here**. That sentence has been written once before and was false when it was written: for four slices this paragraph claimed the plan was finished while the table above recorded Stage 1 *open* and Stage 1b *administration half landed* (**F-128**). The two staff stations were the missing half. §11.3's board and bill were measured at 375×667 in Slice 73; §11.2's kitchen board is measured in Slice 74, from a handset a kitchen member is signed in to, working a line off the pass while the administrator's wide board watches. Every row in the table above now carries a slice number, which is the only form of this claim a reader can check.
+
+**What is deliberately not built is unchanged and is not "left".** Staff replies to a comment are the fourth Stage 6 question and remain deferred with the reason recorded: a reply makes a thread, a thread makes a conversation, and a conversation needs a role, a notification and a moderation rule. The moderation row above stays as written — the staff read shows staff one guest's words and shows no guest another's, so the question still does not arise, and that row is what has to be reopened before any surface changes it.
 
 **Stage 6c was executed for the first time in Slice 69**, and the schema it declares is correct: the five things `menu_item_comment_event` refuses, it refuses by the name the writer recognises. What was wrong was one probe in the test, which offered a row breaking two CHECKs at once and asserted the name of the one PostgreSQL happens not to report (**F-123**). No ruling in the table above moved.

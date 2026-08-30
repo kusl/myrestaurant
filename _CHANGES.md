@@ -1,58 +1,49 @@
-# Slice 73 — Stage 1f: the station the contract was written about
+# Slice 74 — Stage 1g: the station most of the sentence was about
 
-Extract at the repository root. Spec goes to **v1.58**. Findings floor moves to **F-128**.
+Extract at the repository root. Spec goes to **v1.59**. Findings floor moves to **F-129**.
 
 ## Files in this archive
 
 | Path | State |
 |---|---|
 | `tests/MyRestaurant.EndToEnd.Tests/Harness/HandheldReach.cs` | changed — two `HandheldSurface` records appended |
-| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | changed — scenario 10 renamed, its counter page opened handheld, two measurements, one shared verdict helper |
-| `docs/TECHNICAL_SPECIFICATION.md` | changed — header, §11.12, §16.3 scenario 10, Appendix A, changelog |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | changed — Stages 1f and 1g, the 1b row, two rulings, *what is left* rewritten |
-| `docs/DOCUMENTATION_REVIEW.md` | changed — header count, the standing-rules row, the F-128 ledger row, two residuals |
-| `docs/BUILD_PROGRESS.md` | changed — the Slice 73 row and narrative |
+| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | changed — scenario 6 renamed and rearranged, three constants, one shared verdict message made surface-neutral |
+| `docs/TECHNICAL_SPECIFICATION.md` | changed — header, §11.12, §16.3 scenario 6, §19's M7 paragraph, Appendix A, changelog |
+| `docs/MENU_AND_HANDHELD_PLAN.md` | changed — Stages 1, 1b and 1g, one ruling row, closing paragraphs rewritten |
+| `docs/DOCUMENTATION_REVIEW.md` | changed — header count, two standing-rules rows, the F-129 ledger row, one residual |
+| `docs/BUILD_PROGRESS.md` | changed — the Slice 74 row and narrative |
 | `_CHANGES.md` | changed (this file) |
 
 **Files to DELETE: none.** Nothing is added and nothing is removed, so there is no `git add` and no `git rm` — every path above is already tracked. `check_tree.sh` reads `git ls-files`, so a plain `git status` after extracting should show six modified files and nothing untracked.
 
-**No production code changed.** No `.razor`, no `.cs` under `src/`, no `app.css`, no migration, no service, no endpoint. The barrier is two records in the harness and one private helper in the scenario file.
+**No production code changed.** No `.razor`, no `.cs` under `src/`, no `app.css`, no migration, no service, no endpoint. The barrier is two records in the harness and a rearranged scenario.
 
 ## Expected test count
 
-**1332 — unchanged.** Scenario 10 is one `[Fact]` before and after; its method is renamed rather than split, exactly as scenario 21's was in Slice 72. `AssertHandheldBarrier` is a private helper with no attribute, and the two `HandheldSurface` records carry none. §16.4's counted-class census stays at **49** over a floor of 37: `HandheldReach.cs` is harness, not a counted class, so no paragraph gained or lost a number.
+**1332 — unchanged.** Scenario 6 is one `[Fact]` before and after; its method is renamed rather than split, exactly as scenario 21's was in Slice 72 and scenario 10's in Slice 73. The two `HandheldSurface` records carry no attribute, and `AssertHandheldBarrier` is an existing private helper. §16.4's counted-class census stays at **49** over a floor of 37: `HandheldReach.cs` and `EndToEndScenarios.cs` are end-to-end sources, not counted classes, so no paragraph gained or lost a number. End-to-end scenarios stay at **21**.
 
 Any other number is worth investigating before reading assertion text.
 
 ## What landed
 
-**F-128.** `docs/MENU_AND_HANDHELD_PLAN.md` has said *what is left: nothing in this plan* since Slice 72 and, in the same file, *Stage 1 — open* and *Stage 1b — administration half landed* since Slice 34. The half that never landed is §11.2 and §11.3. §11.12 is titled *every surface, every screen*; R§1 justifies it with somebody standing up holding a phone; the kitchen and the counter are where somebody is standing up, and neither had ever been laid out at 375px by anything in this repository.
+**Stage 1g, the kitchen.** §16.3 scenario 6 now creates a kitchen account, signs it in by password on an isolated 375×667 context, completes the forced change, opens the board **before** the guest sends, and **fulfils the line from there**. The administrator's board stays open and becomes the observer. The station R§1's sentence is most about had been worked by an administrator at a desk in every scenario this repository has.
 
-**Stage 1f, the counter.** §16.3 scenario 10's counter member now works a 375×667 handset from sign-in to settlement. Two measurements: the **board** while the sitting is still open, because `.counter-sitting-actions` is the way in to a bill and exists only while there is one; the **bill** where it stands, immediately before the close, because `_confirmingClose` swaps the settle panel's controls and the close then removes the per-line actions, the staff-add form and the close button together. The counter's page is the only one made handheld — the administrator's and the guest's are untouched, so nothing above or below the barrier moves.
+**The order is load-bearing.** §10.3 renders `.kitchen-alert-badge` only while something is unseen, and `KitchenAlertState` is a field on the circuit. A board opened after the send has an unseen count of zero, so the badge would not exist to be measured. Open first, and the alert arrives at a page that is watching.
 
-**Stage 1g, the kitchen, is named as open** rather than left to be inferred. It has no arrangement to ride: `KitchenJourneys.OpenAsync` runs on the administrator's wide page in every scenario that opens a board, so measuring it needs a kitchen credential on a second browser context. That is arrangement rather than assertion, and it is a slice of its own.
+**Two measurements.** The **pass** while the alert still stands, because `AppendAsync` acknowledges on every successful write — measured after the away, `.kitchen-alert-badge` matches nothing. The **board once a line is away**, because `.kitchen-recent-line`'s Undo exists only inside the fifteen-minute fulfilment window. Both are measured *where they stand*: the unseen count and the armed state are circuit fields that a navigation resets.
 
-**§11.12 writes the barrier's surface set down** — four surfaces named, §11.2 named as the one outside them — because a surface the barrier does not name is unmeasured whichever the reason (F-118, F-127). It also states the boundary the selector lists had been deciding silently: a control is what a person presses, and a link inside a sentence is body text.
+**Every selector in both sets is required for reach and for text.** Five on the pass — alert badge, *Enable sound*, *Fulfill all*, the line button, the 86 toggle — and three after: Undo, the surviving line button, *Fulfill all*. The text floor gets its button subjects in the slice that names the surface rather than a slice later (**F-127**).
+
+**F-129.** Slice 73 wrote *it names four* into §11.12 and closed the same paragraph with *which is why the set is written down and not counted*. The next slice makes the set six. The count is **deleted rather than corrected** (F-77, F-89), and what replaces it is what a list cannot carry: what is outside the set and why — §11.5's display is a wall screen; §11.6 and §11.8 declare no control of their own. The kitchen's deferral sentence is deleted rather than softened, because its subject has ceased to exist (**F-41**).
+
+**Stage 1 closes**, and with it the last open row `docs/MENU_AND_HANDHELD_PLAN.md` opened on 2026-08-11. Every row in its stage table now carries a slice number.
+
+## Not verified
+
+Nothing was compiled — no .NET SDK in the authoring environment — so 1332 is arithmetic rather than an observation and neither measurement has ever matched an element. No browser ran. The claim that the kitchen board lays out inside 375px is read out of `app.css`: a 313px panel content box against a widest declared row of about 279px. That margin is thin, and a real run is the only thing that settles it. The claim that a `KitchenAlert` reaches a second browser context is read from §9's broadcaster being in-process; scenario 4 makes the same claim on one context and nothing has made it on two.
 
 ## Veto points
 
-1. **The counter and not the kitchen.** Half of Stage 1b, so the plan still has an open row and this slice does not close Stage 1. To reverse: create a kitchen staff account in scenario 6, open an isolated handheld page, sign it in by password, complete the forced change, and add a third `HandheldSurface` — which is a second sign-in journey and a second surface's worth of unmeasured selectors riding on a slice that cannot execute either.
-2. **The bill is measured before the close rather than after.** A settled bill at 375px is unmeasured. That is deliberate — after the close the surface has no controls, and a barrier over a page whose subjects have all gone is the vacuous gate F-41 forbids — but it means *settled, read-only, on a handset* is a state nothing has looked at. To reverse: add a third measurement after `ConfirmCloseAsync` with a set whose required selectors are the ones that survive settlement.
-3. **`counter.Url` names the measured page rather than a route constant.** The verdict message carries an absolute URL including the host. To reverse: make `CounterJourneys.PathFor` internal and call it — which puts a second copy of `/counter/sittings/` in the scenario file, and the URL cannot drift from the page it was read off.
-4. **`.counter-back a` and its kind are outside every set.** A link in a paragraph is measured by nothing. To reverse: widen the reach sets to `#counter-sitting-surface a` — which puts every prose link under a 44px floor, which is not what §11.12 says.
-
-## Sensitivity — reasoned against the edited tree, not executed
-
-Nothing here was run. What follows is what each assertion is *reasoned* to catch, which is a different claim from a record of runs (**F-124**).
-
-`handheld: true` removed: reported by the first assertion of both measurements, naming the measured width against 375. The board measured after the close: `.counter-sitting-actions a` matches nothing and `MeasureHereAsync` throws by name with the full census — the required-selector refusal rather than a verdict. The bill measured after settlement: three of four reach selectors and three of five font-floor selectors go silent, reported the same way. `--touch-target` dropped from `.link-button`: reported by the height assertion naming *Adjust price* and *Remove*. `font-size: max(1rem, 1em)` dropped from `.form-field select`: reported by the text assertion naming both selects. A control moved back into a right-hand column: reported by the reach assertion, which names F-59. The whole slice reverted: the scenario passes and the plan goes back to claiming it is finished, which is the state F-128 is about — and is why the remedy is a paragraph as well as a barrier.
-
-Also emulated green against the delivered tree: §16.4's counted-assertion census (49 paragraphs, none disagreeing with its file, floor 37), `SpecificationVersionTests` (1.58 header, 1.58 newest, descending), and the Markdown table shape of every row added to the three documents.
-
-## What was NOT verified
-
-Nothing was compiled: no .NET SDK here, so 1332 is arithmetic and neither measurement has ever executed as C#. **No browser: neither measurement has ever been taken.** Every required selector in both sets was read out of `CounterBoard.razor` and `CounterSitting.razor` and matched against `app.css` and those files' own `<style>` blocks — reading a declaration is not measuring a box. Three things are reasoned rather than observed: that `.counter-sitting-actions`' two buttons wrap rather than overflow inside a ~313px panel at 375px; that `.link-button`, `.button-primary` and `.form-field select` compute to exactly 16px under an unstyled `body`, which is what makes a floor with no tolerance safe; and that both counter pages report `data-loaded='true'` with their controls already rendered, which is the anchor both measurements wait on. No container engine ran.
-
-**The API of every new marker was read at the pinned version** (**F-126**): `Microsoft.Playwright` 1.62.0, where `IPage.Url` is a property and a context's viewport is fixed at creation — which is why the counter's page is opened handheld rather than resized.
-
-**If it comes back red**, the first thing to read is the census in the message. A required-selector refusal means the arrangement is not what this slice thought it was; a reach or height verdict naming a control means §11.3 has an F-59 that eleven slices of §11.4 work never touched, and that is the finding rather than a defect in the barrier.
+1. **The fulfilment moves from the administrator's page to the handset.** Scenario 6's original claim is preserved and strengthened — the wide board still asserts the line left the pass — but the appending actor is now `OrderActorRole.Kitchen` rather than `Administrator`. Nothing in this scenario reads the actor. To reverse: call `KitchenJourneys.FulfillLineAsync(service.Kitchen, …)` as before and measure the handheld board without ever pressing anything on it — which costs the second measurement, because Undo would never exist.
+2. **The alert badge is a required selector.** If a `KitchenAlert` does not reach a second circuit, `WaitForBoardAsync` fails before any measurement runs, naming what it waited for. To reverse: drop `snapshot.UnseenAlertCount >= 1` from the wait and make `button.kitchen-alert-badge` optional in `KitchenPass` — at the cost of leaving §10.3's own control unmeasured, which is the state F-127 was about.
+3. **Two measurements rather than three.** The board is never measured *empty* — the state a kitchen looks at for most of a shift. That is deliberate: an empty board's only controls are *Enable sound* and the 86 panel, and a barrier over a page whose subjects have mostly gone is the vacuous gate **F-41** forbids. To reverse: measure once immediately after `KitchenJourneys.OpenAsync` on the handheld, with a set whose required selectors are the two that survive an empty pass.
