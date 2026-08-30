@@ -905,7 +905,7 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
     }
 
     [Fact]
-    public async Task Counter_ClosesSitting_TableFlipsToSettledAndTotalsMatch()
+    public async Task Counter_ClosesSittingFromAHandheld_TableFlipsToSettledAndTotalsMatch()
     {
         SkipUnlessHarnessAvailable();
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -968,7 +968,7 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
             "the soup re-badged as delivered",
             cancellationToken);
 
-        IPage counter = await instance.OpenIsolatedPageAsync();
+        IPage counter = await instance.OpenIsolatedPageAsync(handheld: true);
 
         await AccountJourneys.SignInWithPasswordAsync(
             counter, counterAccount.Username, counterAccount.TemporaryPassword);
@@ -977,6 +977,11 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
         await AccountJourneys.CompleteForcedPasswordChangeAsync(
             counter, counterAccount.TemporaryPassword, ClosingCounterPassword);
+
+        AssertHandheldBarrier(
+            await HandheldReach.MeasureAsync(
+                counter, CounterJourneys.BoardPath, HandheldSurface.CounterBoard),
+            "§11.3's counter board");
 
         Guid sittingIdentifier = await CounterJourneys.OpenSittingAsync(
             counter, tableLabel, InteractivityPatience);
@@ -1010,6 +1015,11 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
         Assert.Equal(1, warning!.LineCount);
         Assert.Contains("still with the kitchen", warning.Sentence, StringComparison.Ordinal);
+
+        AssertHandheldBarrier(
+            await HandheldReach.MeasureHereAsync(
+                counter, counter.Url, HandheldSurface.CounterBill),
+            "§11.3's bill at the till");
 
         CloseConfirmation confirmation = await CounterJourneys.BeginCloseAsync(counter);
 
@@ -1839,6 +1849,42 @@ public sealed class EndToEndScenarios : IClassFixture<RestaurantHarness>
 
     private static async Task<string> HeadingAsync(IPage page)
         => (await page.Locator("h1").First.InnerTextAsync()).Trim();
+
+    private static void AssertHandheldBarrier(HandheldReachReport report, string subject)
+    {
+        Assert.True(
+            report.ClientWidth <= RestaurantInstance.HandheldViewportWidth
+                && report.ClientWidth >= RestaurantInstance.HandheldViewportWidth - ScrollbarAllowancePixels,
+            $"{subject} was measured in a {report.ClientWidth}px viewport, and this step is about"
+                + $" {RestaurantInstance.HandheldViewportWidth}px. Either the counter's context was not"
+                + " created handheld, or something resized it — and at any wider width every assertion"
+                + " below passes on a page nobody claims is reachable.");
+
+        Assert.NotEmpty(report.Reachable);
+
+        Assert.False(
+            report.ScrollsSideways,
+            $"§11.12: {subject} must not scroll sideways on the screen it is worked from."
+                + $" {report.DescribeOverflow()}. Census: {report.DescribeCensus()}.");
+
+        Assert.True(
+            report.OutOfReach.Count == 0,
+            $"§11.12: every control on {subject} lies inside the viewport. Off the screen:"
+                + $" {HandheldReach.Format(report.OutOfReach)}. This is F-59, and a control that has"
+                + " moved back into a right-hand column is how it returns.");
+
+        Assert.True(
+            report.Undersized.Count == 0,
+            $"§11.12: every control is at least {HandheldReach.MinimumTouchTargetPixels}px tall."
+                + $" Shorter: {HandheldReach.Format(report.Undersized)}.");
+
+        Assert.True(
+            report.UndersizedText.Count == 0,
+            $"§11.12: every text control is at least {HandheldReach.MinimumTextFontPixels}px."
+                + $" Under it: {HandheldReach.Format(report.UndersizedText)}. This is F-118: the"
+                + " control is rendered outside any arrangement `app.css` declares the floor against,"
+                + " so it inherits a user-agent default and iOS Safari zooms the page around it.");
+    }
 
     private static string JoinPath(Guid tableIdentifier, string token)
         => $"/table/{tableIdentifier:D}?token={Uri.EscapeDataString(token)}";

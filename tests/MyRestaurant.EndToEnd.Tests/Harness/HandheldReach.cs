@@ -89,6 +89,37 @@ internal sealed record HandheldSurface(
             HandheldSelector.Required("#table-order-surface img.order-menu-thumbnail"),
             HandheldSelector.Required("#table-order-surface img.order-menu-detail-picture"),
         ]);
+
+    internal static HandheldSurface CounterBoard { get; } = new(
+        "§11.3's counter board",
+
+        "#counter-board-surface[data-live='true'][data-loaded='true']",
+        [
+            HandheldSelector.Required("#counter-board-surface .counter-sitting-actions a"),
+        ],
+        [],
+        [],
+        []);
+
+    internal static HandheldSurface CounterBill { get; } = new(
+        "§11.3's bill at the till",
+
+        "#counter-sitting-surface[data-live='true'][data-loaded='true']",
+        [
+            HandheldSelector.Required("#counter-sitting-surface .counter-line-actions button"),
+            HandheldSelector.Required("#counter-sitting-surface .counter-add .form-actions button"),
+            HandheldSelector.Required("#counter-sitting-surface .counter-settle .form-actions button"),
+            HandheldSelector.Required("#counter-sitting-surface .counter-settle .form-actions a"),
+        ],
+        [],
+        [
+            HandheldSelector.Required("#counter-sitting-surface .counter-add select"),
+            HandheldSelector.Required("#counter-sitting-surface .counter-add input"),
+            HandheldSelector.Required("#counter-sitting-surface .counter-add button"),
+            HandheldSelector.Required("#counter-sitting-surface .counter-settle button"),
+            HandheldSelector.Required("#counter-sitting-surface .counter-line button"),
+        ],
+        []);
 }
 
 internal sealed record HandheldReachReport(
