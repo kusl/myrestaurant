@@ -7,17 +7,17 @@
 
 DUMP METADATA
 ═════════════════════════════════════════════════════════════════════════════════
-  Generated at   : 2026-11-16T09:03:12-05:00
+  Generated at   : 2026-11-16T09:20:08-05:00
   Generator      : export.sh
 
 REPOSITORY METADATA
 ═════════════════════════════════════════════════════════════════════════════════
   Repository root: /home/kushal/src/dotnet/myrestaurant
   Branch         : main
-  Commit (full)  : 934669ac1e9a80438a90b368d8766e6dc37a8b2d
-  Commit (short) : 934669a
-  Commit date    : 2026-11-16 09:03:04 -0500
-  Commit message : run scripts
+  Commit (full)  : ebdac470fba7e65ca15091a884a930d24f187fde
+  Commit (short) : ebdac47
+  Commit date    : 2026-11-16 09:19:59 -0500
+  Commit message : add claude response
   Remote origin  : git@github.com:kusl/myrestaurant.git
   Files included : 391
   Withheld paths : docs/llm/, docs/progress/
@@ -3220,8 +3220,8 @@ This document describes how a report gets handled, not what anyone is entitled t
 
 --- METADATA ---
   Relative path:         _CHANGES.md
-  Size:                  3.4 KiB (3477 bytes)
-  SHA-256:               b85f7e3b71ee603c66a8c7b2610f9334694cb7e60729b2e813d3edb46339429d
+  Size:                  3.1 KiB (3175 bytes)
+  SHA-256:               214463a24344eacf1a4e7dd7ec01bfc18bb4afc4ecc1c6541cb0d961d6423f9d
 
 --- CONTENT ---
 # Slice 76 — the first run, and the sum it counted differently
@@ -3230,33 +3230,26 @@ Extract at the repository root. Spec goes to **v1.61**. Findings floor moves to 
 
 ## Files in this archive
 
+This archive is the delta against commit `934669a` (your tree as of the last dump, which matched what was delivered byte for byte).
+
 | Path | State |
 |---|---|
-| `tests/Shared/PostgreSqlTestServer.cs` | changed — takes the database name; no shared-database method, no `max_connections`; a first timeout fails later starts at once |
-| `tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs` | changed — starts and disposes its own server |
-| `tests/MyRestaurant.DataAccess.Tests/MyRestaurant.DataAccess.Tests.csproj` | changed — comment only |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs` | changed — names its database; reads `ConnectionString` |
-| `src/MyRestaurant.WebApplication/Components/Account/Pages/SignIn.razor` | changed — `await _editContext.ValidateAsync()` |
-| `.github/workflows/ci.yml` | changed — two comments |
-| `README.md` | changed — one paragraph in *Testing* |
-| `docs/TECHNICAL_SPECIFICATION.md` | changed — header, §2, §16.2, Appendix A, changelog |
-| `docs/DOCUMENTATION_REVIEW.md` | changed — F-130 corrected, F-132 added, one discharged residual deleted |
-| `docs/BUILD_PROGRESS.md` | changed — Slice 75 corrected, the Slice 76 row and narrative |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/DisplayJourneys.cs` | changed — `PairAsync` waits for the URL to commit and the table surface to attach; the catch also takes `TimeoutException` |
+| `docs/BUILD_PROGRESS.md` | changed — the Slice 76 narrative records both runs |
+| `docs/DOCUMENTATION_REVIEW.md` | changed — one residual |
 | `_CHANGES.md` | changed (this file) |
 
-**Files to DELETE: one.**
-
-```bash
-git rm tests/MyRestaurant.DataAccess.Tests/PostgreSqlServerFixture.cs
-```
-
-It calls a method this slice removes from `PostgreSqlTestServer`, so leaving it is a build error rather than a leftover.
-
-**Files to ADD: none.**
+**Files to DELETE: none. Files to ADD: none.**
 
 ## Expected test count
 
 **1332 — unchanged**, and this time expected to be 1332 passed. §16.4's census stays at **49** over a floor of 37. End-to-end scenarios stay at **21**.
+
+## What the latest run showed
+
+- `dotnet test`: **1332 of 1332** on rc3 and Podman 6.1.3.
+- `scripts/ci_local.sh --with-all --with-e2e`: all nine gates green, strict build with no warnings, no outdated or vulnerable packages.
+- The end-to-end suite passed in both of those. The last stand-alone end-to-end run failed one scenario: pairing a display timed out waiting for the browser's `load` event after the page had already arrived. That is the one code change here.
 
 ## What the Slice 75 run showed
 
@@ -3276,11 +3269,11 @@ Your tree matched the Slice 75 archive byte for byte, so nothing below is an ext
 
 ## Not verified
 
-Nothing was compiled here. `ValidateAsync()` is assumed to return `Task<bool>`. Thirty-four servers starting together on Podman 6 is inferred from three doing so in your run, not observed.
+The pairing change has not run. Why the `load` event never came is not known; the other journeys that wait the same way have never failed and are left alone.
 
 ## Veto points
 
-1. **`ValidateAsync()`.** If its shape differs, the build error will be on `SignIn.razor` line 120 and will name the real signature.
+1. **The pairing wait.** To reverse, put `PageWaitForURLOptions { Timeout = 30_000 }` back and delete the surface wait; the scenario's own `WaitForLiveSurfaceAsync` is unaffected either way.
 2. **Sharing a server** is now forbidden by §16.2. Reopening it means measuring the pools first, in a slice of its own.
 
 ################################################################################
@@ -3461,8 +3454,8 @@ volumes:
 
 --- METADATA ---
   Relative path:         docs/BUILD_PROGRESS.md
-  Size:                  63.8 KiB (65364 bytes)
-  SHA-256:               d6b494fe31b02c9dcc0b102a49eae12d6504f80373add83dcc196573de9eb6aa
+  Size:                  65.0 KiB (66566 bytes)
+  SHA-256:               95d6df1b8a1c93d35926ed8d3df7a67a086f6c3e9b9b35cbdb6f815e8f0cf0ca
 
 --- CONTENT ---
 # Build progress
@@ -3737,17 +3730,19 @@ volumes:
 
 | Slice | What landed | Findings closed |
 |---|---|---|
-| 76 | One PostgreSQL server per data-access test class again, with Slice 75's probe, deadline and single builder kept; a first start timeout fails later starts at once; `SignIn.razor` awaits `EditContext.ValidateAsync()` | F-132 |
+| 76 | One PostgreSQL server per data-access test class again, with Slice 75's probe, deadline and single builder kept; a first start timeout fails later starts at once; `SignIn.razor` awaits `EditContext.ValidateAsync()`; display pairing waits for the table surface rather than for a page load event | F-132 |
 
-**What the run said.** Slice 75 was built and run on `11.0.100-rc.3` for the first time. It compiled, `closed` included. Both container-backed assemblies started on Podman 6 and finished — the data-access assembly in twenty-six seconds, where the run before it was cancelled at forty-two minutes. All twenty-one end-to-end scenarios passed, twice. 1200 of 1332 passed; the 132 that did not are one failure, `53300: too many clients already`, in fifteen data-access classes. `scripts/ci_local.sh` stopped at its strict build on `CS0618`.
+**What the Slice 75 run said.** Slice 75 was built and run on `11.0.100-rc.3` for the first time. It compiled, `closed` included. Both container-backed assemblies started on Podman 6 and finished — the data-access assembly in twenty-six seconds, where the run before it was cancelled at forty-two minutes. All twenty-one end-to-end scenarios passed, twice. 1200 of 1332 passed; the 132 that did not are one failure, `53300: too many clients already`, in fifteen data-access classes. `scripts/ci_local.sh` stopped at its strict build on `CS0618`.
 
 **What is in this slice.** `PostgreSqlServerFixture.cs` is deleted and `PostgreSqlFixture` starts a `PostgreSqlTestServer` of its own, as it did before Slice 75 with a builder of its own. The server loses what only the shared design needed: the database-creation method, its semaphore, and the `max_connections` argument. It gains one static field, so that the first start to pass the deadline is the only one that waits for it. One call in `SignIn.razor` changes.
 
-**Test count arithmetic.** 1332 + 0 = **1332**. No `[Fact]` or `[Theory]` moved. §16.4's counted-class census stays at 49 over a floor of 37; end-to-end scenarios stay at 21.
+**What the Slice 76 run said.** On `11.0.100-rc.3` and Podman 6.1.3: `dotnet test` 1332 of 1332; `scripts/ci_local.sh --with-all --with-e2e` green through all nine gates, the strict build with no warning; the end-to-end suite passed twice more. The last stand-alone end-to-end run failed one scenario of twenty-one — §16.3 scenario 2, `Display_PairsAndShowsRotatingQrAcrossWindowBoundary` — on `System.TimeoutException` inside `DisplayJourneys.PairAsync`: the URL had reached the table display and Playwright was still waiting for the page's `load` state. `PairAsync` now waits for the URL to **commit** and then for `#table-display-surface` to be attached, which is the thing the scenario needs, and the scenario's own `WaitForLiveSurfaceAsync` still decides whether the circuit is up. The catch widens to `TimeoutException`: Playwright raised that rather than a `PlaywrightException`, so the explanatory message the catch exists to add was never shown.
 
-**What was NOT verified.** Nothing was compiled here; the proof is the next run. `EditContext.ValidateAsync()` is taken from the compiler's own message and from the ASP.NET Core 11 release notes, and its return type is assumed to be `Task<bool>`. That a server per class starts reliably on Podman 6 is inferred from the three end-to-end harnesses doing exactly that in the run above, not from thirty-four doing it at once.
+**Test count arithmetic.** 1332 + 0 = **1332**, observed. No `[Fact]` or `[Theory]` moved. §16.4's counted-class census stays at 49 over a floor of 37; end-to-end scenarios stay at 21.
 
-**Still open.** Stage 2 of `docs/MENU_AND_HANDHELD_PLAN.md` was not started in this slice.
+**What was NOT verified.** The pairing change was not run; it fails or passes on the next end-to-end run, and one passing run would not prove a flake gone. Why the `load` event did not arrive is not known — the form posts through Blazor's enhanced navigation, which may never fire a full-document `load` for the page it lands on, and .NET 11 changed what enhanced navigation does with resources; neither was observed. The other `WaitForURLAsync` calls in the harness wait for `load` in the same way and have not failed; they are left as they are rather than changed on a guess.
+
+**Still open.** Stage 2 of `docs/MENU_AND_HANDHELD_PLAN.md` was not started.
 
 ################################################################################
 # FILE: docs/DOCUMENTATION_REVIEW.md
@@ -3755,8 +3750,8 @@ volumes:
 
 --- METADATA ---
   Relative path:         docs/DOCUMENTATION_REVIEW.md
-  Size:                  57.9 KiB (59327 bytes)
-  SHA-256:               fef54ce34eaffb1cb2e082680bc3c6b01c558d5b1cc98dce4c12da150042ef27
+  Size:                  58.4 KiB (59841 bytes)
+  SHA-256:               e8bd27b42bdcec2daf1dc52712cf47f7bae2c0b56444ef1936b2102be6e5c6fd
 
 --- CONTENT ---
 # Documentation Review — Findings and Resolutions
@@ -3974,6 +3969,7 @@ These are stated rather than closed, because each is a limit of what text can de
 | LAN ordering depends on WAN health | F-06 | One origin, hairpinned through Cloudflare. Accepted risk, recorded in S§17. |
 | Counter carries no grant-time credential mandate | F-05 | Accepted as literally written. Recorded in S§3.7 and S§17. |
 | Which engine call stopped answering on the upgraded host was never observed | F-130 | Deciding it needs that host, that engine version and a wire trace, and none of the three is in a tree. The repair does not depend on the answer: readiness no longer uses the exec endpoint, and any other call that stalls now meets the deadline and is reported with the container's state. The first run with the host-side probe started every container on Podman 6, which is consistent with the exec endpoint and proves nothing about it. If the deadline message ever appears, what it prints is the observation this row lacks. |
+| The other harness waits still end on a page `load` event | F-132 | `DisplayJourneys.PairAsync` timed out waiting for `load` after its URL had arrived, once in four runs on .NET 11, and now waits for the URL to commit and the surface to attach. `AccountJourneys` and `HiddenRecordJourneys` wait the same way and have never failed. Changing them on the strength of one flake elsewhere would be a guess about a cause nobody observed; if one of them times out the same way, the same two-line repair applies to it. |
 
 ################################################################################
 # FILE: docs/MENU_AND_HANDHELD_PLAN.md
@@ -69241,8 +69237,8 @@ internal static class CounterJourneys
 
 --- METADATA ---
   Relative path:         tests/MyRestaurant.EndToEnd.Tests/Harness/DisplayJourneys.cs
-  Size:                  7.2 KiB (7407 bytes)
-  SHA-256:               cb5a8cb226acf7563a92c86e4d30d3780d8b20cbb7101c5edae5a1d32c53f622
+  Size:                  7.6 KiB (7762 bytes)
+  SHA-256:               b379537ed2f6e53d588a09343025371e12209d246affb5173f72da4978dbcf85
 
 --- CONTENT ---
 using System.Globalization;
@@ -69274,9 +69270,19 @@ internal static class DisplayJourneys
 
         try
         {
-            await page.WaitForURLAsync(IsTableDisplayUrl, new PageWaitForURLOptions { Timeout = 30_000 });
+            await page.WaitForURLAsync(IsTableDisplayUrl, new PageWaitForURLOptions
+            {
+                Timeout = 30_000,
+                WaitUntil = WaitUntilState.Commit,
+            });
+
+            await page.Locator(SurfaceSelector).First.WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Attached,
+                Timeout = 30_000,
+            });
         }
-        catch (PlaywrightException exception)
+        catch (Exception exception) when (exception is PlaywrightException or TimeoutException)
         {
             throw new InvalidOperationException(
                 "Pairing the display did not reach a table display surface. "
@@ -91335,9 +91341,9 @@ internal sealed class PostgreSqlTestServer : IAsyncDisposable
 # DUMP SUMMARY
 ################################################################################
   Files dumped   : 391
-  Total size     : 3.5 MiB (3680563 bytes)
+  Total size     : 3.5 MiB (3682332 bytes)
   Output file    : /home/kushal/src/dotnet/myrestaurant/docs/llm/dump.txt
-  Completed at   : 2026-11-16T09:03:18-05:00
+  Completed at   : 2026-11-16T09:20:14-05:00
 ################################################################################
 # END OF DUMP
 ################################################################################
