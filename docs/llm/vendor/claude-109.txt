@@ -1,0 +1,233 @@
+00
+34
+61
+
+Now that dotnet 11 is out, 
+lets reimagine this whole project for dotnet 11 
+if you were writing this project from scratch today 
+what would you do differently? 
+do that 
+for example, 
+we do need to worry about backward compatibility when it comes to our output 
+the existing file structure must be preserved 
+no existing emails should be deleted ever 
+do not break user's data
+other than that we have free reign to change things 
+even force a clean out of the search caches and rebuild if required 
+but only if required, not just for fun 
+it must have a valid justificatiion if we do it
+and make our code cleaner and leaner 
+there may be new things we could do in dotnet 11 and csharp 15
+do them the new way when and where possible 
+there might also be code that we won't need with dotnet 11
+also there might be nuget packages and github actions 
+and other dependencies that we can upgrade to latest stable as well
+upgrade them all 
+as we do all of this 
+please be mindful to use best engineering practices 
+and solid principles 
+Use your best judgment
+If only a few files (under five or there about) need to change, give me the full path of the files that need to change and the FULL file 
+if there are a lot of files that need to change 
+Delivery
+    Whole project as one tar.gz, unambiguous file placement
+    do not include any file that has not changed 
+    Any files to delete on updates called out explicitly
+    No bespoke sed/patch scripts — full files only for anything that changes
+    Docs updated alongside code changes
+    Low verbosity, no code comments
+    I only have the rc3 locally so the CI will need to do everything
+    unless you can structure the global.json to work with rc3 or better
+    this will improve soon when dotnet 11 stable lands on fedora default repos 
+one another fly in the ointment 
+my laptop only has rc3 
+so this new code will need to work with rc3 locally 
+but use the latest stable build on github actions 
+```bash
+kushal@fedora:~/src/dotnet/MyImapDownloader$ dotnet --info
+.NET SDK:
+ Version:           11.0.100-rc.3.26522.148
+ Commit:            5254d8bcf5
+ Workload version:  11.0.100-manifests.2c46f3cc
+ MSBuild version:   18.12.0-1.26522.148+5254d8bcf
+
+Runtime Environment:
+ OS Name:     fedora
+ OS Version:  45
+ OS Platform: Linux
+ RID:         fedora.45-x64
+ Base Path:   /usr/lib64/dotnet/sdk/11.0.100-rc.3.26522.148
+
+.NET workloads installed:
+There are no installed workloads to display.
+Configured to use workload sets when installing new manifests.
+No workload sets are installed. Run "dotnet workload restore" to install a workload set.
+
+Host:
+  Version:      11.0.0-rc.3.26522.148
+  Architecture: x64
+  Commit:       5254d8bcf5
+
+.NET SDKs installed:
+  10.0.113 [/usr/lib64/dotnet/sdk]
+  11.0.100-rc.3.26522.148 [/usr/lib64/dotnet/sdk]
+
+.NET runtimes installed:
+  Microsoft.AspNetCore.App 10.0.13 [/usr/lib64/dotnet/shared/Microsoft.AspNetCore.App]
+  Microsoft.AspNetCore.App 11.0.0-rc.3.26522.148 [/usr/lib64/dotnet/shared/Microsoft.AspNetCore.App]
+  Microsoft.NETCore.App 10.0.13 [/usr/lib64/dotnet/shared/Microsoft.NETCore.App]
+  Microsoft.NETCore.App 11.0.0-rc.3.26522.148 [/usr/lib64/dotnet/shared/Microsoft.NETCore.App]
+
+Other architectures found:
+  None
+
+Environment variables:
+  Not set
+
+global.json file:
+  /home/kushal/src/dotnet/MyImapDownloader/global.json
+
+Learn more:
+  https://aka.ms/dotnet/info
+
+Download .NET:
+  https://aka.ms/dotnet/download
+kushal@fedora:~/src/dotnet/MyImapDownloader$ 
+
+```
+
+fable 5.2 medium
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+before that, lets take a short detour 
+
+It makes sense once you read the message as a catch-all rather than a diagnosis.
+
+**What the output shows**
+
+- `systemctl --user enable --now podman.socket` printed nothing, so the socket was already enabled and active. The hint in the error ("activate the user API socket once") didn't apply to you.
+- The error says "not reachable", but the cause it reports is "The operation has timed out", not "connection refused" or "no such socket". Something answered, or at least accepted the connection, and then didn't finish in time.
+- Your harness (probably Testcontainers) seems to wrap any failure while starting the Postgres container in the same "engine not reachable" skip message. A stalled image pull, a hung container start, or a stuck helper container would all produce this text.
+- The ~55 minutes on the first DataAccess fixture suggests something was hanging, not failing fast. After that fixture gave up, every later test skipped immediately with the same message.
+- The run reports "passed" because the tests were skipped, not failed. Even with `MYRESTAURANT_E2E=1` set, the E2E suite going green after verifying nothing is a harness problem. With that variable set, "no container engine" should be a hard failure.
+
+**Likely causes, in rough order**
+
+1. Pulling `docker.io/library/postgres:17-alpine` is stalling. Rootless Podman networking (pasta/slirp4netns), DNS, or a registry rate limit can all do this.
+2. Testcontainers' Ryuk helper container fails or hangs under rootless Podman. This is a well-known problem, and the usual fix is `export TESTCONTAINERS_RYUK_DISABLED=true`.
+3. The Podman API service starts on socket activation but is slow or wedged on the first call.
+
+**Quick checks to tell them apart**
+
+```bash
+systemctl --user status podman.socket
+curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock http://d/_ping   # should print OK
+echo $DOCKER_HOST
+time podman pull docker.io/library/postgres:17-alpine
+time podman run --rm docker.io/library/postgres:17-alpine postgres --version
+```
+
+If `_ping` returns OK but the pull or run hangs, it's networking or the registry. If `_ping` itself hangs, it's the Podman service. If both work from the shell, retry the tests with `TESTCONTAINERS_RYUK_DISABLED=true`.
+
+If you share the output of the pull and the `_ping`, I can narrow it down further. I'd also change the harness so that a timeout with `MYRESTAURANT_E2E=1` set fails the test and has a short timeout, instead of skipping after an hour.
+
+systemctl --user status podman.socket; curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock http://d/_ping; echo $DOCKER_HOST; time podman pull docker.io/library/postgres:17-alpine; time podman run --rm docker.io/library/postgres:17-alpine postgres --version
