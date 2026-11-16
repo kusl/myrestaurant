@@ -27,9 +27,19 @@ internal static class DisplayJourneys
 
         try
         {
-            await page.WaitForURLAsync(IsTableDisplayUrl, new PageWaitForURLOptions { Timeout = 30_000 });
+            await page.WaitForURLAsync(IsTableDisplayUrl, new PageWaitForURLOptions
+            {
+                Timeout = 30_000,
+                WaitUntil = WaitUntilState.Commit,
+            });
+
+            await page.Locator(SurfaceSelector).First.WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Attached,
+                Timeout = 30_000,
+            });
         }
-        catch (PlaywrightException exception)
+        catch (Exception exception) when (exception is PlaywrightException or TimeoutException)
         {
             throw new InvalidOperationException(
                 "Pairing the display did not reach a table display surface. "

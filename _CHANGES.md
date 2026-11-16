@@ -4,33 +4,26 @@ Extract at the repository root. Spec goes to **v1.61**. Findings floor moves to 
 
 ## Files in this archive
 
+This archive is the delta against commit `934669a` (your tree as of the last dump, which matched what was delivered byte for byte).
+
 | Path | State |
 |---|---|
-| `tests/Shared/PostgreSqlTestServer.cs` | changed — takes the database name; no shared-database method, no `max_connections`; a first timeout fails later starts at once |
-| `tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs` | changed — starts and disposes its own server |
-| `tests/MyRestaurant.DataAccess.Tests/MyRestaurant.DataAccess.Tests.csproj` | changed — comment only |
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs` | changed — names its database; reads `ConnectionString` |
-| `src/MyRestaurant.WebApplication/Components/Account/Pages/SignIn.razor` | changed — `await _editContext.ValidateAsync()` |
-| `.github/workflows/ci.yml` | changed — two comments |
-| `README.md` | changed — one paragraph in *Testing* |
-| `docs/TECHNICAL_SPECIFICATION.md` | changed — header, §2, §16.2, Appendix A, changelog |
-| `docs/DOCUMENTATION_REVIEW.md` | changed — F-130 corrected, F-132 added, one discharged residual deleted |
-| `docs/BUILD_PROGRESS.md` | changed — Slice 75 corrected, the Slice 76 row and narrative |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/DisplayJourneys.cs` | changed — `PairAsync` waits for the URL to commit and the table surface to attach; the catch also takes `TimeoutException` |
+| `docs/BUILD_PROGRESS.md` | changed — the Slice 76 narrative records both runs |
+| `docs/DOCUMENTATION_REVIEW.md` | changed — one residual |
 | `_CHANGES.md` | changed (this file) |
 
-**Files to DELETE: one.**
-
-```bash
-git rm tests/MyRestaurant.DataAccess.Tests/PostgreSqlServerFixture.cs
-```
-
-It calls a method this slice removes from `PostgreSqlTestServer`, so leaving it is a build error rather than a leftover.
-
-**Files to ADD: none.**
+**Files to DELETE: none. Files to ADD: none.**
 
 ## Expected test count
 
 **1332 — unchanged**, and this time expected to be 1332 passed. §16.4's census stays at **49** over a floor of 37. End-to-end scenarios stay at **21**.
+
+## What the latest run showed
+
+- `dotnet test`: **1332 of 1332** on rc3 and Podman 6.1.3.
+- `scripts/ci_local.sh --with-all --with-e2e`: all nine gates green, strict build with no warnings, no outdated or vulnerable packages.
+- The end-to-end suite passed in both of those. The last stand-alone end-to-end run failed one scenario: pairing a display timed out waiting for the browser's `load` event after the page had already arrived. That is the one code change here.
 
 ## What the Slice 75 run showed
 
@@ -50,9 +43,9 @@ Your tree matched the Slice 75 archive byte for byte, so nothing below is an ext
 
 ## Not verified
 
-Nothing was compiled here. `ValidateAsync()` is assumed to return `Task<bool>`. Thirty-four servers starting together on Podman 6 is inferred from three doing so in your run, not observed.
+The pairing change has not run. Why the `load` event never came is not known; the other journeys that wait the same way have never failed and are left alone.
 
 ## Veto points
 
-1. **`ValidateAsync()`.** If its shape differs, the build error will be on `SignIn.razor` line 120 and will name the real signature.
+1. **The pairing wait.** To reverse, put `PageWaitForURLOptions { Timeout = 30_000 }` back and delete the surface wait; the scenario's own `WaitForLiveSurfaceAsync` is unaffected either way.
 2. **Sharing a server** is now forbidden by §16.2. Reopening it means measuring the pools first, in a slice of its own.

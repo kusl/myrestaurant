@@ -1306,3 +1306,23 @@ I have updated the dump, terminal, and claude-terminal files in the project file
 Please review them 
 and make any changes as necessary 
 before I push my changes to github 
+
+The tree is fine to push: your latest dump matches what I sent byte for byte, and the run shows all 1,332 tests passing. One end-to-end scenario failed in a later run, so I've made a small fix for it that you can include in the push.
+
+**What `terminal.txt` shows**, on .NET 11 rc3 and Podman 6.1.3:
+- **`dotnet test`:** 1,332 of 1,332 passed. The data-access tests finished in 35 seconds, with no "too many clients" errors and no hang.
+- **`scripts/ci_local.sh --with-all --with-e2e`:** all nine gates passed, including the warnings-as-errors build, which now has no warnings at all.
+- **Packages:** no outdated and no vulnerable ones.
+- **The last stand-alone end-to-end run:** 20 of 21 passed. The pairing step in `Display_PairsAndShowsRotatingQrAcrossWindowBoundary` timed out. The browser had already reached the table display page, but the test was still waiting for the page's `load` event, which never came within 30 seconds. The same scenario passed in the other three runs, so it's an intermittent failure.
+
+**The fix** is in `tests/MyRestaurant.EndToEnd.Tests/Harness/DisplayJourneys.cs`. The pairing step now waits for the new URL and then for the table display element to appear, instead of for the `load` event. It also now catches Playwright's `TimeoutException`, so a future failure shows the harness's own explanation instead of a bare 30-second timeout. I haven't run it, and one passing run won't prove the intermittent failure is gone. I don't know why the `load` event never arrived. Six other waits in the harness use the same pattern and have never failed, so I left them alone and noted that in the review ledger.
+
+`claude-terminal.txt` is still the old August run on .NET 10, so there was nothing new to review there.
+
+The archive `myrestaurant-slice-76b-display-pairing-wait.tar.gz` has four files: `DisplayJourneys.cs`, `docs/BUILD_PROGRESS.md`, `docs/DOCUMENTATION_REVIEW.md` and `_CHANGES.md`. Extract it at the repo root; there's nothing to delete or `git add`. Every container image reference is still fully qualified, and nothing needs Docker.
+
+The roughly 2,300 lines of database-migration log in the test output come from `.LogToConsole()` in `SchemaMigrationRunner`. The app's container logs need that line, so I didn't change it before your push.
+
+04
+55
+100
