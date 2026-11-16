@@ -24,9 +24,9 @@ public sealed class ContainerImageReferenceContractTests
 
         Assert.True(
             references.Count >= 10,
-            $"Only {references.Count} image reference(s) were found in the tree. There are twelve:"
-            + " three in compose.yaml, two in Containerfile, two in .github/workflows/ci.yml, three in"
-            + " scripts/, and two in the Testcontainers fixtures. If a position changed shape, this"
+            $"Only {references.Count} image reference(s) were found in the tree. They live in"
+            + " compose.yaml, in Containerfile, in .github/workflows/ci.yml, in scripts/, and in the"
+            + " shared Testcontainers server under tests/Shared. If a position changed shape, this"
             + " scan has to follow it rather than be deleted."
             + FoundHere(references));
 

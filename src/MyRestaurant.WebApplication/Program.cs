@@ -47,7 +47,7 @@ builder.Services.AddOpenTelemetry()
         serviceVersion: BuildInformation.Current.InformationalVersion))
     .WithTracing(tracing =>
     {
-        tracing.AddAspNetCoreInstrumentation();
+        tracing.AddSource(FrameworkTelemetry.ActivitySourceName);
         tracing.AddNpgsql();
         if (otlpExporterConfigured)
         {
@@ -56,7 +56,7 @@ builder.Services.AddOpenTelemetry()
     })
     .WithMetrics(metrics =>
     {
-        metrics.AddAspNetCoreInstrumentation();
+        metrics.AddMeter(FrameworkTelemetry.MeterNames);
         metrics.AddNpgsqlInstrumentation();
         metrics.AddMeter(RestaurantMetrics.MeterName);
         if (otlpExporterConfigured)

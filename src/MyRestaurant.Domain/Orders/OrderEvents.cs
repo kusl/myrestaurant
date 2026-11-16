@@ -17,7 +17,7 @@ public enum OrderActorRole
     Administrator,
 }
 
-public abstract record OrderOperation;
+public closed record class OrderOperation;
 
 public sealed record LineAddedOperation(
     Guid OrderLineIdentifier,
@@ -53,7 +53,6 @@ public static class OrderEventRules
         LinePriceAdjustedOperation adjusted => adjusted.OrderLineIdentifier,
         LineFulfilledOperation fulfilled => fulfilled.OrderLineIdentifier,
         LineFulfillmentRevertedOperation reverted => reverted.OrderLineIdentifier,
-        _ => throw new ArgumentOutOfRangeException(nameof(operation), operation.GetType().Name, "Unknown operation type."),
     };
 
     public static bool OperationIsAllowedFor(OrderEventType eventType, OrderOperation operation) => operation switch
@@ -62,7 +61,6 @@ public static class OrderEventRules
         LinePriceAdjustedOperation => eventType is OrderEventType.PriceAdjustment,
         LineFulfilledOperation => eventType is OrderEventType.Fulfillment,
         LineFulfillmentRevertedOperation => eventType is OrderEventType.FulfillmentReversal,
-        _ => false,
     };
 
     public static bool RoleMayAuthor(OrderEventType eventType, OrderActorRole role) => eventType switch

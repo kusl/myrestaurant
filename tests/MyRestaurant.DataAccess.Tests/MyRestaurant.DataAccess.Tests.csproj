@@ -2,9 +2,11 @@
 
   <!--
     Integration tests for the DbUp migration runner and the Dapper Identity store against a real
-    PostgreSQL 17 container (Testcontainers). They require a running container engine
-    (Podman/Docker); when none is available the tests skip rather than fail (BUILD_PROGRESS:
-    container-dependent tests).
+    PostgreSQL 17 container (Testcontainers) — one container for the assembly, and a database of
+    its own for each test class (F-130). They require a running container engine (Podman/Docker);
+    when none is available the tests skip rather than fail (BUILD_PROGRESS: container-dependent
+    tests). An engine that answers and then never produces a reachable database is a failure with
+    a deadline, not a skip.
 
     The ASP.NET Core shared framework is referenced so the store tests can build a Data Protection
     provider and use the Identity abstractions; Konscious (the Argon2 hasher's dependency) flows in
@@ -27,6 +29,16 @@
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="Dapper" />
+  </ItemGroup>
+
+  <!--
+    tests/Shared holds the one PostgreSQL test server and the container-engine discovery that both
+    container-backed test projects need. It is compiled into each of them rather than built as a
+    project of its own: two files do not earn an assembly, and a module initializer has to live in
+    the assembly it initializes (F-130).
+  -->
+  <ItemGroup>
+    <Compile Include="../Shared/**/*.cs" LinkBase="Shared" />
   </ItemGroup>
 
   <ItemGroup>

@@ -16,7 +16,7 @@ public sealed class RestaurantTime
 
     private const string MachineReadablePattern = "yyyy'-'MM'-'dd'T'HH':'mm':'sszzz";
 
-    private readonly object _transitionGate = new();
+    private readonly Lock _transitionGate = new();
     private readonly TimeZoneInfo _zone;
 
     private CachedTransition? _cachedTransition;

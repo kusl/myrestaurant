@@ -14,7 +14,7 @@
 # OPERATIONS §8 calls the key material in the clear.
 
 # ---- build -------------------------------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 WORKDIR /source
 
 # What this build is (TECHNICAL_SPECIFICATION §11.9). VERSION defaults to Directory.Build.props'
@@ -96,7 +96,7 @@ RUN INFORMATIONAL_VERSION="${VERSION}${SOURCE_REVISION:++${SOURCE_REVISION}}" \
         /p:InformationalVersion="${INFORMATIONAL_VERSION}"
 
 # ---- runtime -----------------------------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS runtime
 WORKDIR /app
 
 # tzdata for TimeZoneInfo; curl for the container healthcheck. Clean apt lists to keep the layer small.

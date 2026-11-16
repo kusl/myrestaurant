@@ -57,7 +57,10 @@
     <PackageVersion Include="OpenTelemetry" Version="1.21.0" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.21.0" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.21.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.21.0" />
+    <!-- There is no OpenTelemetry.Instrumentation.AspNetCore pin, and its absence is deliberate
+         (F-131). ASP.NET Core 11 writes the HTTP server semantic-convention attributes onto its own
+         activity, so Program.cs subscribes to the framework's activity source and meters by name
+         and the instrumentation package has nothing left to add here. -->
   </ItemGroup>
 
   <ItemGroup Label="Test infrastructure (all test projects)">
@@ -89,7 +92,12 @@
          4.x configures the container logger PER BUILDER: `WithLogger` on the chain that reaches
          `Build`, seeded with the library's own console logger inside `Init`. The global
          `TestcontainersSettings.Logger` that both fixtures used to assign does not exist at this
-         version, and neither did the gate that asserted they assigned it (F-126). -->
+         version, and neither did the gate that asserted they assigned it (F-126).
+
+         There is one builder now, in tests/Shared/PostgreSqlTestServer.cs, compiled into both test
+         projects. It replaces the module's readiness probe, which runs `pg_isready` through the
+         engine's exec endpoint, with a connection opened from the host — and puts a deadline on the
+         start, because the probe it replaces had none (F-130). -->
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
   </ItemGroup>
 
@@ -114,8 +122,8 @@
       which is the same reasoning Directory.Build.props uses for keeping NU1901-NU1904 out of
       TreatWarningsAsErrors — the warning has to stay meaningful for the next one to be heard.
 
-      2026.0.0 also adds a net10.0 target framework, which 2025.1.0 does not have; until now both test
-      projects resolved its net9.0 asset.
+      2026.0.0 also adds a net10.0 target framework, which 2025.1.0 does not have; that is the asset
+      both test projects resolve, on net11.0 as they did on net10.0.
     -->
     <PackageVersion Include="SSH.NET" Version="2026.0.0" />
   </ItemGroup>

@@ -67,9 +67,11 @@ the web layer depends on data-access and the domain; the domain depends on nothi
 
 ## Prerequisites
 
-- The .NET SDK pinned in `global.json` — `10.0.100` with `rollForward: latestMinor`, so any 10.0
-  feature band satisfies it. Needed to build, test, or run on the host; **not** needed to run the
-  containers, since the Containerfile builds inside the SDK image (see `scripts/dev_instance.sh`).
+- A .NET 11 SDK. `global.json` names a floor rather than a pin — the last release candidate,
+  `11.0.100-rc.3`, with `rollForward: latestMinor` — so the stable SDK satisfies it and so does a
+  distribution that has not packaged the stable SDK yet. CI and the Containerfile build with the
+  stable one. Needed to build, test, or run on the host; **not** needed to run the containers,
+  since the Containerfile builds inside the SDK image (see `scripts/dev_instance.sh`).
 - A container engine — rootless **Podman** is the primary target; Docker works too.
 - For integration tests, the container engine's API socket must be reachable (see *Testing*). For
   the end-to-end scenarios, a Chromium build as well (see *End-to-end scenarios*).
@@ -121,16 +123,24 @@ dotnet test --project tests/MyRestaurant.DataAccess.Tests         # needs a reac
 ```
 
 **`--project`, not a bare path, and that is the runner rather than a style preference.** `global.json`
-opts this repository into the **Microsoft.Testing.Platform** mode of `dotnet test`, which is the .NET 10
-SDK's own mode and the only one xUnit.net v3 4.x supports there. In that mode a path is passed with
+opts this repository into the **Microsoft.Testing.Platform** mode of `dotnet test`, which is the SDK's
+own mode from .NET 10 onward and the only one xUnit.net v3 4.x supports there. In that mode a path is passed with
 `--project` (or `--solution`), `--logger` no longer exists, and arguments for the test application itself
 go after a `--` — so `dotnet test --report-xunit-trx` becomes `dotnet test -- --report-xunit-trx` when it
 is mixed with build options. `dotnet test -?` inside a test project folder lists everything that project
 accepts, xUnit.net's own filters included: `--filter-class`, `--filter-method`, `--filter-trait`. There is
 no VSTest adapter package in any test project, deliberately.
 
-The domain and web-layer tests need no services. The data-access tests spin up a real PostgreSQL 17
-container via Testcontainers; if no container engine is reachable they skip rather than fail.
+The domain and web-layer tests need no services. The data-access tests start one real PostgreSQL 17
+container for the whole assembly via Testcontainers and give each test class a database of its own on
+it; if no container engine is reachable they skip rather than fail.
+
+**An engine that answers and then never produces a database is a failure, not a skip (F-130).** The
+start has a five-minute deadline, and readiness is a `SELECT 1` from the host over the published port
+rather than `pg_isready` run through the engine's exec endpoint. When the deadline passes, the run
+fails with the container's state, the last lines it logged, and the two commands that separate a
+PostgreSQL fault from an engine-API fault. Before this, the same condition was a suite that sat
+silent until somebody cancelled it.
 
 **Rootless Podman (the canonical engine):** Testcontainers talks to the engine's API socket, not the
 `podman` CLI, so on a fresh Fedora/Podman machine the integration tests skip with a Docker-flavoured
@@ -214,7 +224,7 @@ On a minimal Linux host Chromium's shared libraries may be missing. Install them
 root, which is why the harness never attempts it:
 
 ```bash
-pwsh tests/MyRestaurant.EndToEnd.Tests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
+pwsh tests/MyRestaurant.EndToEnd.Tests/bin/Debug/net11.0/playwright.ps1 install --with-deps chromium
 ```
 
 Every unavailability is a skip with the fix in its message: not opted in, no container engine, no
@@ -295,8 +305,8 @@ retried its first connection thirty times since M1.
 
 The first rule is not about `compose.yaml`. Reading it that way was a finding of its own (**F-60**): it
 holds at every image reference in the repository, and the four places it was missing were the two
-Testcontainers fixtures and CI's two — where a short name does not fail the suite, because both fixtures
-turn a container that will not start into a *skip*, so the canonical host answers with a green run in
+Testcontainers fixtures of the time and CI's two — where a short name does not fail the suite, because
+an image that cannot be resolved is turned into a *skip*, so the canonical host answers with a green run in
 which no integration test and no end-to-end scenario executed. A reference must also sit somewhere that
 can be read: a YAML `image:` key, a `Containerfile` `FROM`, or a value assigned to a name ending in
 `_IMAGE` or `Image`. Two of them did not, and moving those into named constants is what put them back

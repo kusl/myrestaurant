@@ -265,6 +265,5 @@ public static class OrderMutationValidator
         LinePriceAdjustedOperation => "price-adjustment",
         LineFulfilledOperation => "fulfillment",
         LineFulfillmentRevertedOperation => "fulfillment-reversal",
-        _ => "operation",
     };
 }

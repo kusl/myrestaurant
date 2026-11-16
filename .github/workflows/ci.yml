@@ -21,7 +21,7 @@
 #                   project's own pre-delivery discipline, enforced instead of remembered.
 #
 #   build-and-test  Restore, a Release build with warnings escalated to errors, then the whole
-#                   xUnit suite. The data-access tests start real PostgreSQL 17 containers through
+#                   xUnit suite. The data-access tests start one real PostgreSQL 17 container through
 #                   Testcontainers; a GitHub runner has a Docker socket, so those tests RUN here
 #                   rather than skipping the way they do on a machine with no container engine.
 #
@@ -188,13 +188,15 @@ jobs:
       - name: check out
         uses: actions/checkout@v7
 
-      # 10.0.x rather than global.json's exact pin: global.json says 10.0.100 with
-      # rollForward=latestMinor, so any 10.0 SDK satisfies it, and asking for an exact patch that
-      # has since been delisted is a needless way to fail.
+      # 11.0.x rather than global.json's version: global.json names a FLOOR — the last release
+      # candidate, with rollForward=latestMinor — so that a workstation whose distribution has not
+      # packaged the stable SDK yet still builds. This asks for the newest stable 11.0 SDK instead,
+      # which satisfies that floor; `dotnet-version` takes precedence over `global.json` in this
+      # action, so the runner never installs the release candidate the floor names.
       - name: set up the .NET SDK
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "11.0.x"
 
       # There are no packages.lock.json files, so setup-dotnet's own cache input cannot be used;
       # key the global-packages folder on the only files that can change a restore graph.
@@ -221,9 +223,10 @@ jobs:
               --no-restore \
               -p:ContinuousIntegrationBuild=true
 
-      # Testcontainers finds /var/run/docker.sock on the runner, so the ~190 data-access integration
-      # facts execute here. MYRESTAURANT_E2E is deliberately NOT set: the §16.3 scenarios have their
-      # own job below, and running them twice would double the browser time for one answer.
+      # Testcontainers finds /var/run/docker.sock on the runner, so the data-access integration facts
+      # execute here, against one PostgreSQL container for the whole assembly. MYRESTAURANT_E2E is
+      # deliberately NOT set: the §16.3 scenarios have their own job below, and running them twice
+      # would double the browser time for one answer.
       #
       # MICROSOFT.TESTING.PLATFORM MODE, not VSTest (F-97). `global.json` carries the opt-in, so the
       # command line is the MTP one: the solution arrives through `--solution` rather than as a bare
@@ -433,7 +436,7 @@ jobs:
       - name: set up the .NET SDK
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "11.0.x"
 
       - name: cache NuGet packages
         uses: actions/cache@v6
@@ -470,7 +473,7 @@ jobs:
       - name: install Chromium and its dependencies
         run: |
           set -euo pipefail
-          pwsh tests/MyRestaurant.EndToEnd.Tests/bin/Release/net10.0/playwright.ps1 \
+          pwsh tests/MyRestaurant.EndToEnd.Tests/bin/Release/net11.0/playwright.ps1 \
               install --with-deps chromium
 
       # MYRESTAURANT_E2E is what turns the sixteen placeholders into real scenarios. Testcontainers

@@ -521,9 +521,6 @@ public sealed class DapperOrderMutations : IOrderMutations
                 },
                 transaction,
                 cancellationToken: cancellationToken)),
-
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(operation), operation.GetType().Name, "Unknown order operation type."),
         };
     }
 

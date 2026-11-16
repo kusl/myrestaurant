@@ -1,49 +1,77 @@
-# Slice 74 — Stage 1g: the station most of the sentence was about
+# Slice 75 — the platform moves, and the suite learns to give up
 
-Extract at the repository root. Spec goes to **v1.59**. Findings floor moves to **F-129**.
+Extract at the repository root. Spec goes to **v1.60**. Requirements go to **rev 7**. Findings floor moves to **F-131**.
 
 ## Files in this archive
 
 | Path | State |
 |---|---|
-| `tests/MyRestaurant.EndToEnd.Tests/Harness/HandheldReach.cs` | changed — two `HandheldSurface` records appended |
-| `tests/MyRestaurant.EndToEnd.Tests/EndToEndScenarios.cs` | changed — scenario 6 renamed and rearranged, three constants, one shared verdict message made surface-neutral |
-| `docs/TECHNICAL_SPECIFICATION.md` | changed — header, §11.12, §16.3 scenario 6, §19's M7 paragraph, Appendix A, changelog |
-| `docs/MENU_AND_HANDHELD_PLAN.md` | changed — Stages 1, 1b and 1g, one ruling row, closing paragraphs rewritten |
-| `docs/DOCUMENTATION_REVIEW.md` | changed — header count, two standing-rules rows, the F-129 ledger row, one residual |
-| `docs/BUILD_PROGRESS.md` | changed — the Slice 74 row and narrative |
+| `global.json` | changed — SDK floor `11.0.100-rc.3.26522.148`, `rollForward: latestMinor`, `allowPrerelease` |
+| `Directory.Build.props` | changed — `net11.0` |
+| `Directory.Packages.props` | changed — `OpenTelemetry.Instrumentation.AspNetCore` pin removed; two notes |
+| `Containerfile` | changed — `sdk:11.0` and `aspnet:11.0` |
+| `.github/workflows/ci.yml` | changed — `dotnet-version: "11.0.x"` twice, the `net11.0` Playwright path, three comments |
+| `src/MyRestaurant.WebApplication/MyRestaurant.WebApplication.csproj` | changed — one package reference removed |
+| `src/MyRestaurant.WebApplication/Program.cs` | changed — the framework's activity source and meters, by name |
+| `src/MyRestaurant.WebApplication/Observability/FrameworkTelemetry.cs` | **new** |
+| `src/MyRestaurant.WebApplication/Time/RestaurantTime.cs` | changed — `Lock` instead of `object` |
+| `src/MyRestaurant.Domain/Orders/OrderEvents.cs` | changed — `closed record class OrderOperation`; two fallback arms removed |
+| `src/MyRestaurant.Domain/Orders/OrderMutationValidator.cs` | changed — one fallback arm removed |
+| `src/MyRestaurant.DataAccess/Orders/OrderMutations.cs` | changed — one fallback arm removed |
+| `tests/Shared/PostgreSqlTestServer.cs` | **new** — the one container builder, host-side readiness, the start deadline |
+| `tests/Shared/ContainerEngineDiscovery.cs` | **new** — moved here from the two projects, namespace `MyRestaurant.Testing` |
+| `tests/MyRestaurant.DataAccess.Tests/PostgreSqlServerFixture.cs` | **new** — assembly fixture: one server, a database per class |
+| `tests/MyRestaurant.DataAccess.Tests/PostgreSqlFixture.cs` | changed — leases a database; same public surface |
+| `tests/MyRestaurant.DataAccess.Tests/MyRestaurant.DataAccess.Tests.csproj` | changed — compiles `../Shared` |
+| `tests/MyRestaurant.EndToEnd.Tests/MyRestaurant.EndToEnd.Tests.csproj` | changed — compiles `../Shared` |
+| `tests/MyRestaurant.EndToEnd.Tests/Harness/RestaurantHarness.cs` | changed — starts the shared server; its own builder and failure prose removed |
+| `tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerLoggingContractTests.cs` | changed — floor of one builder; message |
+| `tests/MyRestaurant.WebApplication.Tests/Deployment/ContainerImageReferenceContractTests.cs` | changed — one message loses a stale count |
+| `README.md` | changed — prerequisites, testing, one Playwright path |
+| `docs/REQUIREMENTS.md` | changed — rev 7, §2 |
+| `docs/TECHNICAL_SPECIFICATION.md` | changed — header, §1, §2, §12, §16.2, §16.4, Appendix A, changelog |
+| `docs/DOCUMENTATION_REVIEW.md` | changed — F-130, F-131, two residuals |
+| `docs/OPERATIONS.md` | changed — §12 |
+| `docs/BUILD_PROGRESS.md` | changed — the Slice 75 row and narrative |
 | `_CHANGES.md` | changed (this file) |
 
-**Files to DELETE: none.** Nothing is added and nothing is removed, so there is no `git add` and no `git rm` — every path above is already tracked. `check_tree.sh` reads `git ls-files`, so a plain `git status` after extracting should show six modified files and nothing untracked.
+**Files to DELETE: two.**
 
-**No production code changed.** No `.razor`, no `.cs` under `src/`, no `app.css`, no migration, no service, no endpoint. The barrier is two records in the harness and a rearranged scenario.
+```bash
+git rm tests/MyRestaurant.DataAccess.Tests/ContainerEngineDiscovery.cs
+git rm tests/MyRestaurant.EndToEnd.Tests/Harness/ContainerEngineDiscovery.cs
+```
+
+Both declare the class that `tests/Shared/ContainerEngineDiscovery.cs` now declares, and each test project compiles `../Shared`, so leaving either in place is a duplicate-type build error rather than a silent leftover.
+
+**Files to ADD: four.** `git add tests/Shared src/MyRestaurant.WebApplication/Observability/FrameworkTelemetry.cs tests/MyRestaurant.DataAccess.Tests/PostgreSqlServerFixture.cs` — `check_tree.sh` reads `git ls-files`, so an unadded file is an unchecked one.
 
 ## Expected test count
 
-**1332 — unchanged.** Scenario 6 is one `[Fact]` before and after; its method is renamed rather than split, exactly as scenario 21's was in Slice 72 and scenario 10's in Slice 73. The two `HandheldSurface` records carry no attribute, and `AssertHandheldBarrier` is an existing private helper. §16.4's counted-class census stays at **49** over a floor of 37: `HandheldReach.cs` and `EndToEndScenarios.cs` are end-to-end sources, not counted classes, so no paragraph gained or lost a number. End-to-end scenarios stay at **21**.
-
-Any other number is worth investigating before reading assertion text.
+**1332 — unchanged.** No `[Fact]` or `[Theory]` was added, removed or moved. §16.4's counted-class census stays at **49** over a floor of 37. End-to-end scenarios stay at **21**. Any other number is worth investigating before reading assertion text.
 
 ## What landed
 
-**Stage 1g, the kitchen.** §16.3 scenario 6 now creates a kitchen account, signs it in by password on an isolated 375×667 context, completes the forced change, opens the board **before** the guest sends, and **fulfils the line from there**. The administrator's board stays open and becomes the observer. The station R§1's sentence is most about had been worked by an administrator at a desk in every scenario this repository has.
+**.NET 11 on two SDKs at once.** `global.json` names a floor, not a pin. The workstation has `11.0.100-rc.3.26522.148` and nothing newer; CI's `setup-dotnet` is asked for `11.0.x` and installs the stable `11.0.100`, which is above the floor; the image builds on `sdk:11.0`. When Fedora packages the stable SDK the workstation moves to it with no edit here.
 
-**The order is load-bearing.** §10.3 renders `.kitchen-alert-badge` only while something is unseen, and `KitchenAlertState` is a field on the circuit. A board opened after the send has an unseen count of zero, so the badge would not exist to be measured. Open first, and the alert arrives at a page that is watching.
+**The suite cannot hang.** `terminal.txt` shows `dotnet test` cancelled at forty-two minutes with both container-backed assemblies at zero tests, on a host upgraded to Fedora 45 and Podman 6 — containers created and running, nothing ready. Readiness was `pg_isready` through the engine's exec endpoint, with no deadline and a silenced logger. It is now a `SELECT 1` from the host, bounded at five minutes; a timeout **fails** with the container's state and log tail. No engine at all is still a skip.
 
-**Two measurements.** The **pass** while the alert still stands, because `AppendAsync` acknowledges on every successful write — measured after the away, `.kitchen-alert-badge` matches nothing. The **board once a line is away**, because `.kitchen-recent-line`'s Undo exists only inside the fifteen-minute fulfilment window. Both are measured *where they stand*: the unseen count and the armed state are circuit fields that a navigation resets.
+**One server, not one per class.** The data-access assembly starts one container; each test class gets its own database, so no test class changed. `max_connections` is raised to 300 on that container because the classes now share it.
 
-**Every selector in both sets is required for reach and for text.** Five on the pass — alert badge, *Enable sound*, *Fulfill all*, the line button, the 86 toggle — and three after: Undo, the surviving line button, *Fulfill all*. The text floor gets its button subjects in the slice that names the surface rather than a slice later (**F-127**).
+**Deleted because .NET 11 does it.** The ASP.NET Core OpenTelemetry instrumentation package, and four `_ =>` arms over `OrderOperation` that a `closed` hierarchy lets the compiler replace.
 
-**F-129.** Slice 73 wrote *it names four* into §11.12 and closed the same paragraph with *which is why the set is written down and not counted*. The next slice makes the set six. The count is **deleted rather than corrected** (F-77, F-89), and what replaces it is what a list cannot carry: what is outside the set and why — §11.5's display is a wall screen; §11.6 and §11.8 declare no control of their own. The kitchen's deferral sentence is deleted rather than softened, because its subject has ceased to exist (**F-41**).
+**Looked at, already current, not touched.** Every NuGet pin (`dotnet list package --outdated` in `terminal.txt`: no updates) and every GitHub Actions major. PostgreSQL stays on 17 — that is your data, and a new major is a dump-and-restore.
 
-**Stage 1 closes**, and with it the last open row `docs/MENU_AND_HANDHELD_PLAN.md` opened on 2026-08-11. Every row in its stage table now carries a slice number.
+**User data.** No migration, no schema change, no change to any route, cookie, stored secret or backup format. Nothing is rebuilt or cleared on upgrade, because nothing in this slice gives a reason to.
 
 ## Not verified
 
-Nothing was compiled — no .NET SDK in the authoring environment — so 1332 is arithmetic rather than an observation and neither measurement has ever matched an element. No browser ran. The claim that the kitchen board lays out inside 375px is read out of `app.css`: a 313px panel content box against a widest declared row of about 279px. That margin is thin, and a real run is the only thing that settles it. The claim that a `KitchenAlert` reaches a second browser context is read from §9's broadcaster being in-process; scenario 4 makes the same claim on one context and nothing has made it on two.
+Nothing was compiled — no SDK here and no route to the package feed — so every claim below the file table is read, not run. The Testcontainers calls were checked against the 4.16.0 source except `AddCustomWaitStrategy`, taken from the module's own use of it. `closed` comes from the C# 15 reference. Whether Podman 6's exec endpoint is the call that stalled is inferred, not observed. Whether native ASP.NET Core spans keep the instrumentation package's display names is not known.
 
 ## Veto points
 
-1. **The fulfilment moves from the administrator's page to the handset.** Scenario 6's original claim is preserved and strengthened — the wide board still asserts the line left the pass — but the appending actor is now `OrderActorRole.Kitchen` rather than `Administrator`. Nothing in this scenario reads the actor. To reverse: call `KitchenJourneys.FulfillLineAsync(service.Kitchen, …)` as before and measure the handheld board without ever pressing anything on it — which costs the second measurement, because Undo would never exist.
-2. **The alert badge is a required selector.** If a `KitchenAlert` does not reach a second circuit, `WaitForBoardAsync` fails before any measurement runs, naming what it waited for. To reverse: drop `snapshot.UnseenAlertCount >= 1` from the wait and make `button.kitchen-alert-badge` optional in `KitchenPass` — at the cost of leaving §10.3's own control unmeasured, which is the state F-127 was about.
-3. **Two measurements rather than three.** The board is never measured *empty* — the state a kitchen looks at for most of a shift. That is deliberate: an empty board's only controls are *Enable sound* and the 86 panel, and a barrier over a page whose subjects have mostly gone is the vacuous gate **F-41** forbids. To reverse: measure once immediately after `KitchenJourneys.OpenAsync` on the handheld, with a set whose required selectors are the two that survive an empty pass.
+1. **`closed record class OrderOperation`.** If the release-candidate compiler refuses it, change `closed record class` back to `abstract record` in `OrderEvents.cs` and restore the removed arms: `_ => throw new ArgumentOutOfRangeException(nameof(operation), operation.GetType().Name, "Unknown operation type.")` in `LineIdentifierOf` and at the end of the insert switch in `OrderMutations.cs`, `_ => false` in `OperationIsAllowedFor`, `_ => "operation"` in `OrderMutationValidator.DescribeOperation`.
+2. **The instrumentation package is gone.** To reverse: re-add the `PackageVersion` (1.21.0) and the `PackageReference`, and put `AddAspNetCoreInstrumentation()` back on both builders in `Program.cs` in place of the `FrameworkTelemetry` lines. Worth doing only if a collector's dashboards key on span names and those turn out to differ.
+3. **One server per assembly.** If shared-server load shows up as a flake, the smallest reversal is in `PostgreSqlFixture.InitializeAsync`: start a `PostgreSqlTestServer` of its own there and dispose it in `DisposeAsync`. The deadline and the host-side probe stay either way.
+4. **The five-minute deadline** is `StartupDeadline` in `PostgreSqlTestServer.cs`, with its text beside it. A cold image pull on a slow link is the only honest reason to raise it.
+5. **PostgreSQL 17 was held on purpose.** Moving it is a slice of its own with a restore drill in it.

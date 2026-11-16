@@ -12,7 +12,7 @@ public sealed class ContainerLoggingContractTests
     private const string BuilderCompletion = ".Build()";
     private const string LoggerInstallation = ".WithLogger(";
 
-    private const int MinimumFixtures = 2;
+    private const int MinimumFixtures = 1;
 
     [Fact]
     public void EveryContainerBuilderInstallsItsOwnLoggerBeforeItBuilds()
@@ -24,9 +24,10 @@ public sealed class ContainerLoggingContractTests
             string.Create(
                 CultureInfo.InvariantCulture,
                 $"Only {fixtures.Count} source file(s) under {TestsRelativePath}/ construct a"
-                    + $" Testcontainers builder, and this tree has {MinimumFixtures}: the DataAccess"
-                    + $" fixture and the end-to-end harness. The walk is not reading the files it is"
-                    + $" about, so the fact below would pass on nothing (F-41)."));
+                    + $" Testcontainers builder, and this tree has at least {MinimumFixtures}: the"
+                    + $" shared PostgreSQL test server that the data-access fixture and the end-to-end"
+                    + $" harness both start (F-130). The walk is not reading the files it is about, so"
+                    + $" the fact below would pass on nothing (F-41)."));
 
         List<string> problems = [];
 
@@ -72,8 +73,8 @@ public sealed class ContainerLoggingContractTests
                     + $" the builder's own resource configuration rather than a global setting, so it has"
                     + $" to be installed on the chain that reaches {BuilderCompletion} and installing it"
                     + $" anywhere else silences nothing (F-126). What diagnoses a container that will not"
-                    + $" start here is the fixture's own DescribeFailure prose, not those lines"
-                    + $" (F-125)."));
+                    + $" start here is the test server's own DescribeUnavailable prose and the message"
+                    + $" its start deadline throws, not those lines (F-125, F-130)."));
     }
 
     private static IReadOnlyList<string> FixtureSources()
