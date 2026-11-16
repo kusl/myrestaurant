@@ -96,6 +96,8 @@ kushal@fedora:~/src/dotnet/MyImapDownloader$
 
 ```
 
+but also something is wrong here
+
 fable 5.2 medium
 
 
@@ -198,36 +200,3 @@ fable 5.2 medium
 
 
 
-before that, lets take a short detour 
-
-It makes sense once you read the message as a catch-all rather than a diagnosis.
-
-**What the output shows**
-
-- `systemctl --user enable --now podman.socket` printed nothing, so the socket was already enabled and active. The hint in the error ("activate the user API socket once") didn't apply to you.
-- The error says "not reachable", but the cause it reports is "The operation has timed out", not "connection refused" or "no such socket". Something answered, or at least accepted the connection, and then didn't finish in time.
-- Your harness (probably Testcontainers) seems to wrap any failure while starting the Postgres container in the same "engine not reachable" skip message. A stalled image pull, a hung container start, or a stuck helper container would all produce this text.
-- The ~55 minutes on the first DataAccess fixture suggests something was hanging, not failing fast. After that fixture gave up, every later test skipped immediately with the same message.
-- The run reports "passed" because the tests were skipped, not failed. Even with `MYRESTAURANT_E2E=1` set, the E2E suite going green after verifying nothing is a harness problem. With that variable set, "no container engine" should be a hard failure.
-
-**Likely causes, in rough order**
-
-1. Pulling `docker.io/library/postgres:17-alpine` is stalling. Rootless Podman networking (pasta/slirp4netns), DNS, or a registry rate limit can all do this.
-2. Testcontainers' Ryuk helper container fails or hangs under rootless Podman. This is a well-known problem, and the usual fix is `export TESTCONTAINERS_RYUK_DISABLED=true`.
-3. The Podman API service starts on socket activation but is slow or wedged on the first call.
-
-**Quick checks to tell them apart**
-
-```bash
-systemctl --user status podman.socket
-curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock http://d/_ping   # should print OK
-echo $DOCKER_HOST
-time podman pull docker.io/library/postgres:17-alpine
-time podman run --rm docker.io/library/postgres:17-alpine postgres --version
-```
-
-If `_ping` returns OK but the pull or run hangs, it's networking or the registry. If `_ping` itself hangs, it's the Podman service. If both work from the shell, retry the tests with `TESTCONTAINERS_RYUK_DISABLED=true`.
-
-If you share the output of the pull and the `_ping`, I can narrow it down further. I'd also change the harness so that a timeout with `MYRESTAURANT_E2E=1` set fails the test and has a short timeout, instead of skipping after an hour.
-
-systemctl --user status podman.socket; curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock http://d/_ping; echo $DOCKER_HOST; time podman pull docker.io/library/postgres:17-alpine; time podman run --rm docker.io/library/postgres:17-alpine postgres --version
