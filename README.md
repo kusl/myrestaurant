@@ -131,9 +131,9 @@ is mixed with build options. `dotnet test -?` inside a test project folder lists
 accepts, xUnit.net's own filters included: `--filter-class`, `--filter-method`, `--filter-trait`. There is
 no VSTest adapter package in any test project, deliberately.
 
-The domain and web-layer tests need no services. The data-access tests start one real PostgreSQL 17
-container for the whole assembly via Testcontainers and give each test class a database of its own on
-it; if no container engine is reachable they skip rather than fail.
+The domain and web-layer tests need no services. The data-access tests spin up a real PostgreSQL 17
+container per test class via Testcontainers; if no container engine is reachable they skip rather
+than fail.
 
 **An engine that answers and then never produces a database is a failure, not a skip (F-130).** The
 start has a five-minute deadline, and readiness is a `SELECT 1` from the host over the published port

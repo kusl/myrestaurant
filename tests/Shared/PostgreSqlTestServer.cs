@@ -12,12 +12,10 @@ internal sealed class PostgreSqlTestServer : IAsyncDisposable
 {
     private const string PostgreSqlImage = "docker.io/library/postgres:17-alpine";
 
-    private const string AdministrativeDatabase = "postgres";
     private const string Username = "myrestaurant";
     private const string Password = "myrestaurant";
 
     private const int ServerPort = 5432;
-    private const string MaximumConnections = "300";
 
     private const int ProbeTimeoutSeconds = 3;
     private const int ReportedLogLines = 20;
@@ -35,25 +33,30 @@ internal sealed class PostgreSqlTestServer : IAsyncDisposable
         "did not resolve to an alias",
     ];
 
-    private readonly PostgreSqlContainer _container;
-    private readonly SemaphoreSlim _databaseCreation = new(1, 1);
+    private static TimeoutException? _firstTimeout;
 
-    private PostgreSqlTestServer(PostgreSqlContainer container, string administrativeConnectionString)
+    private readonly PostgreSqlContainer _container;
+
+    private PostgreSqlTestServer(PostgreSqlContainer container, string connectionString)
     {
         _container = container;
-        AdministrativeConnectionString = administrativeConnectionString;
+        ConnectionString = connectionString;
     }
 
-    internal string AdministrativeConnectionString { get; }
+    internal string ConnectionString { get; }
 
-    internal static async Task<PostgreSqlTestServer> StartAsync()
+    internal static async Task<PostgreSqlTestServer> StartAsync(string database)
     {
+        if (Volatile.Read(ref _firstTimeout) is { } earlier)
+        {
+            throw new TimeoutException(earlier.Message, earlier);
+        }
+
         PostgreSqlContainer container = new PostgreSqlBuilder(PostgreSqlImage)
-            .WithDatabase(AdministrativeDatabase)
+            .WithDatabase(database)
             .WithUsername(Username)
             .WithPassword(Password)
-            .WithCommand("-c", "max_connections=" + MaximumConnections)
-            .WithWaitStrategy(Wait.ForUnixContainer().AddCustomWaitStrategy(new AcceptsConnectionsFromTheHost()))
+            .WithWaitStrategy(Wait.ForUnixContainer().AddCustomWaitStrategy(new AcceptsConnectionsFromTheHost(database)))
             .WithLogger(NullLogger.Instance)
             .Build();
 
@@ -68,7 +71,7 @@ internal sealed class PostgreSqlTestServer : IAsyncDisposable
             string observed = await DescribeContainerAsync(container);
             await DisposeQuietlyAsync(container);
 
-            throw new TimeoutException(
+            TimeoutException timeout = new(
                 "PostgreSQL in a container did not accept a connection from this host within"
                 + $" {StartupDeadlineText}, so the suite stopped waiting instead of hanging. The"
                 + $" container engine answered and was asked to start '{PostgreSqlImage}'; what never"
@@ -79,6 +82,9 @@ internal sealed class PostgreSqlTestServer : IAsyncDisposable
                 + " socket is what differs from its command line; `podman info` and"
                 + " `podman system migrate` are the next two commands after an engine upgrade.",
                 exception);
+
+            Interlocked.CompareExchange(ref _firstTimeout, timeout, null);
+            throw timeout;
         }
         catch
         {
@@ -89,36 +95,7 @@ internal sealed class PostgreSqlTestServer : IAsyncDisposable
         return new PostgreSqlTestServer(container, container.GetConnectionString());
     }
 
-    internal async Task<string> CreateDatabaseAsync(string databaseName, CancellationToken cancellationToken)
-    {
-        await _databaseCreation.WaitAsync(cancellationToken);
-
-        try
-        {
-            await using NpgsqlConnection connection = new(WithoutPooling(AdministrativeConnectionString));
-            await connection.OpenAsync(cancellationToken);
-
-            await using NpgsqlCommand command = new($"CREATE DATABASE \"{databaseName}\";", connection);
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-        finally
-        {
-            _databaseCreation.Release();
-        }
-
-        NpgsqlConnectionStringBuilder builder = new(AdministrativeConnectionString)
-        {
-            Database = databaseName,
-        };
-
-        return builder.ConnectionString;
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        _databaseCreation.Dispose();
-        await _container.DisposeAsync();
-    }
+    public ValueTask DisposeAsync() => _container.DisposeAsync();
 
     internal static string DescribeUnavailable(Exception exception)
     {
@@ -143,16 +120,6 @@ internal sealed class PostgreSqlTestServer : IAsyncDisposable
             + " activate the user API socket once with `systemctl --user enable --now podman.socket`"
             + " and re-run; the tests discover it automatically. (Explicit configuration also works:"
             + " `export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock`.)";
-    }
-
-    private static string WithoutPooling(string connectionString)
-    {
-        NpgsqlConnectionStringBuilder builder = new(connectionString)
-        {
-            Pooling = false,
-        };
-
-        return builder.ConnectionString;
     }
 
     private static async Task<string> DescribeContainerAsync(PostgreSqlContainer container)
@@ -222,7 +189,7 @@ internal sealed class PostgreSqlTestServer : IAsyncDisposable
         return string.Join(" | ", messages);
     }
 
-    private sealed class AcceptsConnectionsFromTheHost : IWaitUntil
+    private sealed class AcceptsConnectionsFromTheHost(string database) : IWaitUntil
     {
         public async Task<bool> UntilAsync(IContainer container)
         {
@@ -230,7 +197,7 @@ internal sealed class PostgreSqlTestServer : IAsyncDisposable
             {
                 Host = container.Hostname,
                 Port = container.GetMappedPublicPort(ServerPort),
-                Database = AdministrativeDatabase,
+                Database = database,
                 Username = Username,
                 Password = Password,
                 Pooling = false,

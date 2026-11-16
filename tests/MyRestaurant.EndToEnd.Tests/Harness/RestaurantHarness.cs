@@ -8,6 +8,8 @@ public sealed class RestaurantHarness : IAsyncLifetime
 {
     public const string OptInVariableName = "MYRESTAURANT_E2E";
 
+    private const string AdministrativeDatabase = "postgres";
+
     private static readonly string[] BrowserInstallArguments = ["install", "chromium"];
 
     private int _instanceCounter;
@@ -65,8 +67,8 @@ public sealed class RestaurantHarness : IAsyncLifetime
 
         try
         {
-            _server = await PostgreSqlTestServer.StartAsync();
-            _administrativeConnectionString = _server.AdministrativeConnectionString;
+            _server = await PostgreSqlTestServer.StartAsync(AdministrativeDatabase);
+            _administrativeConnectionString = _server.ConnectionString;
         }
         catch (Exception exception) when (exception is not TimeoutException)
         {

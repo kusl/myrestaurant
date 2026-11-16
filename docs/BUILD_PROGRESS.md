@@ -252,7 +252,7 @@
 
 **What is in this slice.** Two things that arrived together and are otherwise unrelated. The platform: `net11.0`, the `sdk:11.0` and `aspnet:11.0` images, CI on `11.0.x`, and a `global.json` whose version is the last release candidate with `rollForward: latestMinor`, so the workstation that has only the candidate and the runner that has the stable SDK build the same tree. And the suite: `terminal.txt` recorded a `dotnet test` cancelled after forty-two minutes with the data-access and end-to-end assemblies at zero tests, on a host that had just gone from Podman 5 to Podman 6.
 
-**The hang, as far as it was read.** The containers were created and were running; `run.sh --smoke` reached PostgreSQL in a container on the same host in the same session. What differs between the two is that the fixtures decided readiness by `pg_isready` through the engine's exec endpoint, waited on it without a limit, and had their logger silenced (F-125). The repair does not need to know which call stalled: readiness is a `SELECT 1` from the host, the start gives up after five minutes, and giving up is a failure that prints the container's state and log tail. The data-access assembly now starts one server and each test class gets a database on it, which is what the end-to-end harness already did per scenario.
+**The hang, as far as it was read.** The containers were created and were running; `run.sh --smoke` reached PostgreSQL in a container on the same host in the same session. What differs between the two is that the fixtures decided readiness by `pg_isready` through the engine's exec endpoint, waited on it without a limit, and had their logger silenced (F-125). The repair does not need to know which call stalled: readiness is a `SELECT 1` from the host, the start gives up after five minutes, and giving up is a failure that prints the container's state and log tail.
 
 **What .NET 11 made unnecessary.** `OpenTelemetry.Instrumentation.AspNetCore`, replaced by subscribing to the framework's `Microsoft.AspNetCore` activity source and its meters by name. The fallback arms in the switches over `OrderOperation`, replaced by declaring the hierarchy `closed` — the insert switch in `OrderMutations` is the one that mattered, because its fallback was an exception on the first live order carrying a kind nobody had taught it to store. `RestaurantTime` locks on a `System.Threading.Lock` rather than an `object`.
 
@@ -263,5 +263,21 @@
 **Sensitivity — reasoned against the edited tree, not executed (F-124).** `.WithLogger(` removed from the shared server's chain: `ContainerLoggingContractTests` reports the one builder. The image constant renamed away from an `Image` suffix: `ContainerImageReferenceContractTests` reports no reference in the C# position. A sixth `OrderOperation` record added with no arm in `OrderMutations`: the build stops, which is the point and is the claim most in need of a compiler.
 
 **What was NOT verified.** Nothing was compiled: no .NET SDK in the authoring environment and no route to the package feed, so 1332 is arithmetic. The Testcontainers surface the shared server calls was read at the pinned 4.16.0 tag (F-126) — the builder's constructor, its rule for appending the default probe, `WithCommand`, and `IContainer` — except `IWaitForContainerOS.AddCustomWaitStrategy`, whose page would not load and which is taken from the call the module itself makes. `closed` is taken from the C# 15 language reference and has never been through a compiler here. Whether ASP.NET Core 11's native spans carry the same display names the instrumentation package wrote was not observed. Whether the exec endpoint is what stalled on Podman 6 was not observed.
+
+**Still open.** Stage 2 of `docs/MENU_AND_HANDHELD_PLAN.md` was not started in this slice.
+
+## Slice 76 — the first run, and the sum it counted differently
+
+| Slice | What landed | Findings closed |
+|---|---|---|
+| 76 | One PostgreSQL server per data-access test class again, with Slice 75's probe, deadline and single builder kept; a first start timeout fails later starts at once; `SignIn.razor` awaits `EditContext.ValidateAsync()` | F-132 |
+
+**What the run said.** Slice 75 was built and run on `11.0.100-rc.3` for the first time. It compiled, `closed` included. Both container-backed assemblies started on Podman 6 and finished — the data-access assembly in twenty-six seconds, where the run before it was cancelled at forty-two minutes. All twenty-one end-to-end scenarios passed, twice. 1200 of 1332 passed; the 132 that did not are one failure, `53300: too many clients already`, in fifteen data-access classes. `scripts/ci_local.sh` stopped at its strict build on `CS0618`.
+
+**What is in this slice.** `PostgreSqlServerFixture.cs` is deleted and `PostgreSqlFixture` starts a `PostgreSqlTestServer` of its own, as it did before Slice 75 with a builder of its own. The server loses what only the shared design needed: the database-creation method, its semaphore, and the `max_connections` argument. It gains one static field, so that the first start to pass the deadline is the only one that waits for it. One call in `SignIn.razor` changes.
+
+**Test count arithmetic.** 1332 + 0 = **1332**. No `[Fact]` or `[Theory]` moved. §16.4's counted-class census stays at 49 over a floor of 37; end-to-end scenarios stay at 21.
+
+**What was NOT verified.** Nothing was compiled here; the proof is the next run. `EditContext.ValidateAsync()` is taken from the compiler's own message and from the ASP.NET Core 11 release notes, and its return type is assumed to be `Task<bool>`. That a server per class starts reliably on Podman 6 is inferred from the three end-to-end harnesses doing exactly that in the run above, not from thirty-four doing it at once.
 
 **Still open.** Stage 2 of `docs/MENU_AND_HANDHELD_PLAN.md` was not started in this slice.
